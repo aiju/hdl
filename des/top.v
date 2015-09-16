@@ -3,7 +3,7 @@
 module top(
 );
 
-	localparam N = 1;
+	localparam N = 16;
 	wire [3:0] fclk;
 	wire clk = fclk[0];
 	wire fastclk = fclk[1];

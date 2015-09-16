@@ -24,7 +24,6 @@ module regs #(parameter N = 1) (
 	always @(posedge clk) begin
 		armack <= 0;
 		armreq0 <= armreq;
-		run <= 0;
 		if(armreq && !armreq0) begin
 			armack <= 1;
 			armerr <= 0;

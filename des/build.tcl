@@ -24,6 +24,6 @@ write_checkpoint -force build/post_route.dcp
 
 write_bitstream -force -bin_file build/out.bit
 
-report_timing_summary -file build/timing.rpt
+report_timing_summary -file build/timing.rpt -name timing_1 -max_paths 100
 report_utilization -file build/util.rpt
 

@@ -36,12 +36,14 @@ main()
 	r[STARTL] = 0;
 	n = r[N];
 	for(i = 0; i < n; i++){
-		r[STARTH] = (0x80000000U * i / n) << 1;
-		r[RUN] = 1<<i;
+		r[STARTH] = (0x1000000U * i / n) << 8;
+		sleep(0);
+		r[RUN] ^= 1<<i;
+		sleep(0);
 	}
 	for(;;){
 		do{
-			sleep(1);
+			sleep(10);
 			d = r[DONE] ^ (1<<n) - 1;
 		}while(d == 0);
 		while(d != 0){
