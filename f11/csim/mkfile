@@ -1,0 +1,11 @@
+</$objtype/mkfile
+
+TARG=model
+OFILES=\
+	main.$O\
+	decode.$O\
+	symb.$O\
+	
+HFILES=dat.h fns.h
+
+</sys/src/cmd/mkone
