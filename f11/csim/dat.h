@@ -5,6 +5,7 @@ enum {
 	OPTALU,
 	OPTLOAD,
 	OPTSTORE,
+	OPTBRANCH,
 };
 
 enum {
@@ -27,8 +28,38 @@ enum {
 	ALUBIT,
 	ALUBIC,
 	ALUBIS,
+	ALUMUL1,
+	ALUMUL2,
+	ALUASH,
+	ALUASHC1,
+	ALUASHC2,
+	ALUASHC3,
+	ALUDIV1,
+	ALUDIV2,
+	ALUDIV3,
+	ALUXOR,
+	ALUCCOP,
 };
 extern char *opname[];
+extern char *condname[];
+
+enum {
+	CONDAL=1,
+	CONDNE,
+	CONDEQ,
+	CONDGE,
+	CONDLT,
+	CONDGT,
+	CONDLE,
+	CONDPL,
+	CONDHI,
+	CONDLOS,
+	CONDMI,
+	CONDVC,
+	CONDVS,
+	CONDCC,
+	CONDCS
+};
 
 struct UOp {
 	uchar type, alu, byte, fl;
@@ -50,3 +81,4 @@ enum {
 };
 
 ushort (*fetch)(void);
+ushort (*getpc)(void);

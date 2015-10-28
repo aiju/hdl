@@ -12,6 +12,7 @@ load(uchar byte, uchar dst, uchar r0, ushort c, uchar fl)
 	UOp u;
 	
 	memset(&u, 0, sizeof(u));
+	assert(dst < NREGS && r0 < NREGS);
 	u.type = OPTLOAD;
 	u.byte = byte;
 	u.r[0] = r0;
@@ -28,6 +29,7 @@ store(uchar byte, uchar r0, ushort c, uchar r1)
 	UOp u;
 	
 	memset(&u, 0, sizeof(u));
+	assert(r0 < NREGS && r1 < NREGS);
 	u.type = OPTSTORE;
 	u.byte = byte;
 	u.r[0] = r0;
@@ -43,6 +45,7 @@ op1(uchar byte, uchar op, uchar dst, uchar r0, uchar fl)
 	UOp u;
 	
 	memset(&u, 0, sizeof(u));
+	assert(dst < NREGS && r0 < NREGS);
 	u.type = OPTALU;
 	u.byte = byte;
 	u.alu = op;
@@ -59,6 +62,7 @@ op2(uchar byte, uchar op, uchar dst, uchar r0, uchar r1, ushort c, uchar fl)
 	UOp u;
 	
 	memset(&u, 0, sizeof(u));
+	assert(dst < NREGS && r0 < NREGS && r1 < NREGS);
 	u.type = OPTALU;
 	u.byte = byte;
 	u.alu = op;
@@ -67,6 +71,22 @@ op2(uchar byte, uchar op, uchar dst, uchar r0, uchar r1, ushort c, uchar fl)
 	u.d = dst;
 	u.v = c;
 	u.fl = fl;
+	memcpy(uops + nuops++, &u, sizeof(UOp));
+}
+
+static void
+branch(int n, uchar r0, ushort imm)
+{
+	UOp u;
+
+	memset(&u, 0, sizeof(u));
+	assert(r0 < NREGS);
+	u.type = OPTBRANCH;
+	u.alu = n;
+	u.r[0] = r0;
+	u.r[1] = IMM;
+	u.d = IMM;
+	u.v = imm;
 	memcpy(uops + nuops++, &u, sizeof(UOp));
 }
 
@@ -99,9 +119,16 @@ decode(void)
 	switch(w >> 12){
 	case 0: case 8:
 		switch(w >> 6 & 077){
+		case 001: /* JMP */
+			addrdst = 1;
+			break;
 		case 003: /* SWAB */
 			readdst = 1;
 			writedst = 1;
+			break;
+		case 040: case 041: case 042: case 043: /* JSR */
+		case 044: case 045: case 046: case 047:
+			addrdst = 1;
 			break;
 		case 050: /* CLR */
 			byte = w >> 15;
@@ -164,7 +191,6 @@ decode(void)
 			byte = w >> 15;
 			break;
 		case 067: /* SXT */
-			readdst = 1;
 			writedst = 1;
 			break;
 		}
@@ -207,103 +233,187 @@ decode(void)
 		writedst = 1;
 		byte = w >> 15;
 		break;
+	case 7:
+		switch(w >> 9 & 7){
+		case 0: case 1: case 2: case 3:
+			readdst = 1;
+			break;
+		case 4:
+			readdst = 1;
+			writedst = 1;
+			break;
+		}
 	}
 	
-	addrdst |= readdst | writedst;
-	
-	srcreg = asrcreg = w >> 6 & 7;
+	asrcreg = w >> 6 & 7;
+	srcreg = (w & 070070) == 010000 && ((w >> 6 & 7) != (w & 7) || (w >> 9 & 7) != 2 && (w >> 9 & 7) != 4) && (w & 7) != 7 ? w & 7 : SRCD;
 	dstreg = adstreg = w & 7;
 	imm = 0;
 	dimm = 0;
+	if((w & 0170000) == 070000 && w < 075000){
+		if((w >> 6 & 7) == 7 || (w >> 6 & 7) == 6 && (w >> 9 & 7) != 2 && (w >> 9 & 7) != 4)
+			if((w >> 9 & 7) == 4){
+				srcreg = IMM;
+				imm = getpc();
+			}else
+				invalid();
+		else if((w >> 9 & 7) != 1 && (w >> 6 & 7) == (w & 7) && ((uchar)((w >> 3 & 7) - 2) < 4)){
+			op1(0, ALUMOV, SRCD, asrcreg, 0);
+			srcreg = SRCD;
+		}else
+			srcreg = asrcreg;
+	}
 	
 	if(readsrc)
 		if(asrcreg == 7)
 			switch(w >> 9 & 7){
+			case 0:
+				srcreg = IMM;
+				imm = getpc();
+				break;
+			case 1:
+				load(byte, srcreg, IMM, getpc(), ldfl);
+				break;
 			case 2:
 				srcreg = IMM;
 				imm = fetch();
 				break;
 			case 3:
 				imm = fetch();
-				load(byte, 8, IMM, imm, ldfl);
+				load(byte, srcreg, IMM, imm, ldfl);
 				break;
-			default:
-				abort();
+			case 4:
+			case 5:
+				invalid();
+				break;
+			case 6:
+				imm = fetch() + getpc();
+				load(byte, srcreg, IMM, imm, ldfl);
+				break;
+			case 7:
+				imm = fetch() + getpc();
+				load(0, srcreg, IMM, imm, 0);
+				load(byte, srcreg, srcreg, 0, ldfl);
 			}
 		else
 			switch(w >> 9 & 7){
 			case 0:
-				if(addrdst && (w >> 6 & 7) == (w & 7) && (uchar)((w >> 3 & 7) - 2) <= 3){
+				srcreg = w >> 6 & 7;
+				if((addrdst || readdst || writedst) && (w >> 6 & 7) == (w & 7) && (uchar)((w >> 3 & 7) - 2) <= 3){
 					op1(0, ALUMOV, SRCD, srcreg, 0);
 					srcreg = SRCD;
 				}
 				break;
 			case 1:
-				load(byte, SRCD, asrcreg, 0, ldfl);
-				srcreg = SRCD;
+				load(byte, srcreg, asrcreg, 0, ldfl);
 				break;
 			case 2:
-				load(byte, SRCD, asrcreg, 0, ldfl);
+				load(byte, srcreg, asrcreg, 0, ldfl);
 				op2(0, ALUADD, asrcreg, asrcreg, IMM, byte && asrcreg != 6 ? 1 : 2, 0);
-				srcreg = SRCD;
 				break;
 			case 3:
 				load(0, SRCD, asrcreg, 0, 0);
 				op2(0, ALUADD, asrcreg, asrcreg, IMM, 2, 0);
-				load(byte, SRCD, SRCD, 0, ldfl);
-				srcreg = SRCD;
+				load(byte, srcreg, SRCD, 0, ldfl);
 				break;
 			case 4:
-				load(byte, SRCD, asrcreg, byte && asrcreg != 6 ? -1 : -2, ldfl);
+				load(byte, srcreg, asrcreg, byte && asrcreg != 6 ? -1 : -2, ldfl);
 				op2(0, ALUADD, asrcreg, asrcreg, IMM, byte && asrcreg != 6 ? -1 : -2, 0);
-				srcreg = SRCD;
 				break;
 			case 5:
 				load(0, SRCD, asrcreg, -2, 0);
 				op2(0, ALUADD, asrcreg, asrcreg, IMM, -2, 0);
-				load(byte, SRCD, SRCD, 0, ldfl);
-				srcreg = 8;
+				load(byte, srcreg, SRCD, 0, ldfl);
 				break;
 			case 6:
-				dimm = fetch();
-				load(byte, SRCD, asrcreg, dimm, ldfl);
-				srcreg = SRCD;
+				load(byte, srcreg, asrcreg, fetch(), ldfl);
 				break;
 			case 7:
-				dimm = fetch();
-				load(0, SRCD, asrcreg, dimm, 0);
-				load(byte, SRCD, SRCD, 0, ldfl);
-				srcreg = SRCD;
+				load(0, SRCD, asrcreg, fetch(), 0);
+				load(byte, srcreg, SRCD, 0, ldfl);
 				break;
 			}
 
-	if(addrdst)
+	if(addrdst || readdst || writedst)
 		if(adstreg == 7)
-			abort();
+			switch(w >> 3 & 7){
+			case 0:
+				dstreg = DSTD;
+				if(readdst)
+					op2(byte, ALUMOV, dstreg, IMM, IMM, getpc(), ldfl);
+				break;
+			case 1:
+				dimm = getpc();
+				adstreg = IMM;
+				dstreg = DSTD;
+				if(readdst)
+					load(byte, DSTD, IMM, dimm, ldfl);
+				break;
+			case 2:
+				dimm = getpc();
+				adstreg = IMM;
+				dstreg = DSTD;
+				if(readdst)
+					op2(byte, ALUMOV, dstreg, IMM, IMM, fetch(), ldfl);
+				else{
+					dimm = getpc();
+					fetch();
+				}
+				break;
+			case 3:
+				dimm = fetch();
+				adstreg = IMM;
+				dstreg = DSTD;
+				if(readdst)
+					load(byte, DSTD, IMM, dimm, ldfl);
+				break;
+			case 4:
+			case 5:
+				invalid();
+				break;
+			case 6:
+				dimm = fetch() + getpc();
+				adstreg = IMM;
+				dstreg = DSTD;
+				if(readdst)
+					load(byte, dstreg, IMM, dimm, ldfl);
+				break;
+			case 7:
+				adstreg = DSTA;
+				dstreg = DSTD;
+				load(0, adstreg, IMM, fetch() + getpc(), 0);
+				if(readdst)
+					load(byte, dstreg, adstreg, 0, ldfl);
+			}
 		else
 			switch(w >> 3 & 7){
 			case 1:
 				if(readdst)
-					load(byte, DSTD, adstreg, 0, 0);
+					load(byte, DSTD, adstreg, 0, ldfl);
+				
 				dstreg = DSTD;
 				break;
 			case 2:
 				if(readdst)
-					load(byte, DSTD, adstreg, 0, 0);
+					load(byte, DSTD, adstreg, 0, ldfl);
+				if(addrdst){
+					op1(0, ALUMOV, DSTA, adstreg, 0);
+					adstreg = DSTA;
+				}
 				dstreg = DSTD;
-				op2(0, ALUADD, adstreg, adstreg, IMM, byte && adstreg != 6 ? 1 : 2, 0);
+				op2(0, ALUADD, w & 7, w & 7, IMM, byte && (w & 7) != 6 ? 1 : 2, 0);
 				break;
 			case 3:
 				load(0, DSTA, adstreg, 0, 0);
 				op2(0, ALUADD, adstreg, adstreg, IMM, 2, 0);
 				adstreg = DSTA;
 				if(readdst)
-					load(byte, DSTD, DSTA, 0, 0);
+					load(byte, DSTD, DSTA, 0, ldfl);
 				dstreg = DSTD;
 				break;
 			case 4:
 				if(readdst)
-					load(byte, DSTD, adstreg, byte && adstreg != 6 ? -1 : -2, 0);
+					load(byte, DSTD, adstreg, byte && adstreg != 6 ? -1 : -2, ldfl);
 				dstreg = DSTD;
 				op2(0, ALUADD, adstreg, adstreg, IMM, byte && adstreg != 6 ? -1 : -2, 0);
 				break;
@@ -312,21 +422,24 @@ decode(void)
 				op2(0, ALUADD, adstreg, adstreg, IMM, -2, 0);
 				adstreg = DSTA;
 				if(readdst)
-					load(byte, DSTD, DSTA, 0, 0);
+					load(byte, DSTD, DSTA, 0, ldfl);
 				dstreg = DSTD;
 				break;
 			case 6:
 				dimm = fetch();
 				if(readdst)
-					load(byte, DSTD, adstreg, dimm, 0);
+					load(byte, DSTD, adstreg, dimm, ldfl);
+				if(addrdst){
+					op2(0, ALUADD, DSTA, adstreg, IMM, dimm, 0);
+					adstreg = DSTA;
+				}
 				dstreg = DSTD;
 				break;
 			case 7:
-				dimm = fetch();
-				load(0, DSTA, adstreg, dimm, 0);
+				load(0, DSTA, adstreg, fetch(), 0);
 				adstreg = DSTA;
 				if(readdst)
-					load(byte, DSTD, DSTA, 0, 0);
+					load(byte, DSTD, DSTA, 0, ldfl);
 				dstreg = DSTD;
 				break;
 			}
@@ -334,40 +447,137 @@ decode(void)
 	switch(w >> 12){
 	case 0: case 8:
 		switch(w >> 6 & 077){
+		default:
+			if(w >= 0400 && (w & 0074000) == 0)
+				branch(w >> 8 & 7 | w >> 12 & 8, IMM, getpc() + 2 * (char)w);
+			else
+				invalid();
+			break;
+		case 040: case 041: case 042: case 043:
+		case 044: case 045: case 046: case 047:
+			if(adstreg == asrcreg || adstreg == 6){
+				op1(0, ALUMOV, DSTA, adstreg, 0);
+				adstreg = DSTA;
+			}
+			store(0, 6, -2, asrcreg);
+			op2(0, ALUADD, 6, 6, IMM, -2, 0);
+			op2(0, ALUMOV, asrcreg, IMM, IMM, getpc(), 0);
+		case 001:
+			if((w & 070) == 0)
+				invalid();
+			else
+				branch(CONDAL, adstreg, dimm);
+			break;
+		case 002:
+			switch(w >> 3 & 7){
+			case 0:
+				if((w & 7) == 7){
+					load(0, DSTD, 6, 0, 0);
+					op2(0, ALUADD, 6, 6, IMM, 2, 0);
+					branch(CONDAL, DSTD, 0);
+				}else{
+					op1(0, ALUMOV, DSTA, adstreg, 0);
+					load(0, adstreg, 6, 0, 0);
+					if((w & 7) != 6)
+						op2(0, ALUADD, 6, 6, IMM, 2, 0);
+					branch(CONDAL, DSTA, 0);
+				}
+				break;
+			case 1:
+			case 2:
+			case 3:
+				invalid();
+				break;
+			default:
+				op2(0, ALUCCOP, DSTD, IMM, IMM, w >> 4 & 1, w & 15);
+				break;
+			}
+			break;
+		case 003: op1(0, ALUSWAB, dstreg, dstreg, 15); break;
+		case 050:
+			if((w & 0100070) == 0100000)
+				op2(byte, ALUBIC, dstreg, IMM, dstreg, 0xff00, 15);
+			else{
+				op2(byte, ALUMOV, dstreg, IMM, IMM, 0, 15);
+				dstreg = IMM;
+			}
+			break;
 		case 051: op1(byte, ALUCOM, dstreg, dstreg, 15); break;
 		case 052: op2(byte, ALUADD, dstreg, dstreg, IMM, 1, 14); break;
 		case 053: op2(byte, ALUSUB, dstreg, dstreg, IMM, 1, 14); break;
 		case 054: op1(byte, ALUNEG, dstreg, dstreg, 15); break;
 		case 055: op1(byte, ALUADC, dstreg, dstreg, 15); break;
 		case 056: op1(byte, ALUSBC, dstreg, dstreg, 15); break;
-		case 057: op1(byte, ALUTST, DSTD, dstreg, 15); break;
+		case 057:
+			if((w & 070) == 0)
+				op2(byte, ALUMOV, DSTD, dstreg, IMM, imm, 15);
+			break;
 		case 060: op1(byte, ALUROR, dstreg, dstreg, 15); break;
 		case 061: op1(byte, ALUROL, dstreg, dstreg, 15); break;
 		case 062: op1(byte, ALUASR, dstreg, dstreg, 15); break;
 		case 063: op1(byte, ALUASL, dstreg, dstreg, 15); break;
+		case 067: op1(byte, ALUSXT, dstreg, IMM, 6); break;
 		}
 		break;
-	case 1: case 9: op2(byte, ALUMOV, dstreg, srcreg, IMM, imm, 14); break;
+	case 1: case 9:
+		if(dstreg != srcreg || (w & 07070) == 0)
+			if(dstreg == DSTD && srcreg != IMM && (w & 0177077) != 0110007){
+				dstreg = srcreg;
+				if((w & 07000) == 0)
+					op2(byte, ALUMOV, DSTD, srcreg, IMM, imm, 14);
+			}else
+				op2(byte, ALUMOV, dstreg, srcreg, IMM, imm, 14);
+		break;
 	case 2: case 10: op2(byte, ALUCMP, DSTD, srcreg, dstreg, imm, 15); break;
 	case 3: case 11: op2(byte, ALUBIT, DSTD, srcreg, dstreg, imm, 14); break;
 	case 4: case 12: op2(byte, ALUBIC, dstreg, srcreg, dstreg, imm, 14); break;
 	case 5: case 13: op2(byte, ALUBIS, dstreg, srcreg, dstreg, imm, 14); break;
 	case 6: op2(0, ALUADD, dstreg, srcreg, dstreg, imm, 15); break;
 	case 14: op2(0, ALUSUB, dstreg, srcreg, dstreg, imm, 15); break;
+	case 7:
+		switch(w >> 9 & 7){
+		case 0:
+			op2(0, ALUMUL1, asrcreg, srcreg, dstreg, imm, 15);
+			op2(0, ALUMUL2, asrcreg|1, IMM, IMM, 0, 0);
+			break;
+		case 1:
+			op2(0, ALUDIV1, IMM, asrcreg|1, asrcreg, 0, 0);
+			op2(0, ALUDIV2, asrcreg, dstreg, IMM, imm, 15);
+			op2(0, ALUDIV3, asrcreg|1, IMM, IMM, 0, 0);
+			break;
+		case 2:
+			op2(0, ALUASH, asrcreg, srcreg, dstreg, imm, 15);
+			break;
+		case 3:
+			op2(0, ALUASHC1, asrcreg|1, asrcreg|1, dstreg, imm, 0);
+			op2(0, ALUASHC2, asrcreg, srcreg, IMM, imm, 15);
+			op2(0, ALUASHC3, asrcreg|1, IMM, IMM, imm, 0);
+			break;
+		case 4:
+			op2(0, ALUXOR, dstreg, srcreg, dstreg, imm, 15);
+			break;
+		default:
+			invalid();
+		}
+		break;
 	default:
 		invalid();
 	}
 	
 	if(writedst)
 		switch(w >> 3 & 7){
-		case 1: case 3: case 4: case 5: case 7:
-			store(byte, adstreg, 0, dstreg);
+		case 0:
+			if((w & 7) == 7)
+				branch(CONDAL, dstreg, dimm);
+			break;
+		default:
+		norm:
+			store(byte, adstreg, dimm, dstreg);
 			break;
 		case 2:
+			if((w & 7) == 7)
+				goto norm;
 			store(byte, adstreg, byte && adstreg != 6 ? -1 : -2, dstreg);
-			break;
-		case 6:
-			store(byte, adstreg, dimm, dstreg);
 			break;
 		}
 }

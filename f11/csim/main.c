@@ -23,7 +23,36 @@ char *opname[] = {
 	"BIT",
 	"BIC",
 	"BIS",
-	"ADDN",
+	"MUL1",
+	"MUL2",
+	"ASH",
+	"ASHC1",
+	"ASHC2",
+	"ASHC3",
+	"DIV1",
+	"DIV2",
+	"DIV3",
+	"XOR",
+	"CCOP",
+};
+
+char *condname[] = {
+	"??? (0)",
+	"R",
+	"NE",
+	"EQ",
+	"GE",
+	"LT",
+	"GT",
+	"LE",
+	"PL",
+	"HI",
+	"LOS",
+	"MI",
+	"VC",
+	"VS",
+	"CC",
+	"CS"
 };
 
 static int
@@ -78,6 +107,13 @@ Ufmt(Fmt *f)
 		return rc;
 	case OPTINVAL:
 		return fmtprint(f, "ABORT");
+	case OPTBRANCH:
+		rc = fmtprint(f, "B%s ", condname[u->alu]);
+		if(u->r[0] == IMM)
+			rc += fmtprint(f, "$%d", (short)u->v);
+		else
+			rc += fmtprint(f, "R%d", u->r[0]);
+		return rc;
 	default:
 		return fmtprint(f, "??? (%d)", u->type);
 	}

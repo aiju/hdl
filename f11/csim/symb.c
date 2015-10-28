@@ -14,6 +14,8 @@ enum {
 	ESTORE,
 	EUNOP,
 	EBINOP,
+	EBRANCH,
+	ESX,
 };
 
 struct Expr {
@@ -25,8 +27,17 @@ struct Expr {
 #pragma varargck type "E" Expr *
 
 static Expr *regs[NREGS], *stores[NSTORES], *cregs[NREGS], *cstores[NSTORES];
-int nstores, cnstores;
+int nstores, cnstores, invalid, cinvalid;
 static Expr *flags[4], *cflags[4];
+static Expr *temp;
+
+static Expr *
+dropsx(Expr *e)
+{
+	if(e->t == ESX)
+		return e->a;
+	return e;
+}
 
 static Expr *
 expr(int t, ...)
@@ -44,15 +55,28 @@ expr(int t, ...)
 		break;
 	case EUNOP:
 		e->n = va_arg(va, int);
+		e->a = va_arg(va, Expr *);
+		e->byte = va_arg(va, int);
+		if(e->byte)
+			e->a = dropsx(e->a);
+		break;
 	case ELOAD:
 		e->a = va_arg(va, Expr *);
 		e->byte = va_arg(va, int);
+		break;
+	case EBRANCH:
+		e->a = va_arg(va, Expr *);
+		e->n = va_arg(va, int);
 		break;
 	case EBINOP:
 		e->n = va_arg(va, int);
 		e->a = va_arg(va, Expr *);
 		e->b = va_arg(va, Expr *);
 		e->byte = va_arg(va, int);
+		if(e->byte){
+			e->a = dropsx(e->a);
+			e->b = dropsx(e->b);
+		}
 		if(e->n == ALUADD && e->b->t == ECONST && e->a->t == EBINOP && e->a->n == ALUADD && e->a->b->t == ECONST && e->byte == 0 && e->a->byte == 0){
 			if((short)(e->a->b->n + e->b->n) == 0)
 				e = e->a->a;
@@ -67,6 +91,9 @@ expr(int t, ...)
 		e->b = va_arg(va, Expr *);
 		e->byte = va_arg(va, int);
 		break;
+	case ESX:
+		e->a = dropsx(va_arg(va, Expr *));
+		break;
 	default:
 		sysfatal("expr: unknown type %d", t);
 	}
@@ -77,6 +104,7 @@ expr(int t, ...)
 static Expr *
 setfl(Expr **fl, uchar c, Expr *v)
 {
+	v = dropsx(v);
 	if((c & 8) != 0) fl[0] = v;
 	if((c & 4) != 0) fl[1] = v;
 	if((c & 2) != 0) fl[2] = v;
@@ -87,15 +115,24 @@ setfl(Expr **fl, uchar c, Expr *v)
 static void
 runop(UOp *u)
 {
-	Expr *e;
+	Expr *e, *f;
 	#define regimm(n) (u->r[n] == IMM ? expr(ECONST, u->v) : regs[u->r[n]])
 
 	switch(u->type){
+	case OPTINVAL:
+		invalid = 1;
+		break;
 	case OPTLOAD:
-		e = regs[u->r[0]];
-		if(u->v != 0)
-			e = expr(EBINOP, ALUADD, e, expr(ECONST, u->v), 0);
-		setfl(flags, u->fl, regs[u->d] = expr(ELOAD, e, u->byte));
+		if(u->r[0] == IMM)
+			e = expr(ECONST, u->v);
+		else{
+			e = regs[u->r[0]];
+			if(u->v != 0)
+				e = expr(EBINOP, ALUADD, e, expr(ECONST, u->v), 0);
+		}
+		e = expr(ELOAD, e, u->byte);
+		regs[u->d] = u->byte ? expr(ESX, e) : e;
+		setfl(flags, u->fl, e);
 		break;
 	case OPTALU:
 		switch(u->alu){
@@ -104,22 +141,24 @@ runop(UOp *u)
 		case ALUNEG:
 		case ALUASR:
 		case ALUASL:
-			setfl(flags, u->fl, regs[u->d] = expr(EBINOP, u->alu, regimm(0), flags, u->byte));
+			setfl(flags, u->fl, regs[u->d] = expr(EUNOP, u->alu, regimm(0), u->byte));
 			break;
 		case ALUADC:
 		case ALUSBC:
 		case ALUROR:
 		case ALUROL:
-			setfl(flags, u->fl, regs[u->d] = expr(EBINOP, u->alu, regimm(0), flags, u->byte));
+			setfl(flags, u->fl, regs[u->d] = expr(EBINOP, u->alu, regimm(0), flags[3], u->byte));
 			break;
 		case ALUSXT:
-			regs[u->d] = expr(EUNOP, u->alu, flags, u->byte);
+			setfl(flags, u->fl, regs[u->d] = expr(EUNOP, u->alu, flags[0], u->byte));
 			break;
 		case ALUTST:
 			setfl(flags, u->fl, expr(EUNOP, u->alu, regimm(0), u->byte));
 			break;
 		case ALUMOV:
-			setfl(flags, u->fl, regs[u->d] = regimm(0));
+			e = regimm(0);
+			regs[u->d] = u->byte ? expr(ESX, e) : e;
+			setfl(flags, u->fl, e);
 			break;
 		case ALUCMP:
 		case ALUBIT:
@@ -131,18 +170,73 @@ runop(UOp *u)
 		case ALUBIS:
 			setfl(flags, u->fl, regs[u->d] = expr(EBINOP, u->alu, regimm(0), regimm(1), u->byte));
 			break;
+		case ALUMUL1:
+			temp = expr(EBINOP, ALUMUL2, regimm(0), regimm(1), 0);
+			setfl(flags, u->fl, regs[u->d] = expr(EBINOP, ALUMUL1, regimm(0), regimm(1), 0));
+			break;
+		case ALUMUL2:
+			regs[u->d] = temp;
+			break;
+		case ALUDIV1:
+			temp = regs[u->d] = expr(EBINOP, ALUDIV1, regimm(0), regimm(1), u->byte);
+			break;
+		case ALUDIV2:
+			temp = regs[u->d] = expr(EBINOP, ALUDIV2, temp, regimm(0), u->byte);
+			setfl(flags, u->fl, temp);
+			break;
+		case ALUDIV3:
+			regs[u->d] = expr(EUNOP, ALUDIV3, temp, u->byte);
+			break;
+		case ALUASH:
+			setfl(flags, u->fl, regs[u->d] = expr(EBINOP, ALUASH, regimm(0), regimm(1), u->byte));
+			break;
+		case ALUASHC1:
+			temp = expr(EBINOP, ALUASHC1, regimm(0), regimm(1), u->byte);
+			break;
+		case ALUASHC2:
+			temp = regs[u->d] = expr(EBINOP, ALUASHC2, regimm(0), temp, u->byte);
+			setfl(flags, u->fl, temp);
+			break;
+		case ALUASHC3:
+			regs[u->d] = expr(EUNOP, ALUASHC3, temp, u->byte);
+			break;
+		case ALUXOR:
+			setfl(flags, u->fl, regs[u->d] = expr(EBINOP, ALUXOR, regimm(0), regimm(1), u->byte));
+			break;
+		case ALUCCOP:
+			setfl(flags, u->fl, expr(ECONST, u->v));
+			break;
 		default:
-			sysfatal("runop: unknown alu %d", u->alu);
+			print("runop: unknown alu %d\n", u->alu);
 		}
 		break;
 	case OPTSTORE:
 		if(nstores == NSTORES)
 			print("out of stores\n");
 		else{
-			e = regs[u->r[0]];
-			if(u->v != 0)
-				e = expr(EBINOP, ALUADD, e, expr(ECONST, u->v), 0);
-			stores[nstores++] = expr(ESTORE, e, regs[u->r[1]], u->byte);
+			if(u->r[0] == IMM)
+				e = expr(ECONST, u->v);
+			else{
+				e = regs[u->r[0]];
+				if(u->v != 0)
+					e = expr(EBINOP, ALUADD, e, expr(ECONST, u->v), 0);
+			}
+			if(u->r[1] == IMM)
+				f = expr(ECONST, 0);
+			else
+				f = dropsx(regs[u->r[1]]);
+			stores[nstores++] = expr(ESTORE, e, f, u->byte);
+		}
+		break;
+	case OPTBRANCH:
+		if(nstores == NSTORES)
+			print("out of stores\n");
+		else{
+			if(u->r[0] == IMM)
+				e = expr(ECONST, u->v);
+			else
+				e = regs[u->r[0]];
+			stores[nstores++] = expr(EBRANCH, e, u->alu);
 		}
 		break;
 	default:
@@ -165,6 +259,8 @@ Efmt(Fmt *f)
 	case ESTORE: return fmtprint(f, e->byte ? "STOREB(%E,%E)" : "STORE(%E,%E)", e->a, e->b);
 	case EUNOP: return fmtprint(f, e->byte ? "%sB(%E)" : "%s(%E)", opname[e->n], e->a);
 	case EBINOP: return fmtprint(f, e->byte ? "%sB(%E, %E)" : "%s(%E, %E)", opname[e->n], e->a, e->b);
+	case EBRANCH: return fmtprint(f, "B%s(%E)", condname[e->n], e->a);
+	case ESX: return fmtprint(f, "SX(%E)", e->a);
 	default: return fmtprint(f, "??? (%d)", e->t);
 	}
 }
@@ -185,7 +281,21 @@ amode(int a, int byte)
 	n = a & 7;
 	r = nil;
 	if(n == 7)
-		sysfatal("unimplemented addressing mode %#o", a & 077);
+		switch(a >> 3 & 6){
+		case 0:
+			r = expr(ECONST, getpc());
+			break;
+		case 2:
+			r = expr(ECONST, fetch());
+			break;
+		case 4:
+			cinvalid = 1;
+			r = expr(ECONST, 0);
+			break;
+		case 6:
+			r = expr(ELOAD, expr(ECONST, fetch() + getpc()), byte && (a & 1<<3) == 0);
+			break;
+		}
 	else
 		switch(a >> 3 & 6){
 		case 0:
@@ -193,10 +303,10 @@ amode(int a, int byte)
 			break;
 		case 2:
 			r = expr(ELOAD, cregs[n], byte && (a & 1<<3) == 0);
-			cregs[n] = expr(EBINOP, ALUADD, cregs[n], expr(ECONST, byte && n < 6 ? 1 : 2), 0);
+			cregs[n] = expr(EBINOP, ALUADD, cregs[n], expr(ECONST, byte && n < 6 && (a & 1<<3) == 0 ? 1 : 2), 0);
 			break;
 		case 4:
-			cregs[n] = expr(EBINOP, ALUADD, cregs[n], expr(ECONST, byte && n < 6 ? -1 : -2), 0);
+			cregs[n] = expr(EBINOP, ALUADD, cregs[n], expr(ECONST, byte && n < 6 && (a & 1<<3) == 0 ? -1 : -2), 0);
 			r = expr(ELOAD, cregs[n], byte && (a & 1<<3) == 0);
 			break;
 		case 6:
@@ -215,8 +325,20 @@ amode(int a, int byte)
 static void
 store(Expr *a, ushort instr, Expr *v, int byte)
 {
-	if((instr & 070) == 0)
+	if((instr & 077) == 007){
+		if(cnstores == NSTORES)
+			print("out of stores\n");
+		else
+			cstores[cnstores++] = expr(EBRANCH, v, CONDAL);	
+	}else if((instr & 070) == 0)
 		cregs[instr & 7] = v;
+	else if((instr & 077) == 027){
+		if(cnstores == NSTORES)
+			print("out of stores\n");
+		else
+			cstores[cnstores++] = expr(ESTORE, expr(ECONST, getpc() - 2), v, byte);
+	}else if((instr & 067) == 047)
+		return;
 	else if(a->t != ELOAD)
 		sysfatal("store: invalid addr %E", a);
 	else if(cnstores == NSTORES)
@@ -225,20 +347,186 @@ store(Expr *a, ushort instr, Expr *v, int byte)
 		cstores[cnstores++] = expr(ESTORE, a->a, v, byte);
 }
 
+static void
+setpc(Expr *e)
+{
+	if(cnstores == NSTORES)
+		print("out of stores\n");
+	else
+		cstores[cnstores++] = expr(EBRANCH, e, CONDAL);
+}
+
+static void
+jump(Expr *e, ushort ins)
+{
+	if(e->t == ELOAD)
+		e = e->a;
+	else if((ins & 077) == 027)
+		e = expr(ECONST, getpc() - 2);
+	else{
+		cinvalid = 1;
+		return;
+	}
+	setpc(e);
+}
+
+static void
+condbr(int c, int i)
+{
+	if(cnstores == NSTORES)
+		print("out of stores\n");
+	else
+		cstores[cnstores++] = expr(EBRANCH, expr(ECONST, getpc() + 2 * (char)i), c);
+}
+
 void
 symbinst(void)
 {
 	ushort ins;
 	int byte;
-	Expr *src, *dst;
+	Expr *src, *dst, *e;
+	int i;
 	
 	ins = fetch();
 	switch(ins >> 12){
+	case 0: case 8:
+		switch(ins >> 9 & 0100 | ins >> 6 & 077){
+		case 0001:
+			dst = amode(ins, 0);
+			jump(dst, ins);
+			break;
+		case 0002:
+			switch(ins >> 3 & 7){
+			case 0:
+				src = cregs[ins & 7];
+				e = amode(026, 0);
+				if((ins & 7) == 7)
+					setpc(e);
+				else{
+					cregs[ins & 7] = e;
+					setpc(src);
+				}
+				break;
+			case 1:
+			case 2:
+				cinvalid = 1;
+				break;
+			case 3:
+				goto unknown;
+			default:
+				e = expr(ECONST, (ins & 16) != 0);
+				for(i = 0; i < 4; i++)
+					if((ins & 8>>i) != 0)
+						cflags[i] = e;
+				break;
+			}
+			break;
+		case 0004: case 0005: case 0006: case 0007: condbr(CONDAL, ins); break;
+		case 0010: case 0011: case 0012: case 0013: condbr(CONDNE, ins); break;
+		case 0014: case 0015: case 0016: case 0017: condbr(CONDEQ, ins); break;
+		case 0020: case 0021: case 0022: case 0023: condbr(CONDGE, ins); break;
+		case 0024: case 0025: case 0026: case 0027: condbr(CONDLT, ins); break;
+		case 0030: case 0031: case 0032: case 0033: condbr(CONDGT, ins); break;
+		case 0034: case 0035: case 0036: case 0037: condbr(CONDLE, ins); break;
+		case 0100: case 0101: case 0102: case 0103: condbr(CONDPL, ins); break;
+		case 0104: case 0105: case 0106: case 0107: condbr(CONDMI, ins); break;
+		case 0110: case 0111: case 0112: case 0113: condbr(CONDHI, ins); break;
+		case 0114: case 0115: case 0116: case 0117: condbr(CONDLOS, ins); break;
+		case 0120: case 0121: case 0122: case 0123: condbr(CONDVC, ins); break;
+		case 0124: case 0125: case 0126: case 0127: condbr(CONDVS, ins); break;
+		case 0130: case 0131: case 0132: case 0133: condbr(CONDCC, ins); break;
+		case 0134: case 0135: case 0136: case 0137: condbr(CONDCS, ins); break;
+		case 0040: case 0041: case 0042: case 0043:
+		case 0044: case 0045: case 0046: case 0047:
+			dst = amode(ins, 0);
+			src = cregs[ins >> 6 & 7];
+			cregs[6] = expr(EBINOP, ALUADD, cregs[6], expr(ECONST, -2), 0);
+			store(expr(ELOAD, cregs[6]), 046, src, 0);
+			cregs[ins >> 6 & 7] = expr(ECONST, getpc());
+			jump(dst, ins);
+			break;
+		case 003:
+			dst = amode(ins, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUSWAB, dst, 0)), 0);
+			break;
+		case 050: case 0150:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			if((ins & 0100070) == 0100000)
+				store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUBIC, expr(ECONST, -256), dst, 1)), 1);
+			else{
+				store(dst, ins, expr(ECONST, 0), byte);
+				setfl(cflags, 15, expr(ECONST, 0));
+			}
+			break;
+		case 051: case 0151:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUCOM, dst, byte)), byte);
+			break;
+		case 052: case 0152:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUADD, dst, expr(ECONST, 1), byte)), byte);
+			break;
+		case 053: case 0153:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUSUB, dst, expr(ECONST, 1), byte)), byte);
+			break;
+		case 054: case 0154:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUNEG, dst, byte)), byte);
+			break;
+		case 055: case 0155:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUADC, dst, cflags[3], byte)), byte);
+			break;
+		case 056: case 0156:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUSBC, dst, cflags[3], byte)), byte);
+			break;
+		case 057: case 0157:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			setfl(cflags, 15, dst);
+			break;
+		case 060: case 0160:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUROR, dst, cflags[3], byte)), byte);
+			break;
+		case 061: case 0161:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUROL, dst, cflags[3], byte)), byte);
+			break;
+		case 062: case 0162:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUASR, dst, byte)), byte);
+			break;
+		case 063: case 0163:
+			byte = ins >> 15;
+			dst = amode(ins, byte);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUASL, dst, byte)), byte);
+			break;
+		case 067:
+			dst = amode(ins, 0);
+			store(dst, ins, setfl(cflags, 6, expr(EUNOP, ALUSXT, cflags[0], 0)), 0);
+			break;
+		default:
+			goto unknown;
+		}
+		break;
 	case 1: case 9:
 		byte = ins >> 15;
 		src = amode(ins >> 6, byte);
 		dst = amode(ins, byte);
-		store(dst, ins, src, byte);
+		store(dst, ins, byte && (ins & 070) == 0 ? expr(ESX, src) : src, byte);
 		setfl(cflags, 14, src);
 		break;
 	case 2: case 10:
@@ -270,8 +558,63 @@ symbinst(void)
 		dst = amode(ins, 0);
 		store(dst, ins, setfl(cflags, 15, expr(EBINOP, (ins & 1<<15) != 0 ? ALUSUB : ALUADD, src, dst, 0)), 0);
 		break;
+	case 7:
+		switch(ins >> 9 & 7){
+		case 0:
+			if((ins >> 6 & 7) >= 6){
+				cinvalid = 1;
+				break;
+			}
+			src = amode(ins >> 6 & 7, 0);
+			dst = amode(ins, 0);
+			cregs[ins >> 6 & 7] = setfl(cflags, 15, expr(EBINOP, ALUMUL1, src, dst, 0));
+			cregs[ins >> 6 & 7 | 1] = expr(EBINOP, ALUMUL2, src, dst, 0); 
+			break;
+		case 1:
+			if((ins >> 6 & 7) >= 6){
+				cinvalid = 1;
+				break;
+			}
+			dst = amode(ins, 0);
+			e = expr(EBINOP, ALUDIV1, cregs[ins>>6&7|1], cregs[ins>>6&7], 0);
+			cregs[ins >> 6 & 7] = e = expr(EBINOP, ALUDIV2, e, dst, 0);
+			setfl(cflags, 15, e);
+			cregs[ins >> 6 & 7 | 1] = expr(EUNOP, ALUDIV3, e, 0);
+			break;
+		case 2:
+			if((ins >> 6 & 7) == 7){
+				cinvalid = 1;
+				break;
+			}
+			src = amode(ins >> 6 & 7, 0);
+			dst = amode(ins, 0);
+			setfl(cflags, 15, cregs[ins >> 6 & 7] = expr(EBINOP, ALUASH, src, dst, 0));
+			break;
+		case 3:
+			if((ins >> 6 & 7) >= 6){
+				cinvalid = 1;
+				break;
+			}
+			src = amode(ins >> 6 & 7, 0);
+			dst = amode(ins, 0);
+			e = expr(EBINOP, ALUASHC1, cregs[ins >> 6 & 7 | 1], dst, 0);
+			cregs[ins >> 6 & 7] = e = expr(EBINOP, ALUASHC2, src, e, 0);
+			setfl(cflags, 15, e);
+			cregs[ins >> 6 & 7 | 1] = expr(EUNOP, ALUASHC3, e, 0);
+			break;
+		case 4:
+			src = amode(ins >> 6 & 7, 0);
+			dst = amode(ins, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUXOR, src, dst, 0)), 0);
+			break;
+		default:
+			goto unknown;
+		}
+		break;
 	default:
+	unknown:
 		print("unknown op %#o\n", ins);
+		cinvalid = 1;
 	}
 }
 
@@ -289,6 +632,10 @@ expreq(Expr *e, Expr *f)
 		return f->t == e->t && f->n == e->n && f->byte == e->byte && expreq(e->a, f->a);
 	case EBINOP:
 		return f->t == e->t && f->n == e->n && f->byte == e->byte && expreq(e->a, f->a) && expreq(e->b, f->b);
+	case EBRANCH:
+		return f->t == e->t && expreq(e->a, f->a) && e->n == f->n;
+	case ESX:
+		return f->t == e->t && expreq(e->a, f->a);
 	default:
 		sysfatal("expreq: unknown %E", e);
 		return 0;
@@ -300,6 +647,8 @@ reseq(void)
 {
 	int i;
 	
+	if(invalid && cinvalid)
+		return 1;
 	for(i = 0; i < 8; i++)
 		if(!expreq(regs[i], cregs[i]))
 			return 0;
@@ -346,12 +695,20 @@ symbfetch(void)
 	return instr[sympc++];
 }
 
+static ushort 
+symbgetpc(void)
+{
+	return 1336 + sympc * 2;
+}
+
 static void
-symbtest(ushort ins)
+symbtest(ushort ins, int pr)
 {
 	int i;
 	
 	instr[0] = ins;
+	instr[1] = 12345;
+	instr[2] = 6789;
 	sympc = 0;
 	decode();
 	sympc = 0;
@@ -366,13 +723,18 @@ symbtest(ushort ins)
 	}
 	nstores = 0;
 	cnstores = 0;
+	invalid = 0;
+	cinvalid = 0;
 	for(i = 0; i < nuops; i++)
 		runop(&uops[i]);
 	symbinst();
-	if(!reseq()){
+	if(reseq()){
+		if(!pr)
+			return;
+		print("%6o OK\n", ins);
+	}else
 		print("%6o FAIL\n", ins);
-		printres();
-	}
+	printres();
 }
 
 void
@@ -381,9 +743,22 @@ symbrun(void)
 	int i;
 
 	fetch = symbfetch;
+	getpc = symbgetpc;
 
-
-	for(i = 010000; i <= 067777; i++)
-		if((i & 7) != 7 && (i & 0700) != 0700)
-			symbtest(i);
+	for(i = 0100; i < 04777; i++)
+		symbtest(i, 0);
+	for(i = 05000; i <= 06777; i++)
+		if(i < 06400 || i > 06677){
+			symbtest(i, 0);
+			if(i < 06700)
+				symbtest(i^0x8000,0);
+		}
+	for(i = 010000; i <= 067777; i++){
+		symbtest(i, 0);
+		symbtest(i^0x8000, 0);
+	}
+	for(i = 070000; i <= 074777; i++)
+		symbtest(i, 0);
+	
+	symbtest(0207, 1);
 }
