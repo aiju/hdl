@@ -46,9 +46,9 @@ char *condname[] = {
 	"GT",
 	"LE",
 	"PL",
+	"MI",
 	"HI",
 	"LOS",
-	"MI",
 	"VC",
 	"VS",
 	"CC",
@@ -71,6 +71,7 @@ Ufmt(Fmt *f)
 	UOp *u;
 	int rc;
 	int i;
+	static char *sp[] = {"", "I", "PD", "PI", "PS"};
 
 	u = va_arg(f->args, UOp *);
 	rc = 0;
@@ -95,18 +96,22 @@ Ufmt(Fmt *f)
 		return rc;
 	case OPTLOAD:
 		rc += fmtprint(f, "LD ");
+		if(u->alu)
+			rc += fmtprint(f, "%s ", sp[u->alu]);
 		if(u->byte)
 			rc += fmtprint(f, "B ");
 		rc += fmtprint(f, "%d(R%d), R%d", (short)u->v, u->r[0], u->d);
 		return rc;
 	case OPTSTORE:
 		rc = fmtprint(f, "ST ");
+		if(u->alu)
+			rc += fmtprint(f, "%s ", sp[u->alu]);
 		if(u->byte)
 			rc += fmtprint(f, "B ");
 		rc += fmtprint(f, "R%d, %d(R%d)", u->r[1], (short)u->v, u->r[0]);
 		return rc;
-	case OPTINVAL:
-		return fmtprint(f, "ABORT");
+	case OPTTRAP:
+		return fmtprint(f, "TRAP %d", u->alu);
 	case OPTBRANCH:
 		rc = fmtprint(f, "B%s ", condname[u->alu]);
 		if(u->r[0] == IMM)

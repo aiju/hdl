@@ -21,6 +21,7 @@ enum {
 struct Expr {
 	int t;
 	int byte;
+	int sp;
 	Expr *a, *b;
 	int n;
 };
@@ -63,6 +64,7 @@ expr(int t, ...)
 	case ELOAD:
 		e->a = va_arg(va, Expr *);
 		e->byte = va_arg(va, int);
+		e->sp = va_arg(va, int);
 		break;
 	case EBRANCH:
 		e->a = va_arg(va, Expr *);
@@ -90,6 +92,7 @@ expr(int t, ...)
 		e->a = va_arg(va, Expr *);
 		e->b = va_arg(va, Expr *);
 		e->byte = va_arg(va, int);
+		e->sp = va_arg(va, int);
 		break;
 	case ESX:
 		e->a = dropsx(va_arg(va, Expr *));
@@ -119,8 +122,8 @@ runop(UOp *u)
 	#define regimm(n) (u->r[n] == IMM ? expr(ECONST, u->v) : regs[u->r[n]])
 
 	switch(u->type){
-	case OPTINVAL:
-		invalid = 1;
+	case OPTTRAP:
+		invalid = 1 + u->alu;
 		break;
 	case OPTLOAD:
 		if(u->r[0] == IMM)
@@ -130,7 +133,7 @@ runop(UOp *u)
 			if(u->v != 0)
 				e = expr(EBINOP, ALUADD, e, expr(ECONST, u->v), 0);
 		}
-		e = expr(ELOAD, e, u->byte);
+		e = expr(ELOAD, e, u->byte, u->alu);
 		regs[u->d] = u->byte ? expr(ESX, e) : e;
 		setfl(flags, u->fl, e);
 		break;
@@ -225,7 +228,7 @@ runop(UOp *u)
 				f = expr(ECONST, 0);
 			else
 				f = dropsx(regs[u->r[1]]);
-			stores[nstores++] = expr(ESTORE, e, f, u->byte);
+			stores[nstores++] = expr(ESTORE, e, f, u->byte, u->alu);
 		}
 		break;
 	case OPTBRANCH:
@@ -248,6 +251,8 @@ static int
 Efmt(Fmt *f)
 {
 	Expr *e;
+	static char *byte[] = {"", "B"};
+	static char *sp[] = {"", "I", "PD", "PI", "PS"};
 	
 	e = va_arg(f->args, Expr *);
 	if(e == nil)
@@ -255,8 +260,8 @@ Efmt(Fmt *f)
 	switch(e->t){
 	case EREG: return fmtprint(f, "R%d", e->n);
 	case ECONST: return fmtprint(f, "%d", e->n);
-	case ELOAD: return fmtprint(f, e->byte ? "B[%E]" : "[%E]", e->a);
-	case ESTORE: return fmtprint(f, e->byte ? "STOREB(%E,%E)" : "STORE(%E,%E)", e->a, e->b);
+	case ELOAD: return fmtprint(f, "%s%s[%E]", byte[e->byte], sp[e->sp], e->a);
+	case ESTORE: return fmtprint(f, "STORE%s%s(%E,%E)", byte[e->byte], sp[e->sp], e->a, e->b);
 	case EUNOP: return fmtprint(f, e->byte ? "%sB(%E)" : "%s(%E)", opname[e->n], e->a);
 	case EBINOP: return fmtprint(f, e->byte ? "%sB(%E, %E)" : "%s(%E, %E)", opname[e->n], e->a, e->b);
 	case EBRANCH: return fmtprint(f, "B%s(%E)", condname[e->n], e->a);
@@ -272,71 +277,101 @@ symbinit(void)
 }
 
 static Expr *
-amode(int a, int byte)
+amode(int a, int byte, int inst)
 {
 	Expr *r;
-	int n;
+	int n, m, id;
 	ushort w;
 	
 	n = a & 7;
 	r = nil;
+	m = a >> 3 & 7;
+	id = CURD;
+	if((m & 1) == 0)
+		if(inst == 1)
+			id = PREVI;
+		else if(inst == 2)
+			id = PREVD;
 	if(n == 7)
-		switch(a >> 3 & 6){
+		switch(m & 6){
 		case 0:
 			r = expr(ECONST, getpc());
+			if(m == 1 && inst == 0)
+				return expr(ELOAD, r, byte, CURI);
 			break;
 		case 2:
-			r = expr(ECONST, fetch());
+			if(inst != 0 && (m & 1) == 0){
+				r = expr(ELOAD, expr(ECONST, getpc()), 0, id);
+				fetch();
+			}else
+				r = expr(ECONST, fetch());
 			break;
 		case 4:
 			cinvalid = 1;
 			r = expr(ECONST, 0);
 			break;
 		case 6:
-			r = expr(ELOAD, expr(ECONST, fetch() + getpc()), byte && (a & 1<<3) == 0);
+			r = expr(ELOAD, expr(ECONST, fetch() + getpc()), byte && (a & 1<<3) == 0, id);
 			break;
 		}
 	else
-		switch(a >> 3 & 6){
+		switch(m & 6){
 		case 0:
 			r = cregs[n];
 			break;
 		case 2:
-			r = expr(ELOAD, cregs[n], byte && (a & 1<<3) == 0);
+			r = expr(ELOAD, cregs[n], byte && (a & 1<<3) == 0, id);
 			cregs[n] = expr(EBINOP, ALUADD, cregs[n], expr(ECONST, byte && n < 6 && (a & 1<<3) == 0 ? 1 : 2), 0);
 			break;
 		case 4:
 			cregs[n] = expr(EBINOP, ALUADD, cregs[n], expr(ECONST, byte && n < 6 && (a & 1<<3) == 0 ? -1 : -2), 0);
-			r = expr(ELOAD, cregs[n], byte && (a & 1<<3) == 0);
+			r = expr(ELOAD, cregs[n], byte && (a & 1<<3) == 0, id);
 			break;
 		case 6:
 			w = fetch();
 			r = cregs[n];
 			if(w != 0)
 				r = expr(EBINOP, ALUADD, r, expr(ECONST, (short)w), 0);
-			r = expr(ELOAD, r, byte && (a & 1<<3) == 0);
+			r = expr(ELOAD, r, byte && (a & 1<<3) == 0, id);
 			break;
 		}
-	if((a & 1<<3) != 0)
-		r = expr(ELOAD, r, byte);
+	if((a & 1<<3) != 0){
+		id = CURD;
+		if(inst == 1)
+			id = PREVI;
+		else if(inst == 2)
+			id = PREVD;
+		r = expr(ELOAD, r, byte, id);
+	}
 	return r;
 }
 
 static void
-store(Expr *a, ushort instr, Expr *v, int byte)
+store(Expr *a, ushort instr, Expr *v, int byte, int inst)
 {
-	if((instr & 077) == 007){
+	int id, m;
+
+	m = instr & 077;
+	id = CURD;
+	if(m == 017 || m == 027)
+		id = CURI;
+	if(inst == 1)
+		id = PREVI;
+	else if(inst == 2)
+		id = PREVD;
+
+	if(m == 007){
 		if(cnstores == NSTORES)
 			print("out of stores\n");
 		else
 			cstores[cnstores++] = expr(EBRANCH, v, CONDAL);	
 	}else if((instr & 070) == 0)
 		cregs[instr & 7] = v;
-	else if((instr & 077) == 027){
+	else if(m == 027){
 		if(cnstores == NSTORES)
 			print("out of stores\n");
 		else
-			cstores[cnstores++] = expr(ESTORE, expr(ECONST, getpc() - 2), v, byte);
+			cstores[cnstores++] = expr(ESTORE, expr(ECONST, getpc() - 2), v, byte, id);
 	}else if((instr & 067) == 047)
 		return;
 	else if(a->t != ELOAD)
@@ -344,7 +379,7 @@ store(Expr *a, ushort instr, Expr *v, int byte)
 	else if(cnstores == NSTORES)
 		print("out of stores\n");
 	else
-		cstores[cnstores++] = expr(ESTORE, a->a, v, byte);
+		cstores[cnstores++] = expr(ESTORE, a->a, v, byte, id);
 }
 
 static void
@@ -354,6 +389,15 @@ setpc(Expr *e)
 		print("out of stores\n");
 	else
 		cstores[cnstores++] = expr(EBRANCH, e, CONDAL);
+}
+
+static void
+setps(Expr *e, int byte)
+{
+	if(cnstores == NSTORES)
+		print("out of stores\n");
+	else
+		cstores[cnstores++] = expr(ESTORE, expr(ECONST, 0), e, byte, PS);
 }
 
 static void
@@ -391,15 +435,24 @@ symbinst(void)
 	switch(ins >> 12){
 	case 0: case 8:
 		switch(ins >> 9 & 0100 | ins >> 6 & 077){
+		case 0:
+			switch(ins){
+			case 3: cinvalid = TRAPBPT + 1; break;
+			case 4: cinvalid = TRAPIOT + 1; break;
+			default:
+				if(ins <= 6)
+					goto unknown;
+			}
+			break;
 		case 0001:
-			dst = amode(ins, 0);
+			dst = amode(ins, 0, 0);
 			jump(dst, ins);
 			break;
 		case 0002:
 			switch(ins >> 3 & 7){
 			case 0:
 				src = cregs[ins & 7];
-				e = amode(026, 0);
+				e = amode(026, 0, 0);
 				if((ins & 7) == 7)
 					setpc(e);
 				else{
@@ -438,125 +491,156 @@ symbinst(void)
 		case 0134: case 0135: case 0136: case 0137: condbr(CONDCS, ins); break;
 		case 0040: case 0041: case 0042: case 0043:
 		case 0044: case 0045: case 0046: case 0047:
-			dst = amode(ins, 0);
+			dst = amode(ins, 0, 0);
 			src = cregs[ins >> 6 & 7];
 			cregs[6] = expr(EBINOP, ALUADD, cregs[6], expr(ECONST, -2), 0);
-			store(expr(ELOAD, cregs[6]), 046, src, 0);
+			store(expr(ELOAD, cregs[6], 0, CURD), 046, src, 0, 0);
 			cregs[ins >> 6 & 7] = expr(ECONST, getpc());
 			jump(dst, ins);
 			break;
+		case 0140: case 0141: case 0142: case 0143: cinvalid = TRAPEMT + 1; break;
+		case 0144: case 0145: case 0146: case 0147: cinvalid = TRAPTRAP + 1; break;
 		case 003:
-			dst = amode(ins, 0);
-			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUSWAB, dst, 0)), 0);
+			dst = amode(ins, 0, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUSWAB, dst, 0)), 0, 0);
 			break;
 		case 050: case 0150:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
+			dst = amode(ins, byte, 0);
 			if((ins & 0100070) == 0100000)
-				store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUBIC, expr(ECONST, -256), dst, 1)), 1);
+				store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUBIC, expr(ECONST, -256), dst, 1)), 1, 0);
 			else{
-				store(dst, ins, expr(ECONST, 0), byte);
+				store(dst, ins, expr(ECONST, 0), byte, 0);
 				setfl(cflags, 15, expr(ECONST, 0));
 			}
 			break;
 		case 051: case 0151:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUCOM, dst, byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUCOM, dst, byte)), byte, 0);
 			break;
 		case 052: case 0152:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUADD, dst, expr(ECONST, 1), byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUADD, dst, expr(ECONST, 1), byte)), byte, 0);
 			break;
 		case 053: case 0153:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUSUB, dst, expr(ECONST, 1), byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUSUB, dst, expr(ECONST, 1), byte)), byte, 0);
 			break;
 		case 054: case 0154:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUNEG, dst, byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUNEG, dst, byte)), byte, 0);
 			break;
 		case 055: case 0155:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUADC, dst, cflags[3], byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUADC, dst, cflags[3], byte)), byte, 0);
 			break;
 		case 056: case 0156:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUSBC, dst, cflags[3], byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUSBC, dst, cflags[3], byte)), byte, 0);
 			break;
 		case 057: case 0157:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
+			dst = amode(ins, byte, 0);
 			setfl(cflags, 15, dst);
 			break;
 		case 060: case 0160:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUROR, dst, cflags[3], byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUROR, dst, cflags[3], byte)), byte, 0);
 			break;
 		case 061: case 0161:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUROL, dst, cflags[3], byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUROL, dst, cflags[3], byte)), byte, 0);
 			break;
 		case 062: case 0162:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUASR, dst, byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUASR, dst, byte)), byte, 0);
 			break;
 		case 063: case 0163:
 			byte = ins >> 15;
-			dst = amode(ins, byte);
-			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUASL, dst, byte)), byte);
+			dst = amode(ins, byte, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EUNOP, ALUASL, dst, byte)), byte, 0);
+			break;
+		case 064:
+			cregs[6] = expr(ECONST, getpc() + 2 * (ins & 077));
+			dst = cregs[5];
+			cregs[5] = expr(ELOAD, cregs[6], 0, CURD);
+			cregs[6] = expr(EBINOP, ALUADD, cregs[6], expr(ECONST, 2), 0);
+			setpc(dst);
+			break;
+		case 0164:
+			dst = amode(ins, 1, 0);
+			setps(dst, 1);
+			break;
+		case 065: case 0165:
+			dst = amode(ins, 0, 2 - (ins >> 15));
+			cregs[6] = expr(EBINOP, ALUADD, cregs[6], expr(ECONST, -2), 0);
+			store(expr(ELOAD, cregs[6], 0, CURD), 046, setfl(cflags, 14, dst), 0, 0);
+			break;
+		case 066: case 0166:
+			dst = expr(ELOAD, cregs[6], 0, 0);
+			cregs[6] = expr(EBINOP, ALUADD, cregs[6], expr(ECONST, 2), 0);
+			store(amode(ins, 0, 1 + (ins >> 15)), ins, setfl(cflags, 14, dst), 0, 1 + (ins >> 15));
 			break;
 		case 067:
-			dst = amode(ins, 0);
-			store(dst, ins, setfl(cflags, 6, expr(EUNOP, ALUSXT, cflags[0], 0)), 0);
+			dst = amode(ins, 0, 0);
+			store(dst, ins, setfl(cflags, 6, expr(EUNOP, ALUSXT, cflags[0], 0)), 0, 0);
+			break;
+		case 0167:
+			dst = amode(ins, 1, 0);
+			src = expr(ELOAD, expr(ECONST, 0), 1, PS);
+			store(dst, ins, (ins & 070) == 0 ? expr(ESX, src) : src, 1, 0);
+			setfl(cflags, 14, src);
 			break;
 		default:
+			if((ins & 07000) == 07000)
+				break;
 			goto unknown;
 		}
 		break;
 	case 1: case 9:
 		byte = ins >> 15;
-		src = amode(ins >> 6, byte);
-		dst = amode(ins, byte);
-		store(dst, ins, byte && (ins & 070) == 0 ? expr(ESX, src) : src, byte);
+		src = amode(ins >> 6, byte, 0);
+		dst = amode(ins, byte, 0);
+		store(dst, ins, byte && (ins & 070) == 0 ? expr(ESX, src) : src, byte, 0);
 		setfl(cflags, 14, src);
 		break;
 	case 2: case 10:
 		byte = ins >> 15;
-		src = amode(ins >> 6, byte);
-		dst = amode(ins, byte);
+		src = amode(ins >> 6, byte, 0);
+		dst = amode(ins, byte, 0);
 		setfl(cflags, 15, expr(EBINOP, ALUCMP, src, dst, byte));
 		break;
 	case 3: case 11:
 		byte = ins >> 15;
-		src = amode(ins >> 6, byte);
-		dst = amode(ins, byte);
+		src = amode(ins >> 6, byte, 0);
+		dst = amode(ins, byte, 0);
 		setfl(cflags, 14, expr(EBINOP, ALUBIT, src, dst, byte));
 		break;
 	case 4: case 12:
 		byte = ins >> 15;
-		src = amode(ins >> 6, byte);
-		dst = amode(ins, byte);
-		store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUBIC, src, dst, byte)), byte);
+		src = amode(ins >> 6, byte, 0);
+		dst = amode(ins, byte, 0);
+		store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUBIC, src, dst, byte)), byte, 0);
 		break;
 	case 5: case 13:
 		byte = ins >> 15;
-		src = amode(ins >> 6, byte);
-		dst = amode(ins, byte);
-		store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUBIS, src, dst, byte)), byte);
+		src = amode(ins >> 6, byte, 0);
+		dst = amode(ins, byte, 0);
+		store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUBIS, src, dst, byte)), byte, 0);
 		break;
 	case 6: case 14:
-		src = amode(ins >> 6, 0);
-		dst = amode(ins, 0);
-		store(dst, ins, setfl(cflags, 15, expr(EBINOP, (ins & 1<<15) != 0 ? ALUSUB : ALUADD, src, dst, 0)), 0);
+		src = amode(ins >> 6, 0, 0);
+		dst = amode(ins, 0, 0);
+		store(dst, ins, setfl(cflags, 15, expr(EBINOP, (ins & 1<<15) != 0 ? ALUSUB : ALUADD, src, dst, 0)), 0, 0);
 		break;
 	case 7:
 		switch(ins >> 9 & 7){
@@ -565,8 +649,8 @@ symbinst(void)
 				cinvalid = 1;
 				break;
 			}
-			src = amode(ins >> 6 & 7, 0);
-			dst = amode(ins, 0);
+			src = amode(ins >> 6 & 7, 0, 0);
+			dst = amode(ins, 0, 0);
 			cregs[ins >> 6 & 7] = setfl(cflags, 15, expr(EBINOP, ALUMUL1, src, dst, 0));
 			cregs[ins >> 6 & 7 | 1] = expr(EBINOP, ALUMUL2, src, dst, 0); 
 			break;
@@ -575,7 +659,7 @@ symbinst(void)
 				cinvalid = 1;
 				break;
 			}
-			dst = amode(ins, 0);
+			dst = amode(ins, 0, 0);
 			e = expr(EBINOP, ALUDIV1, cregs[ins>>6&7|1], cregs[ins>>6&7], 0);
 			cregs[ins >> 6 & 7] = e = expr(EBINOP, ALUDIV2, e, dst, 0);
 			setfl(cflags, 15, e);
@@ -586,8 +670,8 @@ symbinst(void)
 				cinvalid = 1;
 				break;
 			}
-			src = amode(ins >> 6 & 7, 0);
-			dst = amode(ins, 0);
+			src = amode(ins >> 6 & 7, 0, 0);
+			dst = amode(ins, 0, 0);
 			setfl(cflags, 15, cregs[ins >> 6 & 7] = expr(EBINOP, ALUASH, src, dst, 0));
 			break;
 		case 3:
@@ -595,17 +679,17 @@ symbinst(void)
 				cinvalid = 1;
 				break;
 			}
-			src = amode(ins >> 6 & 7, 0);
-			dst = amode(ins, 0);
+			src = amode(ins >> 6 & 7, 0, 0);
+			dst = amode(ins, 0, 0);
 			e = expr(EBINOP, ALUASHC1, cregs[ins >> 6 & 7 | 1], dst, 0);
 			cregs[ins >> 6 & 7] = e = expr(EBINOP, ALUASHC2, src, e, 0);
 			setfl(cflags, 15, e);
 			cregs[ins >> 6 & 7 | 1] = expr(EUNOP, ALUASHC3, e, 0);
 			break;
 		case 4:
-			src = amode(ins >> 6 & 7, 0);
-			dst = amode(ins, 0);
-			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUXOR, src, dst, 0)), 0);
+			src = amode(ins >> 6 & 7, 0, 0);
+			dst = amode(ins, 0, 0);
+			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUXOR, src, dst, 0)), 0, 0);
 			break;
 		default:
 			goto unknown;
@@ -625,9 +709,9 @@ expreq(Expr *e, Expr *f)
 	case EREG: case ECONST:
 		return f->t == e->t && f->n == e->n;
 	case ELOAD:
-		return f->t == e->t && expreq(e->a, f->a) && e->byte == f->byte;
+		return f->t == e->t && expreq(e->a, f->a) && e->byte == f->byte && e->sp == f->sp;
 	case ESTORE:
-		return f->t == e->t && expreq(e->a, f->a) && expreq(e->b, f->b) && e->byte == f->byte;
+		return f->t == e->t && expreq(e->a, f->a) && expreq(e->b, f->b) && e->byte == f->byte && e->sp == f->sp;
 	case EUNOP:
 		return f->t == e->t && f->n == e->n && f->byte == e->byte && expreq(e->a, f->a);
 	case EBINOP:
@@ -745,20 +829,14 @@ symbrun(void)
 	fetch = symbfetch;
 	getpc = symbgetpc;
 
-	for(i = 0100; i < 04777; i++)
-		symbtest(i, 0);
-	for(i = 05000; i <= 06777; i++)
-		if(i < 06400 || i > 06677){
-			symbtest(i, 0);
-			if(i < 06700)
-				symbtest(i^0x8000,0);
-		}
-	for(i = 010000; i <= 067777; i++){
+	for(i = 0; i <= 067777; i++){
 		symbtest(i, 0);
 		symbtest(i^0x8000, 0);
 	}
 	for(i = 070000; i <= 074777; i++)
 		symbtest(i, 0);
+	for(i = 077000; i <= 077777; i++)
+		symbtest(i, 0);
 	
-	symbtest(0207, 1);
+	symbtest(06434, 1);
 }

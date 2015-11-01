@@ -7,7 +7,7 @@ UOp uops[10];
 int nuops;
 
 static void
-load(uchar byte, uchar dst, uchar r0, ushort c, uchar fl)
+load(uchar byte, uchar dst, uchar r0, ushort c, uchar fl, uchar sp)
 {
 	UOp u;
 	
@@ -20,11 +20,12 @@ load(uchar byte, uchar dst, uchar r0, ushort c, uchar fl)
 	u.d = dst;
 	u.v = c;
 	u.fl = fl;
+	u.alu = sp;
 	memcpy(uops + nuops++, &u, sizeof(UOp));
 }
 
 static void
-store(uchar byte, uchar r0, ushort c, uchar r1)
+store(uchar byte, uchar r0, ushort c, uchar r1, uchar sp)
 {
 	UOp u;
 	
@@ -36,6 +37,7 @@ store(uchar byte, uchar r0, ushort c, uchar r1)
 	u.r[1] = r1;
 	u.d = IMM;
 	u.v = c;
+	u.alu = sp;
 	memcpy(uops + nuops++, &u, sizeof(UOp));
 }
 
@@ -91,14 +93,17 @@ branch(int n, uchar r0, ushort imm)
 }
 
 static void
-invalid(void)
-{
+trap(int t)
+{ 
 	UOp u;
 	
 	memset(&u, 0, sizeof(u));
-	u.type = OPTINVAL;
+	u.type = OPTTRAP;
+	u.alu = t;
 	memcpy(uops + nuops++, &u, sizeof(UOp));
 }
+
+#define invalid() trap(0)
 
 void
 decode(void)
@@ -106,6 +111,7 @@ decode(void)
 	uchar addrdst, readsrc, readdst, writedst, byte, ldfl;
 	uchar asrcreg, adstreg, srcreg, dstreg;
 	u16int w, imm, dimm;
+	int mmode, mmodei;
 
 	w = fetch();
 	addrdst = 0;
@@ -115,20 +121,26 @@ decode(void)
 	byte = 0;
 	ldfl = 0;
 	nuops = 0;
+	mmode = CURD;
+	mmodei = CURI;
 	
 	switch(w >> 12){
 	case 0: case 8:
 		switch(w >> 6 & 077){
-		case 001: /* JMP */
-			addrdst = 1;
+		case 001: 
+			if((w >> 15) == 0) /* JMP */
+				addrdst = 1;
 			break;
-		case 003: /* SWAB */
-			readdst = 1;
-			writedst = 1;
+		case 003:
+			if((w >> 15) == 0){ /* SWAB */
+				readdst = 1;
+				writedst = 1;
+			}
 			break;
 		case 040: case 041: case 042: case 043: /* JSR */
 		case 044: case 045: case 046: case 047:
-			addrdst = 1;
+			if((w >> 15) == 0)
+				addrdst = 1;
 			break;
 		case 050: /* CLR */
 			byte = w >> 15;
@@ -190,8 +202,29 @@ decode(void)
 			writedst = 1;
 			byte = w >> 15;
 			break;
-		case 067: /* SXT */
+		case 064:
+			byte = w >> 15;
+			if(byte) /* MTPS */
+				readdst = 1;
+			break;
+		case 065: /* MFPD / MFPI */
+			readdst = 1;
+			mmode = mmodei = (w & 1<<15) != 0 ? PREVI : PREVD;
+			ldfl = 14;
+			break;
+		case 066: /* MTPD / MTPI */
 			writedst = 1;
+			mmode = mmodei = (w & 1<<15) != 0 ? PREVD : PREVI;
+			load(0, (w & 077) < 7 ? w & 7 : DSTD, 6, 0, 14, CURD);
+			if((w & 077) != 6)
+				op2(0, ALUADD, 6, 6, IMM, 2, 0);
+			break;
+		case 067:
+			byte = w>>15;
+			if(byte) /* MFPS */
+				writedst = 1;
+			else /* SXT */
+				writedst = 1;
 			break;
 		}
 		break;
@@ -272,7 +305,7 @@ decode(void)
 				imm = getpc();
 				break;
 			case 1:
-				load(byte, srcreg, IMM, getpc(), ldfl);
+				load(byte, srcreg, IMM, getpc(), ldfl, CURI);
 				break;
 			case 2:
 				srcreg = IMM;
@@ -280,7 +313,7 @@ decode(void)
 				break;
 			case 3:
 				imm = fetch();
-				load(byte, srcreg, IMM, imm, ldfl);
+				load(byte, srcreg, IMM, imm, ldfl, CURD);
 				break;
 			case 4:
 			case 5:
@@ -288,12 +321,12 @@ decode(void)
 				break;
 			case 6:
 				imm = fetch() + getpc();
-				load(byte, srcreg, IMM, imm, ldfl);
+				load(byte, srcreg, IMM, imm, ldfl, CURD);
 				break;
 			case 7:
 				imm = fetch() + getpc();
-				load(0, srcreg, IMM, imm, 0);
-				load(byte, srcreg, srcreg, 0, ldfl);
+				load(0, srcreg, IMM, imm, 0, CURD);
+				load(byte, srcreg, srcreg, 0, ldfl, CURD);
 			}
 		else
 			switch(w >> 9 & 7){
@@ -305,32 +338,32 @@ decode(void)
 				}
 				break;
 			case 1:
-				load(byte, srcreg, asrcreg, 0, ldfl);
+				load(byte, srcreg, asrcreg, 0, ldfl, CURD);
 				break;
 			case 2:
-				load(byte, srcreg, asrcreg, 0, ldfl);
+				load(byte, srcreg, asrcreg, 0, ldfl, CURD);
 				op2(0, ALUADD, asrcreg, asrcreg, IMM, byte && asrcreg != 6 ? 1 : 2, 0);
 				break;
 			case 3:
-				load(0, SRCD, asrcreg, 0, 0);
+				load(0, SRCD, asrcreg, 0, 0, CURD);
 				op2(0, ALUADD, asrcreg, asrcreg, IMM, 2, 0);
-				load(byte, srcreg, SRCD, 0, ldfl);
+				load(byte, srcreg, SRCD, 0, ldfl, CURD);
 				break;
 			case 4:
-				load(byte, srcreg, asrcreg, byte && asrcreg != 6 ? -1 : -2, ldfl);
+				load(byte, srcreg, asrcreg, byte && asrcreg != 6 ? -1 : -2, ldfl, CURD);
 				op2(0, ALUADD, asrcreg, asrcreg, IMM, byte && asrcreg != 6 ? -1 : -2, 0);
 				break;
 			case 5:
-				load(0, SRCD, asrcreg, -2, 0);
+				load(0, SRCD, asrcreg, -2, 0, CURD);
 				op2(0, ALUADD, asrcreg, asrcreg, IMM, -2, 0);
-				load(byte, srcreg, SRCD, 0, ldfl);
+				load(byte, srcreg, SRCD, 0, ldfl, CURD);
 				break;
 			case 6:
-				load(byte, srcreg, asrcreg, fetch(), ldfl);
+				load(byte, srcreg, asrcreg, fetch(), ldfl, CURD);
 				break;
 			case 7:
-				load(0, SRCD, asrcreg, fetch(), 0);
-				load(byte, srcreg, SRCD, 0, ldfl);
+				load(0, SRCD, asrcreg, fetch(), 0, CURD);
+				load(byte, srcreg, SRCD, 0, ldfl, CURD);
 				break;
 			}
 
@@ -346,26 +379,29 @@ decode(void)
 				dimm = getpc();
 				adstreg = IMM;
 				dstreg = DSTD;
+				mmode = mmodei;
 				if(readdst)
-					load(byte, DSTD, IMM, dimm, ldfl);
+					load(byte, DSTD, IMM, dimm, ldfl, mmode);
 				break;
 			case 2:
 				dimm = getpc();
 				adstreg = IMM;
 				dstreg = DSTD;
+				mmode = mmodei;
 				if(readdst)
-					op2(byte, ALUMOV, dstreg, IMM, IMM, fetch(), ldfl);
-				else{
-					dimm = getpc();
+					if(mmode != CURI)
+						load(byte, DSTD, IMM, dimm, ldfl, mmode);
+					else
+						op2(byte, ALUMOV, dstreg, IMM, IMM, fetch(), ldfl);
+				else
 					fetch();
-				}
 				break;
 			case 3:
 				dimm = fetch();
 				adstreg = IMM;
 				dstreg = DSTD;
 				if(readdst)
-					load(byte, DSTD, IMM, dimm, ldfl);
+					load(byte, DSTD, IMM, dimm, ldfl, mmode);
 				break;
 			case 4:
 			case 5:
@@ -376,26 +412,26 @@ decode(void)
 				adstreg = IMM;
 				dstreg = DSTD;
 				if(readdst)
-					load(byte, dstreg, IMM, dimm, ldfl);
+					load(byte, dstreg, IMM, dimm, ldfl, mmode);
 				break;
 			case 7:
 				adstreg = DSTA;
 				dstreg = DSTD;
-				load(0, adstreg, IMM, fetch() + getpc(), 0);
+				load(0, adstreg, IMM, fetch() + getpc(), 0, CURD);
 				if(readdst)
-					load(byte, dstreg, adstreg, 0, ldfl);
+					load(byte, dstreg, adstreg, 0, ldfl, mmode);
 			}
 		else
 			switch(w >> 3 & 7){
 			case 1:
 				if(readdst)
-					load(byte, DSTD, adstreg, 0, ldfl);
+					load(byte, DSTD, adstreg, 0, ldfl, mmode);
 				
 				dstreg = DSTD;
 				break;
 			case 2:
 				if(readdst)
-					load(byte, DSTD, adstreg, 0, ldfl);
+					load(byte, DSTD, adstreg, 0, ldfl, mmode);
 				if(addrdst){
 					op1(0, ALUMOV, DSTA, adstreg, 0);
 					adstreg = DSTA;
@@ -404,31 +440,31 @@ decode(void)
 				op2(0, ALUADD, w & 7, w & 7, IMM, byte && (w & 7) != 6 ? 1 : 2, 0);
 				break;
 			case 3:
-				load(0, DSTA, adstreg, 0, 0);
+				load(0, DSTA, adstreg, 0, 0, CURD);
 				op2(0, ALUADD, adstreg, adstreg, IMM, 2, 0);
 				adstreg = DSTA;
 				if(readdst)
-					load(byte, DSTD, DSTA, 0, ldfl);
+					load(byte, DSTD, DSTA, 0, ldfl, mmode);
 				dstreg = DSTD;
 				break;
 			case 4:
 				if(readdst)
-					load(byte, DSTD, adstreg, byte && adstreg != 6 ? -1 : -2, ldfl);
+					load(byte, DSTD, adstreg, byte && adstreg != 6 ? -1 : -2, ldfl, mmode);
 				dstreg = DSTD;
 				op2(0, ALUADD, adstreg, adstreg, IMM, byte && adstreg != 6 ? -1 : -2, 0);
 				break;
 			case 5:
-				load(0, DSTA, adstreg, -2, 0);
+				load(0, DSTA, adstreg, -2, 0, CURD);
 				op2(0, ALUADD, adstreg, adstreg, IMM, -2, 0);
 				adstreg = DSTA;
 				if(readdst)
-					load(byte, DSTD, DSTA, 0, ldfl);
+					load(byte, DSTD, DSTA, 0, ldfl, mmode);
 				dstreg = DSTD;
 				break;
 			case 6:
 				dimm = fetch();
 				if(readdst)
-					load(byte, DSTD, adstreg, dimm, ldfl);
+					load(byte, DSTD, adstreg, dimm, ldfl, mmode);
 				if(addrdst){
 					op2(0, ALUADD, DSTA, adstreg, IMM, dimm, 0);
 					adstreg = DSTA;
@@ -436,10 +472,10 @@ decode(void)
 				dstreg = DSTD;
 				break;
 			case 7:
-				load(0, DSTA, adstreg, fetch(), 0);
+				load(0, DSTA, adstreg, fetch(), 0, CURD);
 				adstreg = DSTA;
 				if(readdst)
-					load(byte, DSTD, DSTA, 0, ldfl);
+					load(byte, DSTD, DSTA, 0, ldfl, mmode);
 				dstreg = DSTD;
 				break;
 			}
@@ -448,36 +484,50 @@ decode(void)
 	case 0: case 8:
 		switch(w >> 6 & 077){
 		default:
+		branch:
 			if(w >= 0400 && (w & 0074000) == 0)
 				branch(w >> 8 & 7 | w >> 12 & 8, IMM, getpc() + 2 * (char)w);
 			else
-				invalid();
+				switch(w){
+				case 3: trap(TRAPEMT); break;
+				case 4: trap(TRAPIOT); break;
+				default:
+					invalid();
+				}
 			break;
 		case 040: case 041: case 042: case 043:
 		case 044: case 045: case 046: case 047:
+			if((w & 1<<15) != 0){
+				trap((w & 0400) != 0 ? TRAPTRAP : TRAPEMT);
+				break;
+			}
 			if(adstreg == asrcreg || adstreg == 6){
 				op1(0, ALUMOV, DSTA, adstreg, 0);
 				adstreg = DSTA;
 			}
-			store(0, 6, -2, asrcreg);
+			store(0, 6, -2, asrcreg, CURD);
 			op2(0, ALUADD, 6, 6, IMM, -2, 0);
 			op2(0, ALUMOV, asrcreg, IMM, IMM, getpc(), 0);
 		case 001:
+			if((w & 1<<15) != 0)
+				goto branch;
 			if((w & 070) == 0)
 				invalid();
 			else
 				branch(CONDAL, adstreg, dimm);
 			break;
 		case 002:
+			if((w & 1<<15) != 0)
+				goto branch;
 			switch(w >> 3 & 7){
 			case 0:
 				if((w & 7) == 7){
-					load(0, DSTD, 6, 0, 0);
+					load(0, DSTD, 6, 0, 0, CURD);
 					op2(0, ALUADD, 6, 6, IMM, 2, 0);
 					branch(CONDAL, DSTD, 0);
 				}else{
 					op1(0, ALUMOV, DSTA, adstreg, 0);
-					load(0, adstreg, 6, 0, 0);
+					load(0, adstreg, 6, 0, 0, CURD);
 					if((w & 7) != 6)
 						op2(0, ALUADD, 6, 6, IMM, 2, 0);
 					branch(CONDAL, DSTA, 0);
@@ -493,7 +543,11 @@ decode(void)
 				break;
 			}
 			break;
-		case 003: op1(0, ALUSWAB, dstreg, dstreg, 15); break;
+		case 003:
+			if((w & 1<<15) != 0)
+				goto branch;
+			op1(0, ALUSWAB, dstreg, dstreg, 15);
+			break;
 		case 050:
 			if((w & 0100070) == 0100000)
 				op2(byte, ALUBIC, dstreg, IMM, dstreg, 0xff00, 15);
@@ -516,7 +570,30 @@ decode(void)
 		case 061: op1(byte, ALUROL, dstreg, dstreg, 15); break;
 		case 062: op1(byte, ALUASR, dstreg, dstreg, 15); break;
 		case 063: op1(byte, ALUASL, dstreg, dstreg, 15); break;
-		case 067: op1(byte, ALUSXT, dstreg, IMM, 6); break;
+		case 064:
+			if(byte){
+				store(1, IMM, 0, dstreg, PS);
+				break;
+			}
+			op2(0, ALUMOV, 6, IMM, IMM, getpc() + 2 * (w & 077), 0);
+			op1(0, ALUMOV, DSTD, 5, 0);
+			load(0, 5, 6, 0, 0, CURD);
+			op2(0, ALUADD, 6, 6, IMM, 2, 0);
+			branch(CONDAL, DSTD, 0);
+			break;
+		case 065:
+			if((w & 070) == 0)
+				op1(byte, ALUMOV, DSTD, dstreg, 14);
+			store(0, 6, -2, dstreg, CURD);
+			op2(0, ALUADD, 6, 6, IMM, -2, 0);
+			break;
+		case 066: break;
+		case 067: 
+			if(byte)
+				load(1, dstreg, IMM, 0, 14, PS);
+			else
+				op1(0, ALUSXT, dstreg, IMM, 6);
+			break;
 		}
 		break;
 	case 1: case 9:
@@ -572,12 +649,12 @@ decode(void)
 			break;
 		default:
 		norm:
-			store(byte, adstreg, dimm, dstreg);
+			store(byte, adstreg, dimm, dstreg, mmode);
 			break;
 		case 2:
 			if((w & 7) == 7)
 				goto norm;
-			store(byte, adstreg, byte && adstreg != 6 ? -1 : -2, dstreg);
+			store(byte, adstreg, byte && adstreg != 6 ? -1 : -2, dstreg, mmode);
 			break;
 		}
 }

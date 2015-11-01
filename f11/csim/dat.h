@@ -1,7 +1,7 @@
 typedef struct UOp UOp;
 
 enum {
-	OPTINVAL,
+	OPTTRAP,
 	OPTALU,
 	OPTLOAD,
 	OPTSTORE,
@@ -52,9 +52,9 @@ enum {
 	CONDGT,
 	CONDLE,
 	CONDPL,
+	CONDMI,
 	CONDHI,
 	CONDLOS,
-	CONDMI,
 	CONDVC,
 	CONDVS,
 	CONDCC,
@@ -78,6 +78,22 @@ enum {
 	DSTD,
 	IMM,
 	NREGS,
+};
+
+enum {
+	CURD,
+	CURI,
+	PREVD,
+	PREVI,
+	PS,
+};
+
+enum {
+	TRAPINV,
+	TRAPEMT,
+	TRAPTRAP,
+	TRAPBPT,
+	TRAPIOT,
 };
 
 ushort (*fetch)(void);
