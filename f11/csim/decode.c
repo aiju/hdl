@@ -489,6 +489,15 @@ decode(void)
 				branch(w >> 8 & 7 | w >> 12 & 8, IMM, getpc() + 2 * (char)w);
 			else
 				switch(w){
+				case 2:
+				case 6:
+					load(0, DSTA, 6, 0, 0, CURD);
+					op2(0, ALUADD, 6, 6, IMM, 2, 0);
+					load(0, DSTD, 6, 0, 0, CURD);
+					op2(0, ALUADD ,6, 6, IMM, 2, 0);
+					store(0, IMM, 0, DSTD, PS);
+					branch(CONDAL, DSTA, 0);
+					break;
 				case 3: trap(TRAPEMT); break;
 				case 4: trap(TRAPIOT); break;
 				default:
@@ -535,8 +544,11 @@ decode(void)
 				break;
 			case 1:
 			case 2:
-			case 3:
 				invalid();
+				break;
+			case 3:
+				op2(0, ALUMOV, DSTD, IMM, IMM, w & 7, 0);
+				store(1, IMM, 1, DSTD, PS);
 				break;
 			default:
 				op2(0, ALUCCOP, DSTD, IMM, IMM, w >> 4 & 1, w & 15);
@@ -632,6 +644,15 @@ decode(void)
 			break;
 		case 4:
 			op2(0, ALUXOR, dstreg, srcreg, dstreg, imm, 15);
+			break;
+		case 7:
+			srcreg = w >> 6 & 7;
+			if(srcreg == 7)
+				invalid();
+			else{
+				op2(0, ALUADD, srcreg, srcreg, IMM, -1, 0);
+				branch(CONDSOB, IMM, getpc() - 2 * (w & 077));
+			}
 			break;
 		default:
 			invalid();

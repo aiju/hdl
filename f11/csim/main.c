@@ -52,7 +52,8 @@ char *condname[] = {
 	"VC",
 	"VS",
 	"CC",
-	"CS"
+	"CS",
+	"SOB"
 };
 
 static int

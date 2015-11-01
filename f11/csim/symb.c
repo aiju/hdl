@@ -437,6 +437,18 @@ symbinst(void)
 		switch(ins >> 9 & 0100 | ins >> 6 & 077){
 		case 0:
 			switch(ins){
+			case 0: cinvalid = TRAPHALT + 1; break;
+			case 1: cinvalid = TRAPWAIT + 1; break;
+			case 5: cinvalid = TRAPRESET + 1; break;
+			case 2:
+			case 6:
+				src = expr(ELOAD, cregs[6], 0, CURD);
+				cregs[6] = expr(EBINOP, ALUADD, cregs[6], expr(ECONST, 2), 0);
+				dst = expr(ELOAD, cregs[6], 0, CURD);
+				cregs[6] = expr(EBINOP, ALUADD, cregs[6], expr(ECONST, 2), 0);
+				setps(dst, 0);
+				setpc(src);
+				break;
 			case 3: cinvalid = TRAPBPT + 1; break;
 			case 4: cinvalid = TRAPIOT + 1; break;
 			default:
@@ -465,7 +477,8 @@ symbinst(void)
 				cinvalid = 1;
 				break;
 			case 3:
-				goto unknown;
+				cstores[cnstores++] = expr(ESTORE, expr(ECONST, 1), expr(ECONST, ins & 7), 1, PS);
+				break;
 			default:
 				e = expr(ECONST, (ins & 16) != 0);
 				for(i = 0; i < 4; i++)
@@ -690,6 +703,12 @@ symbinst(void)
 			src = amode(ins >> 6 & 7, 0, 0);
 			dst = amode(ins, 0, 0);
 			store(dst, ins, setfl(cflags, 15, expr(EBINOP, ALUXOR, src, dst, 0)), 0, 0);
+			break;
+		case 7:
+			if((ins >> 6 & 7) == 7)
+				cinvalid = 1;
+			cregs[ins >> 6 & 7] = expr(EBINOP, ALUADD, cregs[ins >> 6 & 7], expr(ECONST, -1), 0);
+			cstores[cnstores++] = expr(EBRANCH, expr(ECONST, getpc() - 2 * (ins & 077)), CONDSOB);
 			break;
 		default:
 			goto unknown;

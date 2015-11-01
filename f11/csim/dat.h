@@ -58,7 +58,8 @@ enum {
 	CONDVC,
 	CONDVS,
 	CONDCC,
-	CONDCS
+	CONDCS,
+	CONDSOB
 };
 
 struct UOp {
@@ -94,6 +95,9 @@ enum {
 	TRAPTRAP,
 	TRAPBPT,
 	TRAPIOT,
+	TRAPHALT,
+	TRAPWAIT,
+	TRAPRESET,
 };
 
 ushort (*fetch)(void);
