@@ -1,5 +1,6 @@
 #include <u.h>
 #include <libc.h>
+#include <thread.h>
 #include "dat.h"
 #include "fns.h"
 
@@ -139,13 +140,16 @@ emalloc(int n)
 }
 
 void
-main(int argc, char **argv)
+threadmain(int argc, char **argv)
 {
 	fmtinstall('U', Ufmt);
-	symbinit();
 
 	ARGBEGIN {
+	case 's':
+		symbinit();
+		symbrun();
+		return;
 	} ARGEND;
 	
-	symbrun();
+	simrun();
 }

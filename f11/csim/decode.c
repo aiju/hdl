@@ -514,9 +514,14 @@ decode(void)
 				op1(0, ALUMOV, DSTA, adstreg, 0);
 				adstreg = DSTA;
 			}
+			if(asrcreg == 7){
+				op2(0, ALUMOV, DSTD, IMM, IMM, getpc(), 0);
+				asrcreg = DSTD;
+			}
 			store(0, 6, -2, asrcreg, CURD);
 			op2(0, ALUADD, 6, 6, IMM, -2, 0);
-			op2(0, ALUMOV, asrcreg, IMM, IMM, getpc(), 0);
+			if(asrcreg != DSTD)
+				op2(0, ALUMOV, asrcreg, IMM, IMM, getpc(), 0);
 		case 001:
 			if((w & 1<<15) != 0)
 				goto branch;

@@ -506,9 +506,12 @@ symbinst(void)
 		case 0044: case 0045: case 0046: case 0047:
 			dst = amode(ins, 0, 0);
 			src = cregs[ins >> 6 & 7];
+			if((ins >> 6 & 7) == 7)
+				src = expr(ECONST, getpc());
 			cregs[6] = expr(EBINOP, ALUADD, cregs[6], expr(ECONST, -2), 0);
 			store(expr(ELOAD, cregs[6], 0, CURD), 046, src, 0, 0);
-			cregs[ins >> 6 & 7] = expr(ECONST, getpc());
+			if((ins >> 6 & 7) != 7)
+				cregs[ins >> 6 & 7] = expr(ECONST, getpc());
 			jump(dst, ins);
 			break;
 		case 0140: case 0141: case 0142: case 0143: cinvalid = TRAPEMT + 1; break;
@@ -857,5 +860,5 @@ symbrun(void)
 	for(i = 077000; i <= 077777; i++)
 		symbtest(i, 0);
 	
-	symbtest(06434, 1);
+	symbtest(04767, 1);
 }

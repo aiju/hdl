@@ -5,6 +5,8 @@ OFILES=\
 	main.$O\
 	decode.$O\
 	symb.$O\
+	sim.$O\
+	rl.$O\
 	
 HFILES=dat.h fns.h
 
