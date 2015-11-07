@@ -1,0 +1,11 @@
+*.8
+*.5
+8.out
+5.out
+.Xil
+*.log
+usage_statistics_webtalk.xml
+usage_statistics_webtalk.html
+*.jou
+vivado*.str
+build

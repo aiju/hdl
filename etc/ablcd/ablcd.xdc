@@ -1,0 +1,5 @@
+set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]
+set_property BITSTREAM.CONFIG.UNUSEDPIN PULLUP [current_design]
+create_clock -name FCLK -period 10.000 [get_pins {PS7_i/FCLKCLK[0]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {tx}]
+set_property PACKAGE_PIN A5 [get_ports {tx}]
