@@ -130,7 +130,7 @@ module axi3
 	reg [TIMEBITS-1:0] timer;
 	reg timeout, timeout0;
 	
-	reg [2:0] state, state_;
+	reg [2:0] state, state_, state0;
 	localparam IDLE = 0;
 	localparam READOUT = 1;
 	localparam READREPLY = 2;
@@ -144,6 +144,7 @@ module axi3
 	always @(posedge clk, negedge resetn) begin
 		state <= !resetn ? IDLE : state_;
 		rpend <= !resetn ? 0 : rpend_;
+		state0 <= !resetn ? IDLE : state;
 	end
 	
 	always @(posedge clk) begin
@@ -245,7 +246,7 @@ module axi3
 			end
 		end
 		READOUT: begin
-			outreq = 1;
+			outreq = state0 != READOUT;
 			if(outack || timeout) begin
 				state_ = READREPLY;
 				latchrdata = 1;
@@ -281,7 +282,7 @@ module axi3
 		WRITEOUT: begin
 			write = 1;
 			outwr = 1;
-			outreq = 1;
+			outreq = state0 != WRITEOUT;
 			if(outack || timeout) begin
 				if(timeout)
 					bresp_ = DECERR;
