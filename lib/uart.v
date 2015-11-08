@@ -21,7 +21,7 @@ module uart(
 	localparam INT = SYSHZ / BAUD;
 	
 	reg txact;
-	reg [8:0] txbuf;
+	reg [7:0] txbuf;
 	reg [31:0] txtim;
 	reg [3:0] txctr;
 	
@@ -35,7 +35,7 @@ module uart(
 
 		if(!txact) begin
 			if(txreq) begin
-				txbuf <= {1'b1, txdata};
+				txbuf <= txdata;
 				txact <= 1'b1;
 				txctr <= 4'b0;
 				txtim <= INT-1;
@@ -43,12 +43,12 @@ module uart(
 			end
 		end else
 			if(txtim == 32'b0) begin
-				if(txctr == 4'd8) begin
+				if(txctr == 4'd9) begin
 					txact <= 1'b0;
 					txack <= 1'b1;
 				end else begin
 					tx <= txbuf[0];
-					txbuf <= {1'b1, txbuf[8:1]};
+					txbuf <= {1'b1, txbuf[7:1]};
 					txtim <= INT-1;
 					txctr <= txctr + 1;
 				end
