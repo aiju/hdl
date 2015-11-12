@@ -209,7 +209,7 @@ decode(void)
 			break;
 		case 065: /* MFPD / MFPI */
 			readdst = 1;
-			mmode = mmodei = (w & 1<<15) != 0 ? PREVI : PREVD;
+			mmode = mmodei = (w & 1<<15) != 0 ? PREVD : PREVI;
 			ldfl = 14;
 			break;
 		case 066: /* MTPD / MTPI */
@@ -500,6 +500,7 @@ decode(void)
 					break;
 				case 3: trap(TRAPEMT); break;
 				case 4: trap(TRAPIOT); break;
+				case 5: trap(TRAPRESET); break;
 				default:
 					invalid();
 				}
@@ -575,7 +576,7 @@ decode(void)
 			break;
 		case 051: op1(byte, ALUCOM, dstreg, dstreg, 15); break;
 		case 052: op2(byte, ALUADD, dstreg, dstreg, IMM, 1, 14); break;
-		case 053: op2(byte, ALUSUB, dstreg, dstreg, IMM, 1, 14); break;
+		case 053: op2(byte, ALUSUB, dstreg, IMM, dstreg, 1, 14); break;
 		case 054: op1(byte, ALUNEG, dstreg, dstreg, 15); break;
 		case 055: op1(byte, ALUADC, dstreg, dstreg, 15); break;
 		case 056: op1(byte, ALUSBC, dstreg, dstreg, 15); break;
@@ -643,9 +644,9 @@ decode(void)
 			op2(0, ALUASH, asrcreg, srcreg, dstreg, imm, 15);
 			break;
 		case 3:
-			op2(0, ALUASHC1, asrcreg|1, asrcreg|1, dstreg, imm, 0);
-			op2(0, ALUASHC2, asrcreg, srcreg, IMM, imm, 15);
-			op2(0, ALUASHC3, asrcreg|1, IMM, IMM, imm, 0);
+			op2(0, ALUASHC1, IMM, asrcreg|1, asrcreg, imm, 0);
+			op2(0, ALUASHC2, asrcreg, dstreg, IMM, imm, 15);
+			op2(0, ALUASHC3, asrcreg|1, dstreg, IMM, imm, 0);
 			break;
 		case 4:
 			op2(0, ALUXOR, dstreg, srcreg, dstreg, imm, 15);

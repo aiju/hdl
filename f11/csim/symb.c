@@ -543,7 +543,7 @@ symbinst(void)
 		case 053: case 0153:
 			byte = ins >> 15;
 			dst = amode(ins, byte, 0);
-			store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUSUB, dst, expr(ECONST, 1), byte)), byte, 0);
+			store(dst, ins, setfl(cflags, 14, expr(EBINOP, ALUSUB, expr(ECONST, 1), dst, byte)), byte, 0);
 			break;
 		case 054: case 0154:
 			byte = ins >> 15;
@@ -859,6 +859,4 @@ symbrun(void)
 		symbtest(i, 0);
 	for(i = 077000; i <= 077777; i++)
 		symbtest(i, 0);
-	
-	symbtest(04767, 1);
 }

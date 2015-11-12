@@ -5,12 +5,12 @@
 
 int fd;
 
-static ushort csr = 0x81, ba, da, mp, status;
+static ushort csr = 0x81, ba, da, mp, status = 0235;
 
-ushort
-rlread(ushort a, ushort m)
+int
+rlread(ushort a, ushort)
 {
-	switch(a){
+	switch(a & 7){
 	case 0: return csr;
 	case 2: return ba;
 	case 4: return da;
@@ -25,6 +25,7 @@ rldread(int da)
 	int n;
 	uchar buf[256], *p;
 	int m;
+	extern u16int curpc;
 	
 	n = 256 * ((da & 077) + 40 * (da >> 6));
 	for(; mp != 0; ){
@@ -36,7 +37,7 @@ rldread(int da)
 			sysfatal("pread: %r");
 		n += 2*m;
 		for(p = buf; m != 0; ba += 2, m--, p += 2)
-			uniwrite(ba, p[0] | p[1] << 8, 0xffff);
+			uniwrite(ba | csr << 12 & 0x30000, p[0] | p[1] << 8, 0xffff);
 	}
 }
 
@@ -44,6 +45,7 @@ void
 rlgo(void)
 {
 	ushort cmd;
+	extern void stack(void);
 	
 	cmd = csr >> 1 & 7;
 	switch(cmd){
@@ -51,6 +53,10 @@ rlgo(void)
 		if((da & 8) != 0)
 			status &= 0xff;
 		mp = status;		
+		break;
+	case 3:
+		break;
+	case 4:
 		break;
 	case 6:
 		rldread(da);
@@ -61,12 +67,12 @@ rlgo(void)
 	csr |= 0x80;
 }
 
-void
+int
 rlwrite(ushort a, ushort v, ushort m)
 {
 	ushort o;
 
-	switch(a){
+	switch(a & 7){
 	case 0:
 		m &= 0x03fe;
 		o = csr;
@@ -78,6 +84,7 @@ rlwrite(ushort a, ushort v, ushort m)
 	case 4: da = da & ~m | v & m; break;
 	case 6: mp = mp & ~m | v & m; break;
 	}
+	return 0;
 }
 
 void
