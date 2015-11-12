@@ -78,6 +78,7 @@ enum {
 	DSTA,
 	DSTD,
 	IMM,
+	PREVSP,
 	NREGS,
 };
 

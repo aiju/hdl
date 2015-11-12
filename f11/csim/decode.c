@@ -215,9 +215,8 @@ decode(void)
 		case 066: /* MTPD / MTPI */
 			writedst = 1;
 			mmode = mmodei = (w & 1<<15) != 0 ? PREVD : PREVI;
-			load(0, (w & 077) < 7 ? w & 7 : DSTD, 6, 0, 14, CURD);
-			if((w & 077) != 6)
-				op2(0, ALUADD, 6, 6, IMM, 2, 0);
+			load(0, (w & 077) == 6 ? PREVSP : (w & 077) < 7 ? w & 7 : DSTD, 6, 0, 14, CURD);
+			op2(0, ALUADD, 6, 6, IMM, 2, 0);
 			break;
 		case 067:
 			byte = w>>15;
@@ -600,6 +599,8 @@ decode(void)
 			branch(CONDAL, DSTD, 0);
 			break;
 		case 065:
+			if((w & 077) == 6)
+				dstreg = PREVSP;
 			if((w & 070) == 0)
 				op1(byte, ALUMOV, DSTD, dstreg, 14);
 			store(0, 6, -2, dstreg, CURD);
@@ -644,7 +645,7 @@ decode(void)
 			op2(0, ALUASH, asrcreg, srcreg, dstreg, imm, 15);
 			break;
 		case 3:
-			op2(0, ALUASHC1, IMM, asrcreg|1, asrcreg, imm, 0);
+			op2(0, ALUASHC1, IMM, asrcreg|1, srcreg, imm, 0);
 			op2(0, ALUASHC2, asrcreg, dstreg, IMM, imm, 15);
 			op2(0, ALUASHC3, asrcreg|1, dstreg, IMM, imm, 0);
 			break;

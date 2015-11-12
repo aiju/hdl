@@ -317,6 +317,8 @@ amode(int a, int byte, int inst)
 	else
 		switch(m & 6){
 		case 0:
+			if((a & 077) == 6 && inst >= 1)
+				return cregs[PREVSP];
 			r = cregs[n];
 			break;
 		case 2:
@@ -365,9 +367,12 @@ store(Expr *a, ushort instr, Expr *v, int byte, int inst)
 			print("out of stores\n");
 		else
 			cstores[cnstores++] = expr(EBRANCH, v, CONDAL);	
-	}else if((instr & 070) == 0)
-		cregs[instr & 7] = v;
-	else if(m == 027){
+	}else if((instr & 070) == 0){
+		if(inst && (instr & 7) == 6)
+			cregs[PREVSP] = v;
+		else
+			cregs[instr & 7] = v;
+	}else if(m == 027){
 		if(cnstores == NSTORES)
 			print("out of stores\n");
 		else
@@ -597,7 +602,7 @@ symbinst(void)
 			setps(dst, 1);
 			break;
 		case 065: case 0165:
-			dst = amode(ins, 0, 2 - (ins >> 15));
+			dst = amode(ins, 0, 1 + (ins >> 15));
 			cregs[6] = expr(EBINOP, ALUADD, cregs[6], expr(ECONST, -2), 0);
 			store(expr(ELOAD, cregs[6], 0, CURD), 046, setfl(cflags, 14, dst), 0, 0);
 			break;
@@ -697,8 +702,8 @@ symbinst(void)
 			}
 			src = amode(ins >> 6 & 7, 0, 0);
 			dst = amode(ins, 0, 0);
-			e = expr(EBINOP, ALUASHC1, cregs[ins >> 6 & 7 | 1], dst, 0);
-			cregs[ins >> 6 & 7] = e = expr(EBINOP, ALUASHC2, src, e, 0);
+			e = expr(EBINOP, ALUASHC1, cregs[ins >> 6 & 7 | 1], src, 0);
+			cregs[ins >> 6 & 7] = e = expr(EBINOP, ALUASHC2, dst, e, 0);
 			setfl(cflags, 15, e);
 			cregs[ins >> 6 & 7 | 1] = expr(EUNOP, ALUASHC3, e, 0);
 			break;
@@ -758,6 +763,8 @@ reseq(void)
 	for(i = 0; i < 8; i++)
 		if(!expreq(regs[i], cregs[i]))
 			return 0;
+	if(!expreq(regs[PREVSP], cregs[PREVSP]))
+		return 0;
 	for(i = 0; i < 4; i++)
 		if(!expreq(flags[i], cflags[i]))
 			return 0;
