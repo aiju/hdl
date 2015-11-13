@@ -68,51 +68,6 @@ stack(void)
 	print("\n");
 }
 
-Channel *kbdc;
-
-int
-consread(ushort a, ushort)
-{
-	static long c = -1;
-	int rc;
-
-	switch(a & 7){
-	case 0:
-		if(c < 0){
-			if(nbrecv(kbdc, &c) < 0)
-				c = -1;
-		}
-		if(c < 0)
-			return 0;
-		return 0x80;
-	case 2:
-		if(c < 0)
-			if(nbrecv(kbdc, &c) < 0)
-				c = -1;
-		rc = c;
-		c = -1;
-		return rc;
-	case 4:
-		return 0x80;
-	case 6:
-		return 0;
-	}
-	return 0;
-}
-
-int
-conswrite(ushort a, ushort v, ushort)
-{
-	switch(a & 7){
-	case 6:
-		v &= 0x7f;
-		if(v == '\r' || v == 127)
-			break;
-		print("%c", v);
-	}
-	return 0;
-}
-
 int
 psread(ushort, ushort)
 {
@@ -146,6 +101,18 @@ pswrite(ushort a, ushort v, ushort m)
 	}
 	for(i = 7; i < NREGS; i++)
 		reg[i] = &regs[i];
+	switch(ps >> 12 & 3){
+	case 0:
+		reg[PREVSP] = &regs[6];
+		break;
+	case 1:
+		reg[PREVSP] = &regs[NREGS+6];
+		break;
+	case 2:
+	case 3:
+		reg[PREVSP] = &regs[NREGS+7];
+		break;
+	}
 	return 0;
 }
 
@@ -218,41 +185,25 @@ struct iodev {
 	int lo, hi;
 	int (*read)(ushort, ushort);
 	int (*write)(ushort, ushort, ushort);
+	int (*irq)(void);
 } iomap[] = {
-	0774400, 0774410, rlread, rlwrite,
-	0777560, 0777570, consread, conswrite,
-	0777776, 01000000, psread, pswrite,
-	0777600, 0777700, mmuread, mmuwrite,
-	0772200, 0772400, mmuread, mmuwrite,
-	0777572, 0777600, mmuread, mmuwrite,
-	0772516, 0772520, mmuread, mmuwrite,
-	0777746, 0777750, nopread, nopwrite,
-	0770200, 0777400, mmuread, mmuwrite,
-	0, 0, nil, nil,
+	0774400, 0774410, rlread, rlwrite, nil,
+	0777560, 0777570, consread, conswrite, nil,
+	0777776, 01000000, psread, pswrite, nil,
+	0777600, 0777700, mmuread, mmuwrite, nil,
+	0772200, 0772400, mmuread, mmuwrite, nil,
+	0777572, 0777600, mmuread, mmuwrite, nil,
+	0772516, 0772520, mmuread, mmuwrite, nil,
+	0777746, 0777750, nopread, nopwrite, nil,
+	0770200, 0770400, mmuread, mmuwrite, nil,
+	0777546, 0777550, kw11read, kw11write, kw11irq,
+	0, 0, nil, nil, nil,
 };
 
 void
-kbdproc(void *)
+mmuabort(ushort a, int, int, int n)
 {
-	char c;
-	
-	for(;;){
-		read(0, &c, 1);
-		sendul(kbdc, c);
-	}
-}
-
-void
-kbdinit(void)
-{
-	kbdc = chancreate(sizeof(ulong), 64);
-	proccreate(kbdproc, nil, 1024);
-}
-
-void
-mmuabort(ushort a, int, int, int)
-{
-	sysfatal("mmu abort %#o (pc=%#o)", a, curpc);
+	sysfatal("mmu abort %#o (pc=%#o, ps=%#o, err=%d)", a, curpc, ps, n);
 }
 
 int
@@ -385,8 +336,14 @@ memwrite(ushort a, ushort b, int byte, int sp)
 		return 0;
 	}
 	phys = translate(a, sp, 1);
-	if(phys >= 017000000)
+	if(phys >= 017000000){
+		if(byte)
+			if((a & 1) != 0)
+				b = b << 8;
+			else
+				b = (uchar)b;
 		return uniwrite(phys, b, byte ? a & 1 ? 0xff00 : 0xff : 0xffff);
+	}
 	if(phys/2 >= nelem(mem)){
 		print("bus error, addr %o, val %o, pc=%o\n", phys, b, curpc);
 		return ~BUSERR;
@@ -410,6 +367,7 @@ trap(ushort vec)
 {
 	ushort opc, ops;
 	
+	print("trap through %o (pc=%o, ps=%o)\n", vec, pc, ps);
 	opc = pc;
 	ops = ps;
 	pswrite(0, 0, 0xc000);
@@ -444,7 +402,7 @@ siminit(void)
 	getpc = rungetpc;
 	pswrite(0, 0, 0xffff);
 	rlinit();
-	kbdinit();
+	devinit();
 	pc = 01000;
 
 	for(i = 0; i < 31; i++){
@@ -469,6 +427,7 @@ simrun(void)
 	next:
 	//	if(pc == 015662)
 	//		trace++;
+		irqcheck();
 		curpc = pc;
 		decode();
 		for(u = uops; u < uops + nuops; u++){
@@ -637,13 +596,17 @@ simrun(void)
 					break;
 				case ALUDIV2:
 					if(r0 == 0){
-						v = 0;
+						v = acc >> 16;
 						fl = FLAGC;
 					}else{
-						v = n = (int)acc / (int)r0;
-						acc = (int)acc % (int)r0;
-						if((ulong)(n + 32768) > 65535)
+						n = (int)acc / (short)r0;
+						if((ulong)(n + 32768) > 65535){
 							fl = FLAGV;
+							v = acc >> 16;
+						}else{
+							v = n;
+							acc = (int)acc % (short)r0;
+						}
 						if(v == 0) fl |= FLAGZ;
 						if((v & 0x8000) != 0) fl |= FLAGN;
 					}
@@ -680,7 +643,7 @@ simrun(void)
 					}
 					if(acc == 0) fl |= FLAGZ;
 					if((int)acc < 0) fl |= FLAGN;
-					v = acc << 16;
+					v = acc >> 16;
 					break;
 				case ALUASHC3:
 					v = acc;
