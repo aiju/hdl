@@ -185,10 +185,10 @@ struct iodev {
 	int lo, hi;
 	int (*read)(ushort, ushort);
 	int (*write)(ushort, ushort, ushort);
-	int (*irq)(void);
+	int (*irq)(int);
 } iomap[] = {
-	0774400, 0774410, rlread, rlwrite, nil,
-	0777560, 0777570, consread, conswrite, nil,
+	0774400, 0774410, rlread, rlwrite, rlirq,
+	0777560, 0777570, consread, conswrite, consirq,
 	0777776, 01000000, psread, pswrite, nil,
 	0777600, 0777700, mmuread, mmuwrite, nil,
 	0772200, 0772400, mmuread, mmuwrite, nil,
@@ -197,6 +197,7 @@ struct iodev {
 	0777746, 0777750, nopread, nopwrite, nil,
 	0770200, 0770400, mmuread, mmuwrite, nil,
 	0777546, 0777550, kw11read, kw11write, kw11irq,
+	0777570, 0777574, nopread, nopwrite, nil,
 	0, 0, nil, nil, nil,
 };
 
@@ -366,8 +367,9 @@ static void
 trap(ushort vec)
 {
 	ushort opc, ops;
-	
-	print("trap through %o (pc=%o, ps=%o)\n", vec, pc, ps);
+
+	if(vec != 0100)	
+		print("trap through %o (pc=%o, ps=%o)\n", vec, pc, ps);
 	opc = pc;
 	ops = ps;
 	pswrite(0, 0, 0xc000);
@@ -411,6 +413,35 @@ siminit(void)
 	}
 }
 
+int
+irqcheck(int force)
+{
+	static int ctr;
+	int max, rc;
+	iodev *ip;
+	int (*ack)(int);
+	
+	if(!force && ctr > 0){
+		ctr--;
+		return 0;
+	}
+	ctr = 100;
+	max = -1;
+	ack = nil;
+	for(ip = iomap; ip->read != nil; ip++)
+		if(ip->irq != nil)
+			if(rc = ip->irq(0), rc > max){
+				max = ip->irq(0);
+				ack = ip->irq;
+			}
+	if(ack != nil && (max >> 16) > (ps >> 5 & 7)){
+		ack(1);
+		trap(max & 0xffff);
+		return 1;
+	}
+	return 0;
+}
+
 void
 simrun(void)
 {
@@ -427,7 +458,7 @@ simrun(void)
 	next:
 	//	if(pc == 015662)
 	//		trace++;
-		irqcheck();
+		irqcheck(0);
 		curpc = pc;
 		decode();
 		for(u = uops; u < uops + nuops; u++){
@@ -728,13 +759,19 @@ simrun(void)
 				case TRAPEMT: trap(030); break;
 				case TRAPTRAP: trap(034); break;
 				case TRAPIOT: trap(020); break;
-				case 7: break;
+				case TRAPRESET: break;
+				case TRAPWAIT:
+					while(!irqcheck(1))
+						sleep(1);
+					goto next;
 				default: goto nope;
 				}
 				goto next;
 			default:
 			nope:
-				sysfatal("unimplemented op %U (%#o) at pc=%#o", u, memread(curpc, 0, CURI), curpc);
+				print("unimplemented op %U (%#o) at pc=%#o\n", u, memread(curpc, 0, CURI), curpc);
+				trap(010);
+				goto next;
 			}
 		}
 	}

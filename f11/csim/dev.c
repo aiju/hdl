@@ -22,10 +22,12 @@ kw11write(ushort, ushort v, ushort m)
 }
 
 int
-kw11irq(void)
+kw11irq(int ack)
 {
 	uvlong t;
 	
+	if(ack)
+		return -1;
 	t = nsec();
 	if(t - kw11tim >= (uvlong)1e9/60){
 		kw11 |= 0x80;
@@ -34,10 +36,12 @@ kw11irq(void)
 	if((kw11 & 0xc0) == 0xc0)
 		return 6 << 16 | 0100;
 	else
-		return 0;
+		return -1;
 }
 
 Channel *kbdc;
+ushort consrcsr, consxcsr;
+int rxint, txint;
 
 int
 consread(ushort a, ushort)
@@ -70,10 +74,18 @@ consread(ushort a, ushort)
 }
 
 int
-conswrite(ushort a, ushort v, ushort)
+conswrite(ushort a, ushort v, ushort m)
 {
 	switch(a & 7){
+	case 0:
+		consrcsr = consrcsr & ~m | v & m;
+		break;
+	case 4:
+		consxcsr = consxcsr & ~m | (v | 0x80) & m;
+		break;
 	case 6:
+		if((consxcsr & 0x40) != 0)
+			txint = 1;
 		v &= 0x7f;
 		if(v == '\r' || v == 127)
 			break;
@@ -82,6 +94,19 @@ conswrite(ushort a, ushort v, ushort)
 	return 0;
 }
 
+int
+consirq(int ack)
+{
+	if(txint){
+		txint = !ack;
+		return 4 << 16 | 064;
+	}
+	if(rxint){
+		rxint = !ack;
+		return 4 << 16 | 060;
+	}
+	return -1;
+}
 
 void
 kbdproc(void *)

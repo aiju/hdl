@@ -6,6 +6,7 @@
 int fd;
 
 static ushort csr = 0x81, ba, da, mp, status = 0235;
+int rlint;
 
 int
 rlread(ushort a, ushort)
@@ -28,6 +29,7 @@ rldread(int da)
 	extern u16int curpc;
 	
 	n = 256 * ((da & 077) + 40 * (da >> 6));
+	print("%o\n", da);
 	for(; mp != 0; ){
 		m = (ushort)-mp;
 		if(m >= 128)
@@ -64,6 +66,8 @@ rlgo(void)
 	default:
 		print("unknown RL command %d\n", cmd);
 	}
+	if((csr & 0x40) != 0)
+		rlint = 1;
 	csr |= 0x80;
 }
 
@@ -85,6 +89,16 @@ rlwrite(ushort a, ushort v, ushort m)
 	case 6: mp = mp & ~m | v & m; break;
 	}
 	return 0;
+}
+
+int
+rlirq(int ack)
+{
+	if(rlint){
+		rlint = !ack;
+		return 4 << 16 | 0160;
+	}
+	return -1;
 }
 
 void

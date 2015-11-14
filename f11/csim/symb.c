@@ -759,7 +759,7 @@ reseq(void)
 	int i;
 	
 	if(invalid && cinvalid)
-		return 1;
+		return invalid == cinvalid;
 	for(i = 0; i < 8; i++)
 		if(!expreq(regs[i], cregs[i]))
 			return 0;

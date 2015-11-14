@@ -488,6 +488,8 @@ decode(void)
 				branch(w >> 8 & 7 | w >> 12 & 8, IMM, getpc() + 2 * (char)w);
 			else
 				switch(w){
+				case 0: trap(TRAPHALT); break;
+				case 1: trap(TRAPWAIT); break;
 				case 2:
 				case 6:
 					load(0, DSTA, 6, 0, 0, CURD);
@@ -497,7 +499,7 @@ decode(void)
 					store(0, IMM, 0, DSTD, PS);
 					branch(CONDAL, DSTA, 0);
 					break;
-				case 3: trap(TRAPEMT); break;
+				case 3: trap(TRAPBPT); break;
 				case 4: trap(TRAPIOT); break;
 				case 5: trap(TRAPRESET); break;
 				default:
