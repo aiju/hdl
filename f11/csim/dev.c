@@ -5,7 +5,6 @@
 #include "fns.h"
 
 ushort kw11 = 0x80;
-uvlong kw11tim;
 
 int
 kw11read(ushort, ushort)
@@ -24,14 +23,14 @@ kw11write(ushort, ushort v, ushort m)
 int
 kw11irq(int ack)
 {
-	uvlong t;
+	extern uvlong instrctr;
+	static uvlong kw11tim;
 	
 	if(ack)
 		return -1;
-	t = nsec();
-	if(t - kw11tim >= (uvlong)1e9/60){
+	if(instrctr - kw11tim >= 500000){
 		kw11 |= 0x80;
-		kw11tim = t;
+		kw11tim = instrctr;
 	}
 	if((kw11 & 0xc0) == 0xc0)
 		return 6 << 16 | 0100;
@@ -40,33 +39,45 @@ kw11irq(int ack)
 }
 
 Channel *kbdc;
-ushort consrcsr, consxcsr;
-int rxint, txint;
+ushort consrcsr, consxcsr = 0x80;
+int txint, rxint;
+
+int
+consgetc(int peek)
+{
+	static long c = -1;
+	int rc;
+	
+	if(c == -1)
+		if(nbrecv(kbdc, &c) <= 0)
+			c = -1;
+		else if((consrcsr & 0x40) != 0 && peek)
+			rxint = 1;
+	rc = c;
+	if(!peek)
+		c = -1;
+	return rc;
+}
 
 int
 consread(ushort a, ushort)
 {
-	static long c = -1;
+	static int c;
 	int rc;
 
 	switch(a & 7){
 	case 0:
-		if(c < 0){
-			if(nbrecv(kbdc, &c) < 0)
-				c = -1;
-		}
-		if(c < 0)
-			return 0;
-		return 0x80;
+		if(consgetc(1) >= 0)
+			consrcsr |= 0x80;
+		return consrcsr;
 	case 2:
-		if(c < 0)
-			if(nbrecv(kbdc, &c) < 0)
-				c = -1;
-		rc = c;
-		c = -1;
-		return (uchar)rc;
+		consrcsr &= 0xff7f;
+		rc = (uchar) consgetc(0);
+		if(rc >= 0)
+			c = rc;
+		return c;
 	case 4:
-		return 0x80;
+		return consxcsr;
 	case 6:
 		return 0;
 	}
@@ -78,7 +89,11 @@ conswrite(ushort a, ushort v, ushort m)
 {
 	switch(a & 7){
 	case 0:
+		m &= 0x6e;
 		consrcsr = consrcsr & ~m | v & m;
+		break;
+	case 2:
+		consrcsr &= 0xff7f;
 		break;
 	case 4:
 		consxcsr = consxcsr & ~m | (v | 0x80) & m;
@@ -101,8 +116,10 @@ consirq(int ack)
 		txint = !ack;
 		return 4 << 16 | 064;
 	}
+	consgetc(1);
 	if(rxint){
-		rxint = !ack;
+		if(ack)
+			rxint = 0;
 		return 4 << 16 | 060;
 	}
 	return -1;
@@ -120,8 +137,16 @@ kbdproc(void *)
 }
 
 void
+kbdputs(char *p)
+{
+	while(*p != 0)
+		sendul(kbdc, *p++);
+}
+
+void
 devinit(void)
 {
 	kbdc = chancreate(sizeof(ulong), 64);
+	kbdputs("boot\nrl(0,0)rl2unix\n");
 	proccreate(kbdproc, nil, 1024);
 }

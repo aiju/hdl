@@ -38,6 +38,7 @@ ushort mmr0, mmr1, mmr2, mmr3;
 ushort pdr[3][16];
 ushort par[3][16];
 ushort umap[64];
+uvlong instrctr;
 int trace;
 
 enum {
@@ -52,6 +53,8 @@ enum {
 	FLAGC = 1,
 	
 	BUSERR = 4,
+	ODDERR = 4,
+	MMUFAULT = 0250,
 };
 
 void
@@ -79,8 +82,10 @@ pswrite(ushort a, ushort v, ushort m)
 {
 	int i;
 
-	if(a == 1)
-		m = 7;
+	if(a == 1){
+		ps = ps & 0xff1f | v << 5;
+		return 0;
+	}
 	ps = ps & ~m | v & m;
 	for(i = 0; i < 6; i++)
 		if((ps & 1<<11) != 0)
@@ -160,7 +165,7 @@ int
 mmuwrite(ushort a, ushort v, ushort m)
 {
 	ushort *p;
-	
+
 	p = mmuptr(a);
 	if(p == nil)
 		sysfatal("invalid mmu read from %#o (pc=%#o)", a, curpc);
@@ -201,10 +206,15 @@ struct iodev {
 	0, 0, nil, nil, nil,
 };
 
-void
-mmuabort(ushort a, int, int, int n)
+int
+mmuabort(ushort a, int s, int p, int n)
 {
-	sysfatal("mmu abort %#o (pc=%#o, ps=%#o, err=%d)", a, curpc, ps, n);
+	if((mmr0 & 0xe000) == 0){
+		mmr0 = 0x8000 >> n | (s ^ s>>1) << 5 | p << 1 | mmr0 & 1;
+		mmr2 = curpc;
+	}
+	print("mmu abort %6o (pc=%.6o, ps=%.6o, par=%.6o, pdr=%.6o, err=%d)\n", a, curpc, ps, par[s][p], pdr[s][p], n);
+	return ~MMUFAULT;
 }
 
 int
@@ -224,21 +234,25 @@ translate(ushort a, int sp, int wr)
 	case PREVI: case PREVD: s = ps >> 12 & 3; break;
 	default: s = 0; sysfatal("unknown space %d (pc=%#o)", sp, curpc);
 	}
-	s ^= s >> 1;
 	p = a >> 13;
+	s ^= s >> 1;
+	if(s == 3)
+		return mmuabort(a, s, p, 0);
 	if((mmr3 & 4>>s) != 0 && (sp == CURD || sp == PREVD))
 		p += 8;
 	d = pdr[s][p];
-	if((d >> 1 & 3) != 3 && ((d >> 1 & 3) != 1 || wr))
-		mmuabort(a, sp, wr, 0);
+	if((d & 2) == 0)
+		return mmuabort(a, s, p, 0);
+	if(wr && (d & 4) == 0)
+		return mmuabort(a, s, p, 2);
 	if(wr)
 		pdr[s][p] |= 1<<6;
 	if((d & 8) != 0){
 		if((a >> 6 & 0x7f) < (d >> 8 & 0x7f))
-			mmuabort(a, sp, wr, 1);
+			return mmuabort(a, s, p, 1);
 	}else{
 		if((a >> 6 & 0x7f) > (d >> 8 & 0x7f))
-			mmuabort(a, sp, wr, 1);	
+			return mmuabort(a, s, p, 1);
 	}
 	pa = (par[s][p] << 6) + (a & 017777);
 	if((mmr3 & BITS22) == 0){
@@ -311,6 +325,8 @@ memread(ushort a, int byte, int sp)
 	if(sp == PS)
 		return psread(a, byte ? a & 1 ? 0xff00 : 0xff : 0xffff);
 	phys = translate(a, sp, 0);
+	if(phys < 0)
+		return phys;
 	if(phys >= 017000000){
 		v = uniread(phys, byte ? a & 1 ? 0xff00 : 0xff : 0xffff);
 	}else if(phys/2 >= nelem(mem)){
@@ -337,6 +353,8 @@ memwrite(ushort a, ushort b, int byte, int sp)
 		return 0;
 	}
 	phys = translate(a, sp, 1);
+	if(phys < 0)
+		return phys;
 	if(phys >= 017000000){
 		if(byte)
 			if((a & 1) != 0)
@@ -356,9 +374,10 @@ memwrite(ushort a, ushort b, int byte, int sp)
 		else
 			*p = *p & 0xff00 | (uchar)b;
 	else
-		if((a & 1) != 0)
-			sysfatal("odd write");
-		else
+		if((a & 1) != 0){
+			print("odd write, addr %o, va %o, val %o, pc=%o\n", phys, a, b, curpc);
+			return ~ODDERR;
+		}else
 			*p = b;
 	return 0;
 }
@@ -368,7 +387,7 @@ trap(ushort vec)
 {
 	ushort opc, ops;
 
-	if(vec != 0100)	
+	if(trace)
 		print("trap through %o (pc=%o, ps=%o)\n", vec, pc, ps);
 	opc = pc;
 	ops = ps;
@@ -456,11 +475,11 @@ simrun(void)
 	
 	for(;;){
 	next:
-	//	if(pc == 015662)
-	//		trace++;
+		instrctr++;
 		irqcheck(0);
 		curpc = pc;
 		decode();
+		if(curpc == 042572 + 0*043426) print("%c", *reg[0]);
 		for(u = uops; u < uops + nuops; u++){
 			if(trace) print("%.6o %.6o %U\n", curpc, memread(curpc, 0, CURI), u);
 			hi = u->byte ? 0x80 : 0x8000;
@@ -761,8 +780,10 @@ simrun(void)
 				case TRAPIOT: trap(020); break;
 				case TRAPRESET: break;
 				case TRAPWAIT:
-					while(!irqcheck(1))
+					while(!irqcheck(1)){
 						sleep(1);
+						instrctr += 100000;
+					}
 					goto next;
 				default: goto nope;
 				}

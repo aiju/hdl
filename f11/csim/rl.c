@@ -29,7 +29,6 @@ rldread(int da)
 	extern u16int curpc;
 	
 	n = 256 * ((da & 077) + 40 * (da >> 6));
-	print("%o\n", da);
 	for(; mp != 0; ){
 		m = (ushort)-mp;
 		if(m >= 128)
@@ -96,7 +95,7 @@ rlirq(int ack)
 {
 	if(rlint){
 		rlint = !ack;
-		return 4 << 16 | 0160;
+		return 5 << 16 | 0160;
 	}
 	return -1;
 }
