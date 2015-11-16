@@ -129,6 +129,11 @@ void
 kbdproc(void *)
 {
 	char c;
+	int fd;
+	
+	fd = open("/dev/consctl", OWRITE);
+	if(fd >= 0)
+		fprint(fd, "rawon");
 	
 	for(;;){
 		read(0, &c, 1);

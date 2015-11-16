@@ -213,7 +213,8 @@ mmuabort(ushort a, int s, int p, int n)
 		mmr0 = 0x8000 >> n | (s ^ s>>1) << 5 | p << 1 | mmr0 & 1;
 		mmr2 = curpc;
 	}
-	print("mmu abort %6o (pc=%.6o, ps=%.6o, par=%.6o, pdr=%.6o, err=%d)\n", a, curpc, ps, par[s][p], pdr[s][p], n);
+	if(trace)
+		print("mmu abort %6o (pc=%.6o, ps=%.6o, par=%.6o, pdr=%.6o, err=%d)\n", a, curpc, ps, par[s][p], pdr[s][p], n);
 	return ~MMUFAULT;
 }
 
@@ -375,7 +376,8 @@ memwrite(ushort a, ushort b, int byte, int sp)
 			*p = *p & 0xff00 | (uchar)b;
 	else
 		if((a & 1) != 0){
-			print("odd write, addr %o, va %o, val %o, pc=%o\n", phys, a, b, curpc);
+			if(trace)
+				print("odd write, addr %o, va %o, val %o, pc=%o\n", phys, a, b, curpc);
 			return ~ODDERR;
 		}else
 			*p = b;
@@ -479,7 +481,6 @@ simrun(void)
 		irqcheck(0);
 		curpc = pc;
 		decode();
-		if(curpc == 042572 + 0*043426) print("%c", *reg[0]);
 		for(u = uops; u < uops + nuops; u++){
 			if(trace) print("%.6o %.6o %U\n", curpc, memread(curpc, 0, CURI), u);
 			hi = u->byte ? 0x80 : 0x8000;

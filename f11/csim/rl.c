@@ -8,6 +8,8 @@ int fd;
 static ushort csr = 0x81, ba, da, mp, status = 0235;
 int rlint;
 
+uchar *disk;
+
 int
 rlread(ushort a, ushort)
 {
@@ -24,9 +26,8 @@ static void
 rldread(int da)
 {
 	int n;
-	uchar buf[256], *p;
+	uchar *p;
 	int m;
-	extern u16int curpc;
 	
 	n = 256 * ((da & 077) + 40 * (da >> 6));
 	for(; mp != 0; ){
@@ -34,11 +35,34 @@ rldread(int da)
 		if(m >= 128)
 			m = 128;
 		mp += m;
-		if(pread(fd, buf, 2*m, n) < 0)
-			sysfatal("pread: %r");
+		p = disk + n;
 		n += 2*m;
-		for(p = buf; m != 0; ba += 2, m--, p += 2)
+		for(; m != 0; ba += 2, m--, p += 2)
 			uniwrite(ba | csr << 12 & 0x30000, p[0] | p[1] << 8, 0xffff);
+	}
+}
+
+static void
+rldwrite(int da)
+{
+	int n;
+	uchar buf[256], buf2[256], *p;
+	ushort w;
+	int m;
+	
+	n = 256 * ((da & 077) + 40 * (da >> 6));
+	for(; mp != 0; ){
+		m = (ushort)-mp;
+		if(m >= 128)
+			m = 128;
+		mp += m;
+		p = disk + n;
+		n += 2*m;
+		for(; m != 0; ba += 2, m--, p += 2){
+			w = uniread(ba | csr << 12 & 0x30000, 0xffff);
+			p[0] = w;
+			p[1] = w >> 8;
+		}
 	}
 }
 
@@ -58,6 +82,9 @@ rlgo(void)
 	case 3:
 		break;
 	case 4:
+		break;
+	case 5:
+		rldwrite(da);
 		break;
 	case 6:
 		rldread(da);
@@ -103,7 +130,16 @@ rlirq(int ack)
 void
 rlinit(void)
 {
+	ulong len;
+
 	fd = open("v7.rl", OREAD);
 	if(fd < 0)
 		sysfatal("open: %r");
+	len = seek(fd, 0, 2);
+	disk = malloc(len);
+	if(disk == nil)
+		sysfatal("malloc: %r");
+	seek(fd, 0, 0);
+	if(readn(fd, disk, len) < len)
+		sysfatal("read: %r");
 }
