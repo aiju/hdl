@@ -46,7 +46,7 @@ static void
 rldwrite(int da)
 {
 	int n;
-	uchar buf[256], buf2[256], *p;
+	uchar *p;
 	ushort w;
 	int m;
 	

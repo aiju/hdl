@@ -71,6 +71,28 @@ stack(void)
 	print("\n");
 }
 
+void
+pcbuf(int n)
+{
+	enum { N = 256 };
+	static int pc[N], r[N][7];
+	static int ptr;
+	int i, j;
+	
+	if(n >= 0){
+		pc[ptr] = n;
+		for(j = 0; j < 7; j++)
+			r[ptr][j] = *reg[j];
+		if(++ptr == N)
+			ptr = 0;
+	}else{
+		i = ptr;
+		do
+			print("%c%.6o | %.6o %.6o %.6o | %.6o %.6o %.6o | %.6o\n", "KS?U"[pc[i]>>16], (ushort)pc[i], r[i][0], r[i][1], r[i][2], r[i][3], r[i][4], r[i][5], r[i][6]);
+		while(i = (i + 1) % N, i != ptr);
+	}
+}
+
 int
 psread(ushort, ushort)
 {
@@ -214,7 +236,7 @@ mmuabort(ushort a, int s, int p, int n)
 		mmr2 = curpc;
 	}
 	if(trace)
-		print("mmu abort %6o (pc=%.6o, ps=%.6o, par=%.6o, pdr=%.6o, err=%d)\n", a, curpc, ps, par[s][p], pdr[s][p], n);
+		print("mmu abort %c %6o (pc=%.6o, ps=%.6o, par=%.6o, pdr=%.6o, err=%d)\n", p >= 8 ? 'D' : 'I', a, curpc, ps, par[s][p], pdr[s][p], n);
 	return ~MMUFAULT;
 }
 
@@ -472,6 +494,7 @@ simrun(void)
 	int n;
 	static int sob;
 	static u32int acc;
+	static int ctr;
 
 	siminit();
 	
@@ -480,7 +503,9 @@ simrun(void)
 		instrctr++;
 		irqcheck(0);
 		curpc = pc;
+		pcbuf(ps << 2 & 0x30000 | curpc);
 		decode();
+		if((mmr0 >> 13) == 0) mmr1 = 0;
 		for(u = uops; u < uops + nuops; u++){
 			if(trace) print("%.6o %.6o %U\n", curpc, memread(curpc, 0, CURI), u);
 			hi = u->byte ? 0x80 : 0x8000;
@@ -508,6 +533,14 @@ simrun(void)
 						if(v < r0) fl |= FLAGC;
 					}
 					sob = fl & FLAGZ;
+					break;
+				case ALUADDR:
+					v = r0 + r1;
+					if((mmr0 >> 13) == 0)
+						if((mmr1 & 0xff) == 0)
+							mmr1 |= u->r[0] & 7 | r1 << 3 & 0xf8;
+						else if((mmr1 >> 8) == 0)
+							mmr1 |= u->r[0] << 8 & 0x700 | r1 << 11 & 0xf800;
 					break;
 				case ALUSUB:
 					r0 ^= r1;

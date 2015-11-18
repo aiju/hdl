@@ -39,6 +39,7 @@ enum {
 	ALUDIV3,
 	ALUXOR,
 	ALUCCOP,
+	ALUADDR,
 };
 extern char *opname[];
 extern char *condname[];

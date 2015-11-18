@@ -137,6 +137,8 @@ kbdproc(void *)
 	
 	for(;;){
 		read(0, &c, 1);
+		if(c == 0x18)
+			threadexitsall(nil);
 		sendul(kbdc, c);
 	}
 }
@@ -151,7 +153,7 @@ kbdputs(char *p)
 void
 devinit(void)
 {
-	kbdc = chancreate(sizeof(ulong), 64);
+	kbdc = chancreate(sizeof(ulong), 256);
 	kbdputs("boot\nrl(0,0)rl2unix\n");
 	proccreate(kbdproc, nil, 1024);
 }

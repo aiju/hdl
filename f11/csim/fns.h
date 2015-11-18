@@ -1,6 +1,6 @@
 void *emalloc(int);
 void decode(void);
-void symbrun(void);
+void symbrun(int, char**);
 void symbinit(void);
 void simrun(void);
 void rlinit(void);

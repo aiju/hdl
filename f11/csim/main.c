@@ -35,6 +35,7 @@ char *opname[] = {
 	"DIV3",
 	"XOR",
 	"CCOP",
+	"ADDR",
 };
 
 char *condname[] = {
@@ -143,13 +144,18 @@ void
 threadmain(int argc, char **argv)
 {
 	fmtinstall('U', Ufmt);
+	int symb;
 
+	symb = 0;
 	ARGBEGIN {
 	case 's':
-		symbinit();
-		symbrun();
-		return;
+		symb++;
+		break;
 	} ARGEND;
-	
-	simrun();
+
+	if(symb){
+		symbinit();
+		symbrun(argc, argv);
+	}else
+		simrun();
 }

@@ -173,6 +173,10 @@ runop(UOp *u)
 		case ALUBIS:
 			setfl(flags, u->fl, regs[u->d] = expr(EBINOP, u->alu, regimm(0), regimm(1), u->byte));
 			break;
+		case ALUADDR:
+			assert(!u->byte && u->fl == 0);
+			regs[u->d] = expr(EBINOP, ALUADD, regimm(0), regimm(1), 0);
+			break;
 		case ALUMUL1:
 			temp = expr(EBINOP, ALUMUL2, regimm(0), regimm(1), 0);
 			setfl(flags, u->fl, regs[u->d] = expr(EBINOP, ALUMUL1, regimm(0), regimm(1), 0));
@@ -851,9 +855,10 @@ symbtest(ushort ins, int pr)
 }
 
 void
-symbrun(void)
+symbrun(int argc, char **argv)
 {
-	int i;
+	int i, w;
+	char *r;
 
 	fetch = symbfetch;
 	getpc = symbgetpc;
@@ -866,4 +871,11 @@ symbrun(void)
 		symbtest(i, 0);
 	for(i = 077000; i <= 077777; i++)
 		symbtest(i, 0);
+	while(argc-- != 0){
+		w = strtol(*argv++, &r, 8);
+		if(*r != 0 || w < 0 || w > 0xffff)
+			print("invalid opcode %s\n", argv[-1]);
+		else
+			symbtest(w, 1);
+	}
 }

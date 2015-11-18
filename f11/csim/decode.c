@@ -216,7 +216,7 @@ decode(void)
 			writedst = 1;
 			mmode = mmodei = (w & 1<<15) != 0 ? PREVD : PREVI;
 			load(0, (w & 077) == 6 ? PREVSP : (w & 077) < 7 ? w & 7 : DSTD, 6, 0, 14, CURD);
-			op2(0, ALUADD, 6, 6, IMM, 2, 0);
+			op2(0, ALUADDR, 6, 6, IMM, 2, 0);
 			break;
 		case 067:
 			byte = w>>15;
@@ -341,20 +341,20 @@ decode(void)
 				break;
 			case 2:
 				load(byte, srcreg, asrcreg, 0, ldfl, CURD);
-				op2(0, ALUADD, asrcreg, asrcreg, IMM, byte && asrcreg != 6 ? 1 : 2, 0);
+				op2(0, ALUADDR, asrcreg, asrcreg, IMM, byte && asrcreg != 6 ? 1 : 2, 0);
 				break;
 			case 3:
 				load(0, SRCD, asrcreg, 0, 0, CURD);
-				op2(0, ALUADD, asrcreg, asrcreg, IMM, 2, 0);
+				op2(0, ALUADDR, asrcreg, asrcreg, IMM, 2, 0);
 				load(byte, srcreg, SRCD, 0, ldfl, CURD);
 				break;
 			case 4:
 				load(byte, srcreg, asrcreg, byte && asrcreg != 6 ? -1 : -2, ldfl, CURD);
-				op2(0, ALUADD, asrcreg, asrcreg, IMM, byte && asrcreg != 6 ? -1 : -2, 0);
+				op2(0, ALUADDR, asrcreg, asrcreg, IMM, byte && asrcreg != 6 ? -1 : -2, 0);
 				break;
 			case 5:
 				load(0, SRCD, asrcreg, -2, 0, CURD);
-				op2(0, ALUADD, asrcreg, asrcreg, IMM, -2, 0);
+				op2(0, ALUADDR, asrcreg, asrcreg, IMM, -2, 0);
 				load(byte, srcreg, SRCD, 0, ldfl, CURD);
 				break;
 			case 6:
@@ -436,11 +436,11 @@ decode(void)
 					adstreg = DSTA;
 				}
 				dstreg = DSTD;
-				op2(0, ALUADD, w & 7, w & 7, IMM, byte && (w & 7) != 6 ? 1 : 2, 0);
+				op2(0, ALUADDR, w & 7, w & 7, IMM, byte && (w & 7) != 6 ? 1 : 2, 0);
 				break;
 			case 3:
 				load(0, DSTA, adstreg, 0, 0, CURD);
-				op2(0, ALUADD, adstreg, adstreg, IMM, 2, 0);
+				op2(0, ALUADDR, adstreg, adstreg, IMM, 2, 0);
 				adstreg = DSTA;
 				if(readdst)
 					load(byte, DSTD, DSTA, 0, ldfl, mmode);
@@ -450,11 +450,11 @@ decode(void)
 				if(readdst)
 					load(byte, DSTD, adstreg, byte && adstreg != 6 ? -1 : -2, ldfl, mmode);
 				dstreg = DSTD;
-				op2(0, ALUADD, adstreg, adstreg, IMM, byte && adstreg != 6 ? -1 : -2, 0);
+				op2(0, ALUADDR, adstreg, adstreg, IMM, byte && adstreg != 6 ? -1 : -2, 0);
 				break;
 			case 5:
 				load(0, DSTA, adstreg, -2, 0, CURD);
-				op2(0, ALUADD, adstreg, adstreg, IMM, -2, 0);
+				op2(0, ALUADDR, adstreg, adstreg, IMM, -2, 0);
 				adstreg = DSTA;
 				if(readdst)
 					load(byte, DSTD, DSTA, 0, ldfl, mmode);
@@ -493,9 +493,8 @@ decode(void)
 				case 2:
 				case 6:
 					load(0, DSTA, 6, 0, 0, CURD);
-					op2(0, ALUADD, 6, 6, IMM, 2, 0);
-					load(0, DSTD, 6, 0, 0, CURD);
-					op2(0, ALUADD ,6, 6, IMM, 2, 0);
+					load(0, DSTD, 6, 2, 0, CURD);
+					op2(0, ALUADDR, 6, 6, IMM, 4, 0);
 					store(0, IMM, 0, DSTD, PS);
 					branch(CONDAL, DSTA, 0);
 					break;
@@ -521,7 +520,7 @@ decode(void)
 				asrcreg = DSTD;
 			}
 			store(0, 6, -2, asrcreg, CURD);
-			op2(0, ALUADD, 6, 6, IMM, -2, 0);
+			op2(0, ALUADDR, 6, 6, IMM, -2, 0);
 			if(asrcreg != DSTD)
 				op2(0, ALUMOV, asrcreg, IMM, IMM, getpc(), 0);
 		case 001:
@@ -539,7 +538,7 @@ decode(void)
 			case 0:
 				if((w & 7) == 7){
 					load(0, DSTD, 6, 0, 0, CURD);
-					op2(0, ALUADD, 6, 6, IMM, 2, 0);
+					op2(0, ALUADDR, 6, 6, IMM, 2, 0);
 					branch(CONDAL, DSTD, 0);
 				}else{
 					op1(0, ALUMOV, DSTA, adstreg, 0);
@@ -569,7 +568,7 @@ decode(void)
 			break;
 		case 050:
 			if((w & 0100070) == 0100000)
-				op2(byte, ALUBIC, dstreg, IMM, dstreg, 0xff00, 15);
+				op2(byte, ALUBIC, dstreg, IMM, dstreg, 0xff, 15);
 			else{
 				op2(byte, ALUMOV, dstreg, IMM, IMM, 0, 15);
 				dstreg = IMM;
