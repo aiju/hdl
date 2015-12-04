@@ -1,0 +1,16 @@
+</$objtype/mkfile
+
+TARG=vlt
+OFILES=\
+	main.$O \
+	lex.$O \
+	y.tab.$O \
+	ast.$O \
+
+YFILES=parse.y
+
+</sys/src/cmd/mkone
+
+lex.$O: y.tab.c
+
+YFLAGS=$YFLAGS -D1 -v
