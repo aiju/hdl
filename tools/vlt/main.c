@@ -21,7 +21,6 @@ void
 error(Line *l, char *fmt, ...)
 {
 	va_list va;
-	extern Line curline;
 	static char buf[ERRMAX];
 	
 	if(l == nil)
@@ -36,6 +35,7 @@ void
 main(int argc, char **argv)
 {
 	lexinit();
+	astinit();
 	
 	ARGBEGIN{
 	default:

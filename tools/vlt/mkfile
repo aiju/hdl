@@ -8,6 +8,7 @@ OFILES=\
 	ast.$O \
 
 YFILES=parse.y
+HFILES=dat.h fns.h
 
 </sys/src/cmd/mkone
 

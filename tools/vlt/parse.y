@@ -8,12 +8,32 @@
 
 
 	Line curline;
+	static Type *curtype;
+	static int cursymt, curdir;
+	static int netmode;
+	static ASTNode *curattrs;
+	static char *modname;
+	static ASTNode *modparams;
+	int oldports;
+	static int oldports0;
 %}
 
 %union {
 	Symbol *sym;
 	ASTNode *node;
 	Const *cons;
+	Type *type;
+	struct {
+		ASTNode *lo, *hi;
+	} range;
+	struct {
+		Symbol *sym;
+		ASTNode *val;
+	} symval;
+	struct {
+		Symbol *sym;
+		Type *t;
+	} symtype;
 	int i;
 }
 
@@ -36,10 +56,14 @@
 
 %type <node> expr primary attrs attr attrspecs attrspec const hiersymb hiersymbidx lexpr
 %type <node> args stat statnull lval lvals optdelaye delaye event caseitems caseitem
-%type <node> funccaseitem funccaseitems varass blockitems blockitem blockitemstats
-%type <node> funcblockitemstats funcstat stats funcstatnull funcstats eventexpr
-%type <node> delayval
-%type <i> case
+%type <node> varass blockitems blockitem blockitemstats stats eventexpr
+%type <node> delayval moditem moditems modgen paramlist lordports lordport lnamports
+%type <node> lnamport lnparass nparass instance modinst instances
+%type <type> stype ptype
+%type <range> range
+%type <i> case iotype nrtype reg
+%type <symval> isymb
+%type <symtype> arrayvar
 
 %token <cons> LNUMB
 %token <sym> LSYMB LSYSSYMB
@@ -67,16 +91,14 @@
 
 %%
 
-source:
-	| source moduledecl
-	;
-
+source: | source moduledecl | source error;
 moduledecl:
-	attrs LMODULE LSYMB lparamports lports ';' moditems LENDMODULE
-	;
+	attrs module LSYMB { $<node>$ = newscope(ASTMODULE, $3, $1, nil); curattrs = nil; oldports = -1; }
+	lparamports lports ';' moditems { $<node>4->sc.n = $moditems; typecheck($<node>4); } LENDMODULE;
+module: LMODULE | LMACROMODULE;
 
 lparamports:
-	| '#' '(' paramports ')'
+	| '#' '(' paramports ecomma ')'
 	;
 
 paramports:
@@ -85,116 +107,140 @@ paramports:
 	;
 
 lports:
-	| '(' ports ')'
+	| '(' ports ecomma ')' { oldports = 1; }
 	| '(' ')'
-	| '(' portdecls ')'
+	| '(' portdecls ecomma ')' { oldports = 0; }
 	;
+ecomma: | ',' { lerror(nil, "extra comma in list"); };
 ports: port | ports ',' port;
 extraports: | extraports ',' port;
 port:
-	LSYMB
-	| LSYMB '[' const ']'
-	| LSYMB range
+	LSYMB { portdecl($1, PORTUND, nil, nil, nil); }
+	| LSYMB '[' const ']' { if(lint) error(nil, "unsupported construct"); }
+	| LSYMB range { if(lint) error(nil, "unsupported construct"); }
 	;
 	
-portdecls: portdecl | portdecls ',' portdecl | portdecls ',' LSYMB;
-portdecl:
-	attrs LINOUT ntype stype LSYMB
-	| attrs LINPUT ntype stype LSYMB
-	| attrs LOUTPUT ntype stype LSYMB
-	| attrs LOUTPUT LREG stype isymb
-	;
-moditems: | moditems moditem;
+portdecls: portdecl | portdecls ',' portdecl | portdecls ',' isymb { portdecl($3.sym, curdir, $3.val, curtype, curattrs); };
+portdecle: portdecl | portdecle ',' isymb { portdecl($3.sym, curdir, $3.val, curtype, curattrs); };
+portdecl: attrs iotype nrtype stype isymb { portdecl($5.sym, curdir = $2 | $3, $5.val, curtype = $4, $1); };
+moditems: { $$ = nil; } | moditems moditem { $$ = nodecat($1, $2); } ;
 
 moditem:
 	modgen
-	| portdecl extrasymbs ';'
-	| attrs geninst
-	| attrs paramdecl extraassigns ';'
-	| attrs localparamdecl ';'
-	;
-modgen:
-	attrs netdecl ';'
-	| attrs regdecl ';'
-	| attrs vardecl ';'
-	| attrs genvardecl ';'
-	| attrs LASSIGN delay3 netassigns ';'
-	| attrs taskdecl
-	| attrs funcdecl
-	| attrs modinst ';'
-	| attrs LINITIAL stat
-	| attrs LALWAYS stat
-	| attrs LDEFPARAM paramassigns ';'
+	| portdecle ecomma ';' { $$ = nil; }
+	| attrs geninst { $$ = nil; }
+	| attrs paramdecl extraassigns ';' { $$ = nil; }
+	| attrs localparamdecl ';' { $$ = nil; }
+	| error { $$ = nil; }
 	;
 
-netdecl: ntype stype delay3 symbdims;
+modgen:
+	attrs netdecl ecomma ';' { $$ = nil; }
+	| attrs regdecl ';' { $$ = nil; } 
+	| attrs vardecl ';' { $$ = nil; }
+	| attrs genvardecl ';' { $$ = nil; }
+	| attrs LASSIGN delay3 netassigns ecomma ';' { $$ = NOPE; }
+	| attrs taskdecl { $$ = nil; }
+	| attrs funcdecl { $$ = nil; }
+	| attrs modinst ';' { $$ = $2; }
+	| attrs LINITIAL stat { $$ = node(ASTINITIAL, $3, $1); }
+	| attrs LALWAYS stat { $$ = node(ASTALWAYS, $3, $1); }
+	| attrs LDEFPARAM paramassigns ';' { $$ = NOPE; }
+	;
+
+netdecl: ntype stype delay3 { curtype = $2; netmode = 0; } netvar | netdecl ',' netvar;
+netvar: arrayvar {
+		if(netmode == 2 && lint)
+			error(nil, "mixed net assignment declarations");
+		netmode = 1;
+		decl($1.sym, SYMNET, nil, $1.t, curattrs);
+	}
+	| LSYMB '=' expr {
+		if(netmode == 1 && lint)
+			error(nil, "mixed net assignment declarations");
+		netmode = 2;
+		decl($1, SYMNET, $3, curtype, curattrs);
+	};
 
 vardecl:
-	LEVENT symblist
-	| LINTEGER varlist
-	| LREAL varlist
-	| LREALTIME varlist
-	| LTIME varlist
+	eventdecl ecomma
+	| LINTEGER { curtype = type(TYPINT); cursymt = SYMREG; } varlist ecomma
+	| LREAL { curtype = type(TYPREAL); cursymt = SYMREG; } varlist ecomma
+	| LREALTIME { curtype = type(TYPREAL); cursymt = SYMREG; } varlist ecomma
+	| LTIME { curtype = type(TYPTIME); cursymt = SYMREG; } varlist ecomma
 	;
-genvardecl: LGENVAR symblist;
-regdecl: LREG stype varlist;
+eventdecl: LEVENT LSYMB { decl($2, SYMEVENT, nil, nil, curattrs); }
+	| eventdecl ',' LSYMB { decl($3, SYMEVENT, nil, nil, curattrs); }
+	;
+genvardecl: LGENVAR LSYMB { decl($2, SYMGENVAR, nil, nil, curattrs); }
+	| genvardecl ',' LSYMB { decl($3, SYMGENVAR, nil, nil, curattrs); }
+	;
+regdecl: LREG stype { curtype = $2; cursymt = SYMREG; } varlist ecomma;
 varlist: var | varlist ',' var;
 var:
-	LSYMB '=' expr
-	| arrayvar;
-arrayvar: LSYMB | arrayvar range;
+	LSYMB '=' expr { decl($1, cursymt, $3, curtype, curattrs); }
+	| arrayvar { decl($1.sym, cursymt, nil, $1.t, curattrs); }
+	;
+arrayvar:
+	LSYMB { $$.sym = $1; $$.t = curtype; }
+	| arrayvar range { $$.sym = $1.sym; $$.t = type(TYPMEM, $1.t, $2.hi, $2.lo); }
+	;
 
-paramdecl: LPARAMETER ptype paramassign;
-localparamdecl: LLOCALPARAM ptype paramassigns;
+paramdecl: LPARAMETER ptype { curtype = $2; cursymt = SYMPARAM; } paramassign;
+localparamdecl: LLOCALPARAM ptype { curtype = $2; cursymt = SYMLPARAM; } paramassigns;
 paramassigns: paramassign | paramassigns ',' paramassign;
 extraassigns: | extraassigns ',' paramassigns;
-paramassign: LSYMB '=' const;
+paramassign: LSYMB '=' const { decl($1, cursymt, $3, curtype, curattrs); };
 
-stype:
-	| range
-	| LSIGNED
-	| LSIGNED range
+stype: { $$ = type(TYPBIT, 0); }
+	| range { $$ = type(TYPBITV, 0, $1.hi, $1.lo); }
+	| LSIGNED { $$ = type(TYPBIT, 1); }
+	| LSIGNED range { $$ = type(TYPBITV, 1, $2.hi, $2.lo); }
 	;
 ptype:
-	stype
-	| LINTEGER
-	| LREAL
-	| LREALTIME
-	| LTIME
+	{ $$ = type(TYPCONST, 0); }
+	| range { $$ = type(TYPBITV, 0, $1.hi, $1.lo); }
+	| LSIGNED { $$ = type(TYPCONST, 1); }
+	| LSIGNED range { $$ = type(TYPBITV, 1, $2.hi, $2.lo); }
+	| LINTEGER { $$ = type(TYPINT); }
+	| LREAL { $$ = type(TYPREAL); }
+	| LREALTIME { $$ = type(TYPREAL); }
+	| LTIME { $$ = type(TYPTIME); }
 	;
 
-symblist: LSYMB | symblist ',' LSYMB;
-extrasymbs: | extrasymbs ',' LSYMB;
-symbdim: LSYMB | symbdim range;
-symbdimeq: symbdim | LSYMB '=' expr;
-symbdims: symbdimeq | symbdims ',' symbdimeq;
-isymb: LSYMB | LSYMB '=' expr;
-attrs: { $$ = nil; }
-	| attrs attr { $$ = nodecat($1, $2); }
+isymb: LSYMB { $$.sym = $1; $$.val = nil; } | LSYMB '=' expr { $$.sym = $1; $$.val = $3; };
+attrs: { $$ = curattrs = nil; }
+	| attrs attr { $$ = curattrs = nodecat($1, $2); }
 	;
-attr: LATTRSTART attrspecs LATTREND { $$ = $2; };
+attr: LATTRSTART attrspecs ecomma LATTREND { $$ = $2; };
 attrspecs: attrspec | attrspecs ',' attrspec { $$ = nodecat($1, $3); }
 attrspec: LSYMB { $$ = node(ASTATTR, $1, nil); } 
 	| LSYMB '=' const { $$ = node(ASTATTR, $1, $3); }
 	;
 
 ntype: LSUPPLY0 | LSUPPLY1 | LTRI | LTRIAND | LTRIOR | LTRI0 | LTRI1 | LWIRE | LWAND | LWOR;
+nrtype: { $$ = 0; } | ntype { $$ = PORTNET; } | LREG { $$ = PORTREG; };
+iotype: LINPUT { $$ = PORTIN; } | LOUTPUT { $$ = PORTOUT; } | LINOUT { $$ = PORTIO; };
 delay2: | '#' delayval | '#' '(' delayval ')' | '#' '(' delayval ',' delayval ')' ;
 delay3: delay2 | '#' '(' delayval ',' delayval ',' delayval ')' ;
 delayval: LNUMB { $$ = node(ASTCONST, $1); } | LSYMB { $$ = node(ASTSYM, $1); };
-range: '[' const ':' const ']';
-optrange: | range;
+range: '[' const ':' const ']' { $$.hi = $2; $$.lo = $4; };
 
-modinst: LSYMB paramlist instances;
-paramlist: | '#' '(' lexpr ')' | '#' '(' lnparass ')';
+modinst: LSYMB paramlist { modname = $1->name; modparams = $2; } instances { $$ = $4; };
+paramlist: { $$ = nil; }
+	| '#' '(' lexpr ')' { $$ = $3; }
+	| '#' '(' lnparass ecomma ')' { $$ = $3; };
 lnparass: nparass | lnparass ',' nparass;
-nparass: '.' LSYMB '(' expr ')';
-instances: instance | instances ',' instance;
-instance: LSYMB optrange '(' lordports ')' | LSYMB optrange '(' lnamports ')';
-lordports: lordport | lordports ',' lordport;
-lnamports: lnamport | lnamports ',' lnamport;
-lordport: attrs | attrs expr;
-lnamport: attrs '.' LSYMB '(' ')' | attrs '.' LSYMB '(' expr ')';
+nparass: '.' LSYMB '(' expr ')' { $$ = node(ASTPCON, $2->name, $4, nil); };
+instances: instance | instances ',' instance { $$ = nodecat($1, $3); };
+instance: LSYMB '(' lordports ')' { $$ = node(ASTMINST, modname, modparams, $3, curattrs); decl($1, SYMMINST, $$, nil, curattrs); }
+	| LSYMB '(' lnamports ecomma ')' { $$ = node(ASTMINST, modname, modparams, $3, curattrs); decl($1, SYMMINST, $$, nil, curattrs); };
+lordports: lordport | lordports ',' lordport { $$ = nodecat($1, $3); };
+lnamports: lnamport | lnamports ',' lnamport { $$ = nodecat($1, $3); };
+lordport: attrs { $$ = node(ASTPCON, nil, nil, $1); } | attrs expr { $$ = node(ASTPCON, nil, $2, $1); };
+lnamport: attrs '.' LSYMB '(' ')' { $$ = node(ASTPCON, $3, nil, $1); }
+	| attrs '.' LSYMB '(' expr ')' { $$ = node(ASTPCON, $3, $5, $1); }
+	;
 
 const: expr;
 
@@ -241,18 +287,19 @@ expr:
 
 primary: LNUMB { $$ = node(ASTCONST, $1); }
 	| hiersymbidx
-	| '{' lexpr '}' { $$ = node(ASTCAT, $2); }
+	| '{' lexpr '}' { $$ = node(ASTCAT, $2, nil); }
+	| '{' expr '{' lexpr '}' '}' { $$ = node(ASTCAT, $4, $2); }
 	| hiersymb attrs '(' lexpr ')' { $$ = node(ASTCALL, $1, $4, $2); }
 	| LSYSSYMB args { $$ = node(ASTCALL, $1, $2, nil); }
 	;
 
 netassigns: varass | netassigns ',' varass;
 varass: lval '=' expr { $$ = node(ASTASS, $1, $3, nil, nil); };
-lval: hiersymbidx | '{' lvals '}' { $$ = node(ASTCAT, $2); };
+lval: hiersymbidx | '{' lvals ecomma '}' { $$ = node(ASTCAT, $2, nil); };
 lvals: lval | lvals ',' lval { $$ = nodecat($1, $3); };
 
 hiersymbidx:
-	hiersymb
+	hiersymb { checksym($$ = $1); }
 	| hiersymbidx '[' expr ']' { $$ = node(ASTIDX, 0, $1, $3, nil); }
 	| hiersymbidx '[' const ':' const ']' { $$ = node(ASTIDX, 1, $1, $3, $5); }
 	| hiersymbidx '[' expr LOPLUSCOLON const ']' { $$ = node(ASTIDX, 2, $1, $3, $5); }
@@ -265,28 +312,50 @@ hiersymb: LSYMB { $$ = node(ASTSYM, $1); }
 lexpr: expr | lexpr ',' expr;
 
 funcdecl:
-	LFUNCTION automatic ptype LSYMB ';' funcitems funcstat LENDFUNCTION
-	| LFUNCTION automatic ptype LSYMB '(' funcports ')' ';' blockitems funcstat LENDFUNCTION
+	LFUNCTION automatic ptype LSYMB ';' {
+			$<node>$ = newscope(ASTFUNC, $4, curattrs, $3);
+			oldports0 = oldports;
+			oldports = 2;
+		} taskitems stat LENDFUNCTION {
+			scopeup();
+			oldports = oldports0;
+			$<node>6->sc.n = $stat;
+		}
+	| LFUNCTION automatic ptype LSYMB '(' {
+			$<node>$ = newscope(ASTFUNC, $4, curattrs, $3);
+		} funcports ')' ';' blockitems stat LENDFUNCTION {
+			scopeup();
+			$<node>6->sc.n = $stat;
+		}
 	;
 taskdecl:
-	LTASK automatic LSYMB ';' taskitems stat LENDTASK
-	| LTASK automatic LSYMB '(' taskports ')' ';' taskitems stat LENDTASK
+	LTASK automatic LSYMB ';' {
+			$<node>$ = newscope(ASTTASK, $3, curattrs, nil);
+			oldports0 = oldports;
+			oldports = 3;
+		} taskitems stat LENDTASK {
+			scopeup();
+			oldports = oldports0;
+			$<node>5->sc.n = $stat;
+		}
+	| LTASK automatic LSYMB '(' {
+			$<node>$ = newscope(ASTTASK, $3, curattrs, nil);
+		} taskports ')' ';' blockitems stat LENDTASK {
+			$<node>5->sc.n = $stat;
+		}
 	;
 
 automatic: | LAUTOMATIC;
-funcitems: | funcitems funcitem;
-funcitem: blockitem | tfinput extraports ';';
-funcports: attrs tfinput | funcports ',' attrs tfinput;
+funcports: tfinput | funcports ',' tfinput | funcports ',' port;
 taskports: taskport | taskports ',' taskport | taskports ',' port;
 taskitems: | taskitems taskitem;
 taskitem: blockitem | taskport extraports ';';
-taskport: attrs tfinput
-	| attrs LINOUT reg stype port
-	| attrs LOUTPUT reg stype port
+tfinput: attrs LINPUT reg stype { curdir = PORTIN | $3; curtype = $4; } port;
+taskport: tfinput
+	| attrs LINOUT reg stype { curdir = PORTIO | $3; curtype = $4; } port
+	| attrs LOUTPUT reg stype { curdir = PORTOUT | $3; curtype = $4; } port
 	;
-reg: | LREG;
-
-tfinput: LINPUT reg stype port;
+reg: { $$ = PORTNET; } | LREG { $$ = PORTREG; };
 
 blockitem:
 	attrs LREG stype blockvars
@@ -296,7 +365,6 @@ blockitem:
 	;
 blockitems: { $$ = nil; } | blockitems blockitem { $$ = nodecat($1, $2); };
 blockitemstats: { $$ = nil; } | blockitemstats blockitem { $$ = nodecat($1, $2); } | blockitemstats stat { $$ = nodecat($1, $2); };
-funcblockitemstats: { $$ = nil; } | funcblockitemstats blockitem { $$ = nodecat($1, $2); } | funcblockitemstats funcstat { $$ = nodecat($1, $2); } ;
 blockvars: blockvar | blockvars ',' blockvar;
 blockvar: LSYMB | blockvar range;
 
@@ -312,40 +380,26 @@ stat:
 	| attrs LREPEAT '(' expr ')' stat { $$ = node(ASTREPEAT, $4, $6, $1); }
 	| attrs LWHILE '(' expr ')' stat { $$ = node(ASTWHILE, $4, $6, $1); }
 	| attrs LFOR '(' varass ';' expr ';' varass ')' stat { $$ = node(ASTFOR, $4, $6, $8, $10, $1); }
-	| attrs LFORK ':' LSYMB blockitemstats LJOIN { $$ = node(ASTFORK, $5, $4, $1); }
-	| attrs LFORK stats LJOIN { $$ = node(ASTFORK, $3, nil, $1); }
-	| attrs LBEGIN ':' LSYMB blockitemstats LEND { $$ = node(ASTBLOCK, $5, $4, $1); }
-	| attrs LBEGIN stats LEND { $$ = node(ASTBLOCK, $3, nil, $1); }
+	| attrs LFORK ':' LSYMB { $$ = newscope(ASTFORK, $4, $1, nil); } blockitemstats LJOIN { $$ = $<node>5; scopeup(); $$->sc.n = $6; }
+	| attrs LFORK stats LJOIN { $$ = node(ASTFORK, $3, $1); }
+	| attrs LBEGIN ':' LSYMB { $$ = newscope(ASTBLOCK, $4, $1, nil); } blockitemstats LEND { $$ = $<node>5; scopeup(); $$->sc.n = $6; }
+	| attrs LBEGIN stats LEND { $$ = node(ASTBLOCK, $3, $1); }
 	| attrs LASSIGN lval '=' expr { $$ = node(ASTASSIGN, 0, $3, $5, $1); }
 	| attrs LDEASSIGN lval { $$ = node(ASTASSIGN, 1, $3, nil, $1); }
 	| attrs LFORCE lval '=' expr { $$ = node(ASTFORCE, 2, $3, $5, $1); }
 	| attrs LRELEASE lval { $$ = node(ASTFORCE, 3, $3, nil, $1); }
-	| attrs delaye statnull 
+	| attrs delaye statnull { $$ = $2; $$->n2 = $3; $$->attrs = $1; }
 	| attrs LSYSSYMB args ';'
 	| attrs hiersymb args ';'
 	| attrs LWAIT '(' expr ')' statnull
-
-funcstat:
-	attrs lval '=' expr ';' { $$ = node(ASTASS, $2, $4, nil, $1); }
-	| attrs case '(' expr ')' funccaseitems LENDCASE { $$ = node(ASTCASE, $2, $4, $6, $1); }
-	| attrs LIF '(' expr ')' funcstatnull { $$ = node(ASTIF, $4, $6, nil, $1); }
-	| attrs LIF '(' expr ')' funcstatnull LELSE funcstatnull { $$ = node(ASTIF, $4, $6, nil, $1); }
-	| attrs LFOREVER funcstat { $$ = node(ASTREPEAT, nil, $3, $1); }
-	| attrs LREPEAT '(' expr ')' funcstat { $$ = node(ASTREPEAT, $4, $6, $1); }
-	| attrs LWHILE '(' expr ')' funcstat { $$ = node(ASTWHILE, $4, $6, $1); }
-	| attrs LFOR '(' varass ';' expr ';' varass ')' funcstat { $$ = node(ASTFOR, $4, $6, $8, $10, $1); }
-	| attrs LBEGIN ':' LSYMB funcblockitemstats LEND { $$ = node(ASTBLOCK, $5, $4, $1); }
-	| attrs LBEGIN funcstats LEND { $$ = node(ASTBLOCK, $3, nil, $1); }
-	| attrs LDISABLE hiersymb ';' { $$ = node(ASTDISABLE, $3, $1); }
-	| attrs LSYSSYMB args ';' { $$ = node(ASTCALL, $2, $3, $1); }
+	| error { $$ = nil; }
+	;
 
 statnull: stat | attrs ';' { $$ = nil; };
 stats: { $$ = nil; } | stats stat { $$ = nodecat($1, $2); };
-funcstatnull: funcstat | attrs ';' { $$ = nil; };
-funcstats: { $$ = nil; } | funcstats funcstat { $$ = nodecat($1, $2); };
 
-event: '@' LSYMB { $$ = node(ASTAT¸ node(ASTSYM, $2)); }
-	| '@' '(' eventexpr ')' { $$ = node(ASTAT, $3); }
+event: '@' LSYMB { $$ = node(ASTAT, node(ASTSYM, $2)); }
+	| '@' '(' eventexpr ecomma ')' { $$ = node(ASTAT, $3); }
 	| '@' '*' { $$ = node(ASTAT, nil); }
 	| '@' '(' '*' ')' { $$ = node(ASTAT, nil); }
 	;
@@ -359,17 +413,12 @@ delaye: '#' delayval { $$ = node(ASTDELAY, $2); } | event;
 optdelaye: { $$ = nil; } | delaye;
 case: LCASE { $$ = 0; } | LCASEZ { $$ = 1; } | LCASEX { $$ = 2; };
 caseitems: caseitem | caseitems caseitem { $$ = nodecat($1, $2); };
-caseitem: lexpr ':' statnull { $$ = node(ASTCASIT, $1, $3); }
+caseitem: lexpr ecomma ':' statnull { $$ = node(ASTCASIT, $1, $4); }
 	| LDEFAULT statnull { $$ = node(ASTCASIT, nil, $2); }
 	| LDEFAULT ':' statnull { $$ = node(ASTCASIT, nil, $3); }
 	;
-funccaseitems: funccaseitem | funccaseitems funccaseitem { $$ = nodecat($1, $2); };
-funccaseitem: lexpr ':' funcstatnull { $$ = node(ASTCASIT, $1, $3); }
-	| LDEFAULT funcstatnull { $$ = node(ASTCASIT, nil, $2); }
-	| LDEFAULT ':' funcstatnull { $$ = node(ASTCASIT, nil, $3); }
-	;
 
-args: { $$ = nil; } | '(' lexpr ')' { $$ = $2; };
+args: { $$ = nil; } | '(' lexpr ecomma ')' { $$ = $2; };
 
 geninst: LGENERATE genitems LENDGENERATE;
 genitems: | genitems genitem;
@@ -383,7 +432,7 @@ genitem:
 	;
 
 gencaseitems: gencaseitem | gencaseitems gencaseitem;
-gencaseitem: lexpr ':' genitemnull | LDEFAULT genitemnull | LDEFAULT ':' genitemnull;
+gencaseitem: lexpr ecomma ':' genitemnull | LDEFAULT genitemnull | LDEFAULT ':' genitemnull;
 genitemnull: genitem | ';';
 
 %%
