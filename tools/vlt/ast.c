@@ -8,40 +8,46 @@ SymTab global;
 SymTab *scope = &global;
 
 static char *astname[] = {
-	[ASTINVAL] "ASTINVAL",
+	[ASTALWAYS] "ASTALWAYS",
 	[ASTASS] "ASTASS",
-	[ASTCASS] "ASTCASS",
-	[ASTAT] "ASTAT",
 	[ASTATTR] "ASTATTR",
+	[ASTAT] "ASTAT",
 	[ASTBIN] "ASTBIN",
 	[ASTBLOCK] "ASTBLOCK",
 	[ASTCALL] "ASTCALL",
 	[ASTCASE] "ASTCASE",
 	[ASTCASIT] "ASTCASIT",
+	[ASTCASS] "ASTCASS",
 	[ASTCAT] "ASTCAT",
+	[ASTCINT] "ASTCINT",
 	[ASTCONST] "ASTCONST",
 	[ASTDASS] "ASTDASS",
 	[ASTDELAY] "ASTDELAY",
 	[ASTDISABLE] "ASTDISABLE",
-	[ASTFOR] "ASTFOR",
 	[ASTFORK] "ASTFORK",
+	[ASTFOR] "ASTFOR",
+	[ASTFUNC] "ASTFUNC",
+	[ASTGENCASE] "ASTGENCASE",
+	[ASTGENFOR] "ASTGENFOR",
+	[ASTGENIF] "ASTGENIF",
 	[ASTHIER] "ASTHIER",
-	[ASTMODULE] "ASTMODULE",
 	[ASTIDX] "ASTIDX",
 	[ASTIF] "ASTIF",
+	[ASTINITIAL] "ASTINITIAL",
+	[ASTINVAL] "ASTINVAL",
+	[ASTMINSTN] "ASTMINSTN",
+	[ASTMINSTO] "ASTMINSTO",
+	[ASTMODULE] "ASTMODULE",
+	[ASTPCON] "ASTPCON",
 	[ASTREPEAT] "ASTREPEAT",
 	[ASTSYM] "ASTSYM",
+	[ASTTASK] "ASTTASK",
+	[ASTTCALL] "ASTTCALL",
 	[ASTTERN] "ASTTERN",
 	[ASTTRIG] "ASTTRIG",
 	[ASTUN] "ASTUN",
+	[ASTWAIT] "ASTWAIT",
 	[ASTWHILE] "ASTWHILE",
-	[ASTINITIAL] "ASTINITIAL",
-	[ASTALWAYS] "ASTALWAYS",
-	[ASTFUNC] "ASTFUNC",
-	[ASTTASK] "ASTTASK",
-	[ASTPCON] "ASTPCON",
-	[ASTMINST] "ASTMINST",
-	[ASTCINT] "ASTCINT",
 };
 
 static char *opname[] = {
@@ -102,7 +108,7 @@ static char *symtname[] = {
 	[SYMMINST] "instance",
 };
 
-static uint
+uint
 hash(char *s)
 {
 	uint c;
@@ -114,7 +120,7 @@ hash(char *s)
 }
 
 static Symbol *
-makesym(char *n)
+makesym(SymTab *st, char *n)
 {
 	Symbol *s;
 	int h;
@@ -122,26 +128,36 @@ makesym(char *n)
 	s = emalloc(sizeof(Symbol));
 	s->name = strdup(n);
 	h = hash(n) % SYMHASH;
-	s->next = scope->sym[h];
-	s->st = scope;
+	s->next = st->sym[h];
+	s->st = st;
 	s->Line = curline;
-	scope->sym[h] = s;
+	st->sym[h] = s;
 	return s;
 }
 
 Symbol *
-getsym(char *n)
+looksym(SymTab *st, int hier, char *n)
 {
-	SymTab *st;
 	Symbol *s;
 	int h;
 	
 	h = hash(n) % SYMHASH;
-	for(st = scope; st != nil; st = st->up)
+	for(; st != nil; st = hier ? st->up : nil)
 		for(s = st->sym[h]; s != nil; s = s->next)
 			if(strcmp(s->name, n) == 0)
 				return s;
-	return makesym(n);
+	return nil;
+}
+
+Symbol *
+getsym(SymTab *st, int hier, char *n)
+{
+	Symbol *s;
+	
+	s = looksym(st, hier, n);
+	if(s != nil)
+		return s;
+	return makesym(st, n);
 }
 
 static int
@@ -190,7 +206,8 @@ typefmt(Fmt *f)
 	case TYPBITV: return fmtstrcpy(f, "bitv");
 	case TYPREAL: return fmtstrcpy(f, "real");
 	case TYPMEM: return fmtstrcpy(f, "memory");
-	case TYPEVENT: return fmtstrcpy(f, "event");	
+	case TYPEVENT: return fmtstrcpy(f, "event");
+	case TYPUNSZ: return fmtstrcpy(f, "unnamed");
 	default: return fmtprint(f, "??? (%d)", t->t);
 	}
 }
@@ -239,6 +256,7 @@ node(int t, ...)
 		break;
 	case ASTIF:
 	case ASTTERN:
+	case ASTGENIF:
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		n->n3 = va_arg(va, ASTNode *);
@@ -266,8 +284,10 @@ node(int t, ...)
 	case ASTPCON:
 		n->pcon.name = va_arg(va, char *);
 		n->pcon.n = va_arg(va, ASTNode *);
+		n->attrs = va_arg(va, ASTNode *);
 		break;
-	case ASTMINST:
+	case ASTMINSTO:
+	case ASTMINSTN:
 		n->minst.name = va_arg(va, char *);
 		n->minst.param = va_arg(va, ASTNode *);
 		n->minst.ports = va_arg(va, ASTNode *);
@@ -283,6 +303,7 @@ node(int t, ...)
 		break;
 	case ASTWHILE:
 	case ASTREPEAT:
+	case ASTWAIT:
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		n->attrs = va_arg(va, ASTNode *);
@@ -292,6 +313,7 @@ node(int t, ...)
 		n->pcon.n = va_arg(va, ASTNode *);
 		break;
 	case ASTFOR:
+	case ASTGENFOR:
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		n->n3 = va_arg(va, ASTNode *);
@@ -309,11 +331,13 @@ node(int t, ...)
 		n->attrs = va_arg(va, ASTNode *);
 		break;
 	case ASTCALL:
+	case ASTTCALL:
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		n->attrs = va_arg(va, ASTNode *);
 		break;
 	case ASTCASE:
+	case ASTGENCASE:
 		n->op = va_arg(va, int);
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
@@ -336,21 +360,27 @@ repl(ASTNode *n, ASTNode *r)
 }
 
 Symbol *
-decl(Symbol *s, int t, ASTNode *n, Type *type, ASTNode *attrs)
+decl(Symbol *s, int t, ASTNode *n, Type *typ, ASTNode *attrs)
 {
 	if(s->st != scope)
-		s = makesym(s->name);
+		s = makesym(scope, s->name);
 	if(s->t != SYMNONE)
 		if(s->t == SYMPORT)
-			portdecl(s, PORTNET, n, type, attrs);
+			portdecl(s, PORTNET, n, typ, attrs);
 		else
 			lerror(nil, "'%s' redeclared", s->name);
-	if(type != nil)
-		typeok(&curline, type);
+	switch(t){
+	case SYMFUNC:
+		if(typ->t == TYPUNSZ)
+			typ = type(TYPBITS, typ->sign, node(ASTCINT, 1));
+		break;
+	}
+	if(typ != nil)
+		typeok(&curline, typ);
 	s->t = t;
 	s->n = n;
 	s->Line = curline;
-	s->type = type;
+	s->type = typ;
 	s->attrs = attrs;
 	return s;
 }
@@ -386,8 +416,9 @@ portdecl(Symbol *s, int dir, ASTNode *n, Type *type, ASTNode *attrs)
 	if(oldports == 2 && (dir & 3) != PORTIN)
 		lerror(nil, "'%s' functions cannot have outputs", s->name);
 	s = decl(s, SYMPORT, n, type, attrs);
+	s->portnext = nil;
 	*s->st->lastport = s;
-	s->st->lastport = &s->next;
+	s->st->lastport = &s->portnext;
 	s->dir = dir;
 dircheck:
 	if((s->dir & PORTREG) != 0 && ((s->dir & 3) == PORTIN || (s->dir & 3) == PORTIO))
@@ -416,6 +447,8 @@ newscope(int t, Symbol *s, ASTNode *attr, Type *type)
 	st->lastport = &st->ports;
 	scope = st;
 	n->sc.st = st;
+	if(t == ASTFUNC)
+		decl(s, SYMREG, nil, type, nil);
 	return n;
 }
 
@@ -438,7 +471,7 @@ nodecat(ASTNode *n, ASTNode *m)
 	return n;
 }
 
-Type *realtype, *inttype, *timetype, *bittype, *sbittype, *unsztype;
+Type *realtype, *inttype, *timetype, *bittype, *sbittype, *unsztype, *eventtype;
 
 void
 astinit(void)
@@ -449,6 +482,7 @@ astinit(void)
 	bittype = type(TYPBITS, 0, node(ASTCINT, 1));
 	sbittype = type(TYPBITS, 1, node(ASTCINT, 1));
 	unsztype = type(TYPUNSZ, 1);
+	eventtype = type(TYPEVENT);
 	
 	fmtinstall('A', astfmt);
 	fmtinstall(L'σ', symtfmt);
@@ -706,10 +740,40 @@ lvalcheck(ASTNode *n, int cont)
 }
 
 void
+condcheck(ASTNode *n)
+{
+	int t1;
+
+	insist(n->type != nil);
+	t1 = n->type->t;
+	if(t1 != TYPUNSZ && t1 != TYPBITS && t1 != TYPBITV)
+		lerror(n, "%T as condition", n->type);
+}
+
+int
+intcheck(ASTNode *n, int realok, char *s)
+{
+	int t1;
+
+	if(n == nil)
+		return 0;
+	if(n->type == nil)
+		return 1;
+	t1 = n->type->t;
+	if(t1 != TYPUNSZ && t1 != TYPBITS && t1 != TYPBITV && (!realok || t1 != TYPREAL)){
+		lerror(n, s, n->type);
+		return 1;
+	}
+	return 0;
+}
+
+void
 typecheck(ASTNode *n, Type *ctxt)
 {
-	ASTNode *m, *r;
+	ASTNode *m, *r, *f;
 	int t1, t2, s;
+	Symbol *p;
+	SymTab *st;
 
 	if(n == nil)
 		return;
@@ -717,11 +781,14 @@ typecheck(ASTNode *n, Type *ctxt)
 		return;
 	switch(n->t){
 	case ASTALWAYS:
+	case ASTINITIAL:
 		typecheck(n->n, nil);
 		break;
 	case ASTMODULE:
 	case ASTBLOCK:
 	case ASTFORK:
+	case ASTFUNC:
+	case ASTTASK:
 		for(m = n->sc.n; m != nil; m = m->next)
 			typecheck(m, nil);
 		break;
@@ -824,9 +891,8 @@ typecheck(ASTNode *n, Type *ctxt)
 		}
 		if(n->n2 != nil){
 			typecheck(n->n2, nil);
-			if(n->n2->type == nil || n->n2->type->t != TYPUNSZ && n->n2->type->t != TYPBITS && n->n2->type->t != TYPBITV)
-				lerror(n->n2, "%T in replication", n->n2->type);
-			else if(!n->n2->isconst)
+			if(intcheck(n->n2, 0, "%T in replication")){
+			}else if(!n->n2->isconst)
 				lerror(n->n2, "replication factor not a constant");
 			else
 				r = cfold(node(ASTBIN, OPMUL, r, n->n2), unsztype);
@@ -835,7 +901,7 @@ typecheck(ASTNode *n, Type *ctxt)
 		return;
 	case ASTSYM:
 		n->type = n->sym->type;
-		n->isconst = n->sym->t == SYMPARAM || n->sym->t == SYMLPARAM;
+		n->isconst = n->sym->t == SYMPARAM || n->sym->t == SYMLPARAM || n->sym->t == SYMGENVAR;
 		break;
 	case ASTCONST:
 		if(n->cons->sz == 0)
@@ -853,20 +919,21 @@ typecheck(ASTNode *n, Type *ctxt)
 			n->type = n->n1->type->elem;
 			return;
 		}
-		if(t1 != TYPUNSZ && t1 != TYPBITS && t1 != TYPBITV){
-			lerror(n, "%T in indexing", n->n1->type);
-			n->type = bittype;
+		if(intcheck(n->n1, 0, "%T in indexing"))
 			return;
-		}
 		switch(n->op){
 		case 0:
 			n->type = bittype;
 			break;
 		case 1:
+			if(!n->n2->isconst || !n->n3->isconst)
+				lerror(n, "non-constant range in indexing expression");
 			n->type = type(TYPBITS, 0, width(n->n2, n->n3));
 			break;
 		case 2:
 		case 3:
+			if(!n->n3->isconst)
+				lerror(n, "non-constant width in indexing expression");
 			n->type = type(TYPBITS, 0, n->n3);
 			break;
 		default:
@@ -875,6 +942,7 @@ typecheck(ASTNode *n, Type *ctxt)
 		break;
 	case ASTIF:
 		typecheck(n->n1, nil);
+		condcheck(n->n1);
 		typecheck(n->n2, nil);
 		typecheck(n->n3, nil);
 		break;
@@ -887,12 +955,219 @@ typecheck(ASTNode *n, Type *ctxt)
 		typecheck(n->n3, nil);
 		insist(n->n2->type != nil);
 		lvalcheck(n->n1, n->t == ASTCASS);
-		t1 = n->n2->type->t;
-		if(t1 != TYPUNSZ && t1 != TYPBITS && t1 != TYPBITV && t1 != TYPREAL)
-			lerror(n, "%T in assignment", n->n2->type);
+		intcheck(n->n2, 1, "%T in assignment");
 		break;
+	case ASTATTR:
+		break;
+	case ASTREPEAT:
+		typecheck(n->n1, nil);
+		intcheck(n->n1, 0, "%T in assignment");
+		typecheck(n->n2, nil);
+		break;
+	case ASTWHILE:
+	case ASTWAIT:
+		typecheck(n->n1, nil);
+		condcheck(n->n1);
+		typecheck(n->n2, nil);
+		break;
+	case ASTFOR:
+		typecheck(n->n1, nil);
+		typecheck(n->n2, nil);
+		condcheck(n->n2);
+		typecheck(n->n3, nil);
+		typecheck(n->n4, nil);
+		break;
+	case ASTTRIG:
+		typecheck(n->n1, nil);
+		insist(n->n1->type != nil);
+		if(n->n1->type->t != TYPEVENT)
+			lerror(n, "%T in event trigger", n->n1->type);
+		break;
+	case ASTDISABLE:
+		if(n->n1->t != ASTSYM)
+			lerror(n, "%A in disable", n->n1->t);
+		else if(n->n1->sym->t != SYMBLOCK && n->n1->sym->t != SYMTASK)
+			lerror(n, "%σ in disable", n->n1->sym->t);
+		break;
+	case ASTDELAY:
+		typecheck(n->n1, nil);
+		intcheck(n->n1, 1, "%T in delay");
+		typecheck(n->n2, nil);
+		break;
+	case ASTCINT:
+		break;
+	case ASTTCALL:
+		typecheck(n->n1, nil);
+		if(n->n1->t != ASTSYM)
+			lerror(n, "%A in task call", n->n1->t);
+		else if(n->n1->sym->t != SYMTASK)
+			lerror(n, "%σ in task call", n->n1->sym->t);
+		else{
+			f = n->n1->sym->n;
+			insist(f != nil);
+			for(m = n->n2, p = f->sc.st->ports; m != nil && p != nil; m = m->next, p = p->portnext){
+				typecheck(m, p->type);
+				if((p->dir & 3) == PORTOUT || (p->dir & 3) == PORTIO)
+					lvalcheck(m, 0);
+				else
+					intcheck(m, 1, "%T as argument");
+			}
+			if(m != nil)
+				lerror(n, "too many arguments calling '%s'", n->n1->sym->name);
+			if(p != nil)
+				lerror(n, "too few arguments calling '%s'", n->n1->sym->name);
+		}
+		break;
+	case ASTCALL:
+		typecheck(n->n1, nil);
+		if(n->n1->t != ASTSYM)
+			lerror(n, "%A in function call", n->n1->t);
+		else if(n->n1->sym->t != SYMFUNC)
+			lerror(n, "%σ in function call", n->n1->sym->t);
+		else{
+			f = n->n1->sym->n;
+			n->type = n->n1->sym->type;
+			insist(f != nil);
+			for(m = n->n2, p = f->sc.st->ports; m != nil && p != nil; m = m->next, p = p->portnext){
+				typecheck(m, p->type);
+				intcheck(m, 1, "%T as argument");
+			}
+			if(m != nil)
+				lerror(n, "too many arguments calling '%s'", n->n1->sym->name);
+			if(p != nil)
+				lerror(n, "too few arguments calling '%s'", n->n1->sym->name);
+		}
+		break;
+	case ASTCASE:
+		typecheck(n->n1, nil);
+		intcheck(n->n1, 0, "%T in case");
+		for(m = n->n2; m != nil; m = m->next){
+			insist(m->t == ASTCASIT);
+			for(r = m->n1; r != nil; r = r->next){
+				typecheck(r, nil);
+				intcheck(r, 0, "%T as case item");
+			}
+			typecheck(m->n2, nil);
+		}
+		break;
+	case ASTMINSTN:
+	case ASTMINSTO:
+		clearmarks();
+		st = nil;
+		if(p = looksym(&global, 0, n->minst.name), p != nil){
+			if(p->n->t != ASTMODULE)
+				lerror(n, "not a module '%s'", n->minst.name);
+			else
+				st = p->n->sc.st;
+		}
+		for(m = n->minst.param; m != nil; m = m->next){
+			if(markstr(m->pcon.name))
+				lerror(m, "duplicate parameter '%s'", m->pcon.name);
+			typecheck(m->pcon.n, nil);
+			intcheck(m->pcon.n, 1, "%T as parameter");
+			if(!m->pcon.n->isconst)
+				lerror(m->pcon.n, "non-constant as parameter value for '%s'", m->pcon.name);
+			if(st != nil){
+				p = looksym(st, 0, m->pcon.name);
+				if(p == nil || p->t != SYMPARAM)
+					lerror(m, "no such parameter '%s' in module '%s'", m->pcon.name, n->minst.name);
+			}
+		}
+		if(n->t == ASTMINSTN){
+			clearmarks();
+			for(m = n->minst.ports; m != nil; m = m->next){
+				if(markstr(m->pcon.name))
+					lerror(m, "duplicate port '%s'", m->pcon.name);
+				typecheck(m->pcon.n, nil);
+				intcheck(m->pcon.n, 1, "%T as port");
+				if(st != nil){
+					p = looksym(st, 0, m->pcon.name);
+					if(p == nil || p->t != SYMPORT)
+						lerror(m, "no such port '%s' in module '%s'", m->pcon.name, n->minst.name);
+					else if((p->dir & 3) == PORTOUT || (p->dir & 3) == PORTIO)
+						lvalcheck(m->pcon.n, 1);
+				}
+			}
+		}else{
+			p = nil;
+			if(st != nil)
+				p = st->ports;
+			for(m = n->minst.ports; m != nil; m = m->next){
+				typecheck(m->pcon.n, nil);
+				intcheck(m->pcon.n, 1, "%T as port");
+				if(st != nil)
+					if(p == nil)
+						lerror(m, "extra port");
+					else{
+						if(m->pcon.n != nil && ((p->dir & 3) == PORTOUT || (p->dir & 3) == PORTIO))
+							lvalcheck(m->pcon.n, 1);
+						p = p->portnext;
+					}
+			}
+			for(; p != nil; p = p->portnext)
+				lerror(n, "missing port '%s' in ordered list", p->name);
+		}
+		break;
+	case ASTTERN:
+		typecheck(n->n1, nil);
+		condcheck(n->n1);
+		typecheck(n->n2, ctxt);
+		intcheck(n->n2, 1, "%T in ternary");
+		typecheck(n->n3, ctxt);
+		intcheck(n->n3, 1, "%T in ternary");
+		t1 = n->n2->type->t;
+		t2 = n->n3->type->t;
+		insist(n->n2->type != nil && n->n3->type != nil);
+		s = n->n2->type->sign && n->n3->type->sign;
+		if(t1 == TYPREAL || t2 == TYPREAL)
+			n->type = realtype;
+		else if(t1 == TYPUNSZ || t2 == TYPUNSZ || ctxt != nil && ctxt->t == TYPUNSZ)
+			n->type = type(TYPUNSZ, s);
+		else if(ctxt != nil && (ctxt->t == TYPBITS || ctxt->t == TYPBITV))
+			n->type = type(TYPBITS, s, maxi(maxi(n->n2->type->sz, n->n3->type->sz), ctxt->sz));
+		else
+			n->type = type(TYPBITS, s, maxi(n->n2->type->sz, n->n3->type->sz));
+		break;
+	case ASTGENFOR:
+		insist(n->n1->t == ASTASS && n->n3->t == ASTASS);
+		m = n->n1->n1;
+		if(m->t != ASTSYM || m->sym->t != SYMGENVAR)
+			lerror(n, "generate for index not a genvar");
+		m = n->n3->n1;
+		if(m->t != ASTSYM || m->sym->t != SYMGENVAR)
+			lerror(n, "generate for index not a genvar");
+		typecheck(n->n2, nil);
+		condcheck(n->n2);
+		if(!n->n2->isconst)
+			lerror(n, "generate for condition not constant");
+		break;
+	case ASTGENIF:
+		typecheck(n->n1, nil);
+		if(!n->n1->isconst)
+			lerror(n->n1, "generate if condition not constant");
+		condcheck(n->n1);
+		typecheck(n->n2, nil);
+		typecheck(n->n3, nil);
+		break;
+	case ASTGENCASE:
+		typecheck(n->n1, nil);
+		intcheck(n->n1, 0, "%T in case");
+		if(!n->n1->isconst)
+			lerror(n->n1, "generate case not constant");
+		for(m = n->n2; m != nil; m = m->next){
+			insist(m->t == ASTCASIT);
+			for(r = m->n1; r != nil; r = r->next){
+				typecheck(r, nil);
+				intcheck(r, 0, "%T as case item");
+				if(!r->isconst)
+					lerror(r, "generate case not constant");
+			}
+			typecheck(m->n2, nil);
+		}
+		break;
+	case ASTCASIT:
+	case ASTPCON:
 	default:
 		fprint(2, "typecheck: unknown %A\n", n->t);
 	}
 }
-

@@ -31,6 +31,44 @@ error(Line *l, char *fmt, ...)
 	va_end(va);
 }
 
+typedef struct Mark Mark;
+struct Mark {
+	char *s;
+	int ctr;
+	Mark *next;
+};
+enum { MARKH = 256 };
+static Mark *marks[MARKH];
+
+void
+clearmarks(void)
+{
+	int i;
+	Mark *m, *nm;
+	
+	for(i = 0; i < MARKH; i++){
+		for(m = marks[i]; m != nil; m = nm){
+			nm = m->next;
+			free(m);
+		}
+		marks[i] = 0;
+	}
+}
+
+int
+markstr(char *s)
+{
+	Mark *m, **p;
+	
+	for(p = &marks[hash(s)%MARKH]; (m = *p) != nil; p = &m->next)
+		if(strcmp(m->s, s) == 0)
+			return ++m->ctr;
+	m = emalloc(sizeof(Mark));
+	m->s = s;
+	*p = m;
+	return 0;
+}
+
 void
 main(int argc, char **argv)
 {

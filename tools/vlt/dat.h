@@ -31,7 +31,7 @@ enum {
 	TYPEVENT,
 };
 
-extern Type *inttype, *realtype, *timetype, *bittype, *sbittype;
+extern Type *inttype, *realtype, *timetype, *bittype, *sbittype, *unsztype, *eventtype;
 
 struct ASTNode {
 	int t;
@@ -74,7 +74,7 @@ struct Symbol {
 	char *name;
 	int t;
 	Line;
-	Symbol *next;
+	Symbol *next, *portnext;
 	SymTab *st;
 	ASTNode *n;
 	Type *type;
@@ -112,6 +112,7 @@ struct SymTab {
 	SymTab *up;
 	Symbol *ports, **lastport;
 };
+extern SymTab *scope;
 
 enum {
 	ASTINVAL,
@@ -134,19 +135,25 @@ enum {
 	ASTFOR,
 	ASTFORK,
 	ASTFUNC,
+	ASTGENCASE,
+	ASTGENIF,
+	ASTGENFOR,
 	ASTHIER,
 	ASTINITIAL,
 	ASTMODULE,
-	ASTMINST,
+	ASTMINSTN,
+	ASTMINSTO,
 	ASTIDX,
 	ASTIF,
 	ASTPCON,
 	ASTREPEAT,
 	ASTSYM,
 	ASTTASK,
+	ASTTCALL,
 	ASTTERN,
 	ASTTRIG,
 	ASTUN,
+	ASTWAIT,
 	ASTWHILE,
 };
 

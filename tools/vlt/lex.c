@@ -228,7 +228,7 @@ yylex(void)
 			for(; kw->name != nil && *kw->name == buf[0]; kw++)
 				if(strcmp(kw->name, buf) == 0)
 					return kw->tok;
-		yylval.sym = getsym(buf);
+		yylval.sym = getsym(scope, 1, buf);
 		return buf[0] == '$' ? LSYSSYMB : LSYMB;
 	}
 	if(c == '\\'){
@@ -236,7 +236,7 @@ yylex(void)
 			if(p < buf + sizeof(buf) - 1)
 				*p++ = c;
 		*p = 0;
-		yylval.sym = getsym(buf);
+		yylval.sym = getsym(scope, 1, buf);
 		return LSYMB;
 	}
 	if(isdigit(c) || c == '\''){
