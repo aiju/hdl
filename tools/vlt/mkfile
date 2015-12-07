@@ -6,6 +6,7 @@ OFILES=\
 	lex.$O \
 	y.tab.$O \
 	ast.$O \
+	fold.$O \
 
 YFILES=parse.y
 HFILES=dat.h fns.h

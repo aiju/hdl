@@ -58,7 +58,7 @@
 %type <node> args stat statnull lval lvals optdelaye delaye event caseitems caseitem
 %type <node> varass blockitems blockitem blockitemstats stats eventexpr
 %type <node> delayval moditem moditems modgen paramlist lordports lordport lnamports
-%type <node> lnamport lnparass nparass instance modinst instances
+%type <node> lnamport lnparass nparass instance modinst instances contass contassigns
 %type <type> stype ptype
 %type <range> range
 %type <i> case iotype nrtype reg
@@ -94,7 +94,7 @@
 source: | source moduledecl | source error;
 moduledecl:
 	attrs module LSYMB { $<node>$ = newscope(ASTMODULE, $3, $1, nil); curattrs = nil; oldports = -1; }
-	lparamports lports ';' moditems { $<node>4->sc.n = $moditems; typecheck($<node>4); } LENDMODULE;
+	lparamports lports ';' moditems { $<node>4->sc.n = $moditems; typecheck($<node>4, nil); } LENDMODULE;
 module: LMODULE | LMACROMODULE;
 
 lparamports:
@@ -116,8 +116,8 @@ ports: port | ports ',' port;
 extraports: | extraports ',' port;
 port:
 	LSYMB { portdecl($1, PORTUND, nil, nil, nil); }
-	| LSYMB '[' const ']' { if(lint) error(nil, "unsupported construct"); }
-	| LSYMB range { if(lint) error(nil, "unsupported construct"); }
+	| LSYMB '[' const ']' { lerror(nil, "unsupported construct"); }
+	| LSYMB range { lerror(nil, "unsupported construct"); }
 	;
 	
 portdecls: portdecl | portdecls ',' portdecl | portdecls ',' isymb { portdecl($3.sym, curdir, $3.val, curtype, curattrs); };
@@ -139,7 +139,7 @@ modgen:
 	| attrs regdecl ';' { $$ = nil; } 
 	| attrs vardecl ';' { $$ = nil; }
 	| attrs genvardecl ';' { $$ = nil; }
-	| attrs LASSIGN delay3 netassigns ecomma ';' { $$ = NOPE; }
+	| attrs LASSIGN delay3 contassigns ecomma ';' { $$ = $4; }
 	| attrs taskdecl { $$ = nil; }
 	| attrs funcdecl { $$ = nil; }
 	| attrs modinst ';' { $$ = $2; }
@@ -164,10 +164,10 @@ netvar: arrayvar {
 
 vardecl:
 	eventdecl ecomma
-	| LINTEGER { curtype = type(TYPINT); cursymt = SYMREG; } varlist ecomma
-	| LREAL { curtype = type(TYPREAL); cursymt = SYMREG; } varlist ecomma
-	| LREALTIME { curtype = type(TYPREAL); cursymt = SYMREG; } varlist ecomma
-	| LTIME { curtype = type(TYPTIME); cursymt = SYMREG; } varlist ecomma
+	| LINTEGER { curtype = inttype; cursymt = SYMREG; } varlist ecomma
+	| LREAL { curtype = realtype; cursymt = SYMREG; } varlist ecomma
+	| LREALTIME { curtype = realtype; cursymt = SYMREG; } varlist ecomma
+	| LTIME { curtype = timetype; cursymt = SYMREG; } varlist ecomma
 	;
 eventdecl: LEVENT LSYMB { decl($2, SYMEVENT, nil, nil, curattrs); }
 	| eventdecl ',' LSYMB { decl($3, SYMEVENT, nil, nil, curattrs); }
@@ -192,20 +192,20 @@ paramassigns: paramassign | paramassigns ',' paramassign;
 extraassigns: | extraassigns ',' paramassigns;
 paramassign: LSYMB '=' const { decl($1, cursymt, $3, curtype, curattrs); };
 
-stype: { $$ = type(TYPBIT, 0); }
+stype: { $$ = bittype; }
 	| range { $$ = type(TYPBITV, 0, $1.hi, $1.lo); }
-	| LSIGNED { $$ = type(TYPBIT, 1); }
+	| LSIGNED { $$ = sbittype; }
 	| LSIGNED range { $$ = type(TYPBITV, 1, $2.hi, $2.lo); }
 	;
 ptype:
-	{ $$ = type(TYPCONST, 0); }
+	{ $$ = type(TYPUNSZ, 0); }
 	| range { $$ = type(TYPBITV, 0, $1.hi, $1.lo); }
-	| LSIGNED { $$ = type(TYPCONST, 1); }
+	| LSIGNED { $$ = type(TYPUNSZ, 1); }
 	| LSIGNED range { $$ = type(TYPBITV, 1, $2.hi, $2.lo); }
-	| LINTEGER { $$ = type(TYPINT); }
-	| LREAL { $$ = type(TYPREAL); }
-	| LREALTIME { $$ = type(TYPREAL); }
-	| LTIME { $$ = type(TYPTIME); }
+	| LINTEGER { $$ = inttype; }
+	| LREAL { $$ = realtype; }
+	| LREALTIME { $$ = realtype; }
+	| LTIME { $$ = timetype; }
 	;
 
 isymb: LSYMB { $$.sym = $1; $$.val = nil; } | LSYMB '=' expr { $$.sym = $1; $$.val = $3; };
@@ -214,8 +214,8 @@ attrs: { $$ = curattrs = nil; }
 	;
 attr: LATTRSTART attrspecs ecomma LATTREND { $$ = $2; };
 attrspecs: attrspec | attrspecs ',' attrspec { $$ = nodecat($1, $3); }
-attrspec: LSYMB { $$ = node(ASTATTR, $1, nil); } 
-	| LSYMB '=' const { $$ = node(ASTATTR, $1, $3); }
+attrspec: LSYMB { $$ = node(ASTATTR, $1->name, nil); } 
+	| LSYMB '=' const { $$ = node(ASTATTR, $1->name, $3); }
 	;
 
 ntype: LSUPPLY0 | LSUPPLY1 | LTRI | LTRIAND | LTRIOR | LTRI0 | LTRI1 | LWIRE | LWAND | LWOR;
@@ -293,7 +293,8 @@ primary: LNUMB { $$ = node(ASTCONST, $1); }
 	| LSYSSYMB args { $$ = node(ASTCALL, $1, $2, nil); }
 	;
 
-netassigns: varass | netassigns ',' varass;
+contassigns: contass | contassigns ',' contass { $$ = nodecat($1, $3); };
+contass: lval '=' expr { $$ = node(ASTCASS, $1, $3, nil, curattrs); };
 varass: lval '=' expr { $$ = node(ASTASS, $1, $3, nil, nil); };
 lval: hiersymbidx | '{' lvals ecomma '}' { $$ = node(ASTCAT, $2, nil); };
 lvals: lval | lvals ',' lval { $$ = nodecat($1, $3); };
@@ -384,10 +385,10 @@ stat:
 	| attrs LFORK stats LJOIN { $$ = node(ASTFORK, $3, $1); }
 	| attrs LBEGIN ':' LSYMB { $$ = newscope(ASTBLOCK, $4, $1, nil); } blockitemstats LEND { $$ = $<node>5; scopeup(); $$->sc.n = $6; }
 	| attrs LBEGIN stats LEND { $$ = node(ASTBLOCK, $3, $1); }
-	| attrs LASSIGN lval '=' expr { $$ = node(ASTASSIGN, 0, $3, $5, $1); }
-	| attrs LDEASSIGN lval { $$ = node(ASTASSIGN, 1, $3, nil, $1); }
-	| attrs LFORCE lval '=' expr { $$ = node(ASTFORCE, 2, $3, $5, $1); }
-	| attrs LRELEASE lval { $$ = node(ASTFORCE, 3, $3, nil, $1); }
+	| attrs LASSIGN lval '=' expr ';' { lerror(nil, "unsupported construct ignored"); $$ = nil; }
+	| attrs LDEASSIGN lval ';' { lerror(nil, "unsupported construct ignored"); $$ = nil; }
+	| attrs LFORCE lval '=' expr ';' { lerror(nil, "unsupported construct ignored"); $$ = nil; }
+	| attrs LRELEASE lval ';' { lerror(nil, "unsupported construct ignored"); $$ = nil; }
 	| attrs delaye statnull { $$ = $2; $$->n2 = $3; $$->attrs = $1; }
 	| attrs LSYSSYMB args ';'
 	| attrs hiersymb args ';'

@@ -186,6 +186,25 @@ lexinit(void)
 
 Biobuf *bp;
 
+static Const *
+consparse(char *c)
+{
+	Const *r;
+	char *p;
+	
+	r = emalloc(sizeof(Const));
+	r->n = mpnew(0);
+	r->x = mpnew(0);
+	for(p = c; isdigit(*p); p++)
+		;
+	if(*p == 0){
+		r->n = strtomp(c, nil, 10, r->n);
+		return r;
+	}
+	sysfatal("consparse: unfinished");
+	return r;
+}
+
 int
 yylex(void)
 {
@@ -200,7 +219,7 @@ yylex(void)
 	if(c < 0)
 		return -1;
 	if(isalpha(c) || c == '_' || c == '$'){
-		for(p = buf, *p++ = c; c = Bgetc(bp), isalpha(c) || isdigit(c) || c == '_' || c == '$'; )
+		for(p = buf, *p++ = c; c = Bgetc(bp), isalnum(c) || c == '_' || c == '$'; )
 			if(p < buf + sizeof(buf) - 1)
 				*p++ = c;
 		Bungetc(bp);
@@ -221,11 +240,12 @@ yylex(void)
 		return LSYMB;
 	}
 	if(isdigit(c) || c == '\''){
-		for(p = buf; c = Bgetc(bp), isdigit(c); )
+		for(p = buf, *p++ = c; c = Bgetc(bp), isalnum(c) || c == '\''; )
 			if(p < buf + sizeof(buf) - 1)
 				*p++ = c;
 		Bungetc(bp);
 		*p = 0;
+		yylval.cons = consparse(buf);
 		return LNUMB;
 	}
 	if(kw = oplook[c], kw != nil){

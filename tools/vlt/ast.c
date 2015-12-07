@@ -10,7 +10,7 @@ SymTab *scope = &global;
 static char *astname[] = {
 	[ASTINVAL] "ASTINVAL",
 	[ASTASS] "ASTASS",
-	[ASTASSIGN] "ASTASSIGN",
+	[ASTCASS] "ASTCASS",
 	[ASTAT] "ASTAT",
 	[ASTATTR] "ASTATTR",
 	[ASTBIN] "ASTBIN",
@@ -24,7 +24,6 @@ static char *astname[] = {
 	[ASTDELAY] "ASTDELAY",
 	[ASTDISABLE] "ASTDISABLE",
 	[ASTFOR] "ASTFOR",
-	[ASTFORCE] "ASTFORCE",
 	[ASTFORK] "ASTFORK",
 	[ASTHIER] "ASTHIER",
 	[ASTMODULE] "ASTMODULE",
@@ -42,6 +41,7 @@ static char *astname[] = {
 	[ASTTASK] "ASTTASK",
 	[ASTPCON] "ASTPCON",
 	[ASTMINST] "ASTMINST",
+	[ASTCINT] "ASTCINT",
 };
 
 static char *opname[] = {
@@ -83,6 +83,7 @@ static char *opname[] = {
 	[OPUMINUS] "unary -",
 	[OPUPLUS] "unary +",
 	[OPXOR] "^",
+	[OPMAX] "max",
 };
 
 static char *symtname[] = {
@@ -165,6 +166,35 @@ symtfmt(Fmt *f)
 	return fmtstrcpy(f, symtname[t]);
 }
 
+static int
+opfmt(Fmt *f)
+{
+	int t;
+	
+	t = va_arg(f->args, int);
+	if(t >= nelem(opname) || opname[t] == nil)
+		return fmtprint(f, "??? (%d)", t);
+	return fmtstrcpy(f, opname[t]);
+}
+
+static int
+typefmt(Fmt *f)
+{
+	Type *t;
+	
+	t = va_arg(f->args, Type *);
+	if(t == nil)
+		return fmtstrcpy(f, "nil");
+	switch(t->t){
+	case TYPBITS: return fmtstrcpy(f, "bits");
+	case TYPBITV: return fmtstrcpy(f, "bitv");
+	case TYPREAL: return fmtstrcpy(f, "real");
+	case TYPMEM: return fmtstrcpy(f, "memory");
+	case TYPEVENT: return fmtstrcpy(f, "event");	
+	default: return fmtprint(f, "??? (%d)", t->t);
+	}
+}
+
 ASTNode *
 node(int t, ...)
 {
@@ -179,6 +209,11 @@ node(int t, ...)
 	switch(t){
 	case ASTCONST:
 		n->cons = va_arg(va, Const *);
+		break;
+	case ASTCINT:
+		n->i = va_arg(va, int);
+		n->type = type(TYPUNSZ, va_arg(va, int));
+		n->isconst = 1;
 		break;
 	case ASTSYM:
 		n->sym = va_arg(va, Symbol *);
@@ -196,21 +231,30 @@ node(int t, ...)
 		break;
 	case ASTASS:
 	case ASTDASS:
-		n->ass.l = va_arg(va, ASTNode *);
-		n->ass.r = va_arg(va, ASTNode *);
-		n->ass.d = va_arg(va, ASTNode *);
+	case ASTCASS:
+		n->n1 = va_arg(va, ASTNode *);
+		n->n2 = va_arg(va, ASTNode *);
+		n->n3 = va_arg(va, ASTNode *);
 		n->attrs = va_arg(va, ASTNode *);
 		break;
 	case ASTIF:
 	case ASTTERN:
-		n->cond.c = va_arg(va, ASTNode *);
-		n->cond.t = va_arg(va, ASTNode *);
-		n->cond.e = va_arg(va, ASTNode *);
+		n->n1 = va_arg(va, ASTNode *);
+		n->n2 = va_arg(va, ASTNode *);
+		n->n3 = va_arg(va, ASTNode *);
 		n->attrs = va_arg(va, ASTNode *);
+		break;
+	case ASTIDX:
+		n->op = va_arg(va, int);
+		n->n1 = va_arg(va, ASTNode *);
+		n->n2 = va_arg(va, ASTNode *);
+		n->n3 = va_arg(va, ASTNode *);
 		break;
 	case ASTMODULE:
 	case ASTBLOCK:
 	case ASTFORK:
+	case ASTFUNC:
+	case ASTTASK:
 		n->sc.n = va_arg(va, ASTNode *);
 		n->attrs = va_arg(va, ASTNode *);
 		break;
@@ -233,11 +277,62 @@ node(int t, ...)
 	case ASTAT:
 		n->n1 = va_arg(va, ASTNode *);
 		break;
+	case ASTCAT:
+		n->n1 = va_arg(va, ASTNode *);
+		n->n2 = va_arg(va, ASTNode *);
+		break;
+	case ASTWHILE:
+	case ASTREPEAT:
+		n->n1 = va_arg(va, ASTNode *);
+		n->n2 = va_arg(va, ASTNode *);
+		n->attrs = va_arg(va, ASTNode *);
+		break;
+	case ASTATTR:
+		n->pcon.name = strdup(va_arg(va, char *));
+		n->pcon.n = va_arg(va, ASTNode *);
+		break;
+	case ASTFOR:
+		n->n1 = va_arg(va, ASTNode *);
+		n->n2 = va_arg(va, ASTNode *);
+		n->n3 = va_arg(va, ASTNode *);
+		n->n4 = va_arg(va, ASTNode *);
+		n->attrs = va_arg(va, ASTNode *);
+		break;
+	case ASTHIER:
+	case ASTCASIT:
+		n->n1 = va_arg(va, ASTNode *);
+		n->n2 = va_arg(va, ASTNode *);
+		break;
+	case ASTTRIG:
+	case ASTDISABLE:
+		n->n1 = va_arg(va, ASTNode *);
+		n->attrs = va_arg(va, ASTNode *);
+		break;
+	case ASTCALL:
+		n->n1 = va_arg(va, ASTNode *);
+		n->n2 = va_arg(va, ASTNode *);
+		n->attrs = va_arg(va, ASTNode *);
+		break;
+	case ASTCASE:
+		n->op = va_arg(va, int);
+		n->n1 = va_arg(va, ASTNode *);
+		n->n2 = va_arg(va, ASTNode *);
+		n->attrs = va_arg(va, ASTNode *);
+		break;
 	default:
 		sysfatal("node: unknown type %A", t);
 	}
 	va_end(va);
 	return n;
+}
+
+ASTNode *
+repl(ASTNode *n, ASTNode *r)
+{
+	r->Line = n->Line;
+	r->attrs = n->attrs;
+	r->type = n->type;
+	return r;
 }
 
 Symbol *
@@ -250,6 +345,8 @@ decl(Symbol *s, int t, ASTNode *n, Type *type, ASTNode *attrs)
 			portdecl(s, PORTNET, n, type, attrs);
 		else
 			lerror(nil, "'%s' redeclared", s->name);
+	if(type != nil)
+		typeok(&curline, type);
 	s->t = t;
 	s->n = n;
 	s->Line = curline;
@@ -341,47 +438,103 @@ nodecat(ASTNode *n, ASTNode *m)
 	return n;
 }
 
+Type *realtype, *inttype, *timetype, *bittype, *sbittype, *unsztype;
+
 void
 astinit(void)
 {
+	realtype = type(TYPREAL);
+	inttype = type(TYPBITS, 1, node(ASTCINT, 32));
+	timetype = type(TYPBITS, 0, node(ASTCINT, 64));
+	bittype = type(TYPBITS, 0, node(ASTCINT, 1));
+	sbittype = type(TYPBITS, 1, node(ASTCINT, 1));
+	unsztype = type(TYPUNSZ, 1);
+	
 	fmtinstall('A', astfmt);
 	fmtinstall(L'σ', symtfmt);
+	fmtinstall('O', opfmt);
+	fmtinstall('T', typefmt);
+}
+
+static ASTNode *
+width(ASTNode *a, ASTNode *b)
+{
+	int v, ai, bi;
+
+	if(a == nil && b == nil)
+		return node(ASTCINT, 0);
+	if(b == nil || b->t == ASTCINT && b->i == 0)
+		return a;
+	if(b->t == ASTCINT && a->t == ASTCINT){
+		ai = a->i;
+		bi = b->i - 1;
+		v = ai - bi;
+		if(((ai ^ bi) & (ai ^ v)) >= 0)
+			return node(ASTCINT, v);
+	}
+	return cfold(node(ASTBIN, OPADD, node(ASTBIN, OPSUB, a, b, nil), node(ASTCINT, 1), nil), unsztype);
+}
+
+static ASTNode *
+add(ASTNode *a, ASTNode *b)
+{
+	int v, ai, bi;
+
+	if(a == nil && b == nil)
+		return node(ASTCINT, 0);
+	if(b == nil || b->t == ASTCINT && b->i == 0)
+		return a;
+	if(a == nil || a->t == ASTCINT && a->i == 0)
+		return b;
+	if(b->t == ASTCINT && a->t == ASTCINT){
+		ai = a->i;
+		bi = b->i;
+		v = ai + bi;
+		if((~(ai ^ bi) & (ai ^ v)) >= 0)
+			return node(ASTCINT, v);
+	}
+	return cfold(node(ASTBIN, OPSUB, a, b, nil), unsztype);
+}
+
+static ASTNode *
+maxi(ASTNode *a, ASTNode *b)
+{
+	if(a == b)
+		return a;
+	if(a->t == ASTCINT && b->t == ASTCINT)
+		return node(ASTCINT, a->i >= b->i ? a->i : b->i);
+	return cfold(node(ASTBIN, OPMAX, a, b, nil), unsztype);
 }
 
 Type *
 type(int t, ...)
 {
 	Type *r, *el;
-	int sign, sz;
-	ASTNode *lo, *hi;
-	static Type bittype = {.t TYPBIT, .sign 0};
-	static Type bitstype = {.t TYPBIT, .sign 1};
-	static Type inttype = {.t TYPINT, .sign 1};
-	static Type timetype = {.t TYPTIME, .sign 0};
+	int sign;
+	ASTNode *sz, *lo, *hi;
 	static Type realtype = {.t TYPREAL};
+	static Type eventtype = {.t TYPEVENT};
+	static Type unsztype = {.t TYPUNSZ, .sign 1};
+	static Type uunsztype = {.t TYPUNSZ, .sign 0};
 	static Type *consts, *bitvs, *mems;
 
 	va_list va;
 	
 	va_start(va, t);
 	switch(t){
-	case TYPBIT:
-		r = va_arg(va, int) ? &bitstype : &bittype;
-		break;
-	case TYPINT:
-		r = &inttype;
-		break;
-	case TYPTIME:
-		r = &timetype;
-		break;
 	case TYPREAL:
 		r = &realtype;
 		break;
-	case TYPCONST:
+	case TYPEVENT:
+		r = &eventtype;
+		break;
+	case TYPUNSZ:
+		return va_arg(va, int) ? &unsztype : &uunsztype;
+	case TYPBITS:
 		sign = va_arg(va, int);
-		sz = va_arg(va, int);
+		sz = cfold(va_arg(va, ASTNode *), &unsztype);
 		for(r = consts; r != nil; r = r->next)
-			if(r->sign == sign && r->sz == sz)
+			if(r->sign == sign && asteq(r->sz, sz))
 				return r;
 		r = emalloc(sizeof(Type));
 		r->t = t;
@@ -392,26 +545,29 @@ type(int t, ...)
 		return r;
 	case TYPBITV:
 		sign = va_arg(va, int);
-		hi = va_arg(va, ASTNode *);
-		lo = va_arg(va, ASTNode *);
+		hi = cfold(va_arg(va, ASTNode *), &unsztype);
+		lo = cfold(va_arg(va, ASTNode *), &unsztype);
 		for(r = bitvs; r != nil; r = r->next)
 			if(r->sign == sign && asteq(r->lo, lo) && asteq(r->hi, hi))
 				return r;
 		r = emalloc(sizeof(Type));
+		r->t = t;
 		r->sign = sign;
 		r->lo = lo;
 		r->hi = hi;
+		r->sz = width(hi, lo);
 		r->next = bitvs;
 		bitvs = r;
 		return r;
 	case TYPMEM:
 		el = va_arg(va, Type *);
-		hi = va_arg(va, ASTNode *);
-		lo = va_arg(va, ASTNode *);
+		hi = cfold(va_arg(va, ASTNode *), &unsztype);
+		lo = cfold(va_arg(va, ASTNode *), &unsztype);
 		for(r = mems; r != nil; r = r->next)
 			if(r->elem == el && asteq(r->lo, lo) && asteq(r->hi, hi))
 				return r;
 		r = emalloc(sizeof(Type));
+		r->t = t;
 		r->lo = lo;
 		r->hi = hi;
 		r->elem = el;
@@ -426,6 +582,39 @@ type(int t, ...)
 	return r;
 }
 
+void
+typeok(Line *l, Type *t)
+{
+	if(t == nil){
+		lerror(l, "nil type");
+		return;
+	}
+	switch(t->t){
+	case TYPREAL:
+	case TYPEVENT:
+	case TYPUNSZ:
+		return;
+	case TYPBITS:
+		if(!t->sz->isconst)
+			lerror(l, "not a constant");
+		return;
+	case TYPBITV:
+		if(!t->lo->isconst || !t->hi->isconst)
+			lerror(l, "not a constant");
+		return;
+	case TYPMEM:
+		if(t->elem == nil)
+			lerror(l, "nil in memory type");
+		else
+			typeok(l, t->elem);
+		if(!t->lo->isconst || !t->hi->isconst)
+			lerror(l, "not a constant");
+		return;
+	default:
+		lerror(l, "typeok: unknown %T", t);
+	}
+}
+
 int
 asteq(ASTNode *a, ASTNode *b)
 {
@@ -436,6 +625,8 @@ asteq(ASTNode *a, ASTNode *b)
 	if(a->t != b->t)
 		return 0;
 	switch(a->t){
+	case ASTCINT:
+		return a->i == b->i;
 	default:
 		fprint(2, "asteq: unknown %A\n", a->t);
 		return 0;
@@ -463,26 +654,245 @@ checksym(ASTNode *n)
 	}
 }
 
-void
-typecheck(ASTNode *n)
+#define insist(t) if(t){} else {lerror(n, "phase error: t"); return;}
+
+static void
+lvalcheck(ASTNode *n, int cont)
 {
 	ASTNode *m;
 
+	switch(n->t){
+	case ASTSYM:
+		switch(n->sym->t){
+		case SYMREG:
+			if(n->sym->type->t == TYPMEM)
+				lerror(n, "assignment to memory");
+		reg:
+			if(cont)
+				lerror(n, "continuous assignment to reg '%s'", n->sym->name);
+			return;
+		case SYMNET:
+			if(n->sym->type->t == TYPMEM)
+				lerror(n, "assignment to memory");
+		wire:
+			if(!cont)
+				lerror(n, "procedural assignment to wire '%s'", n->sym->name);
+			return;
+		case SYMPORT:
+			if((n->sym->dir & 3) == PORTIN)
+				lerror(n, "assignment to input '%s'", n->sym->name);
+			else if((n->sym->dir & PORTREG) != 0)
+				goto reg;
+			else
+				goto wire;
+			return;
+		default:
+			lerror(n, "invalid lval (%σ)", n->sym->t);
+		}
+	case ASTIDX:
+		if(n->n1->t != ASTSYM || n->n1->sym->t != SYMREG || n->n1->sym->type->t != TYPMEM)
+			lvalcheck(n->n1, cont);
+		break;
+	case ASTCAT:
+		if(n->n2 != nil)
+			lerror(n, "replication as lval");
+		else
+			for(m = n->n1; m != nil; m = m->next)
+				lvalcheck(m, cont);
+		break;
+	default:
+		lerror(n, "invalid lval (%A)", n->t);
+	}
+}
+
+void
+typecheck(ASTNode *n, Type *ctxt)
+{
+	ASTNode *m, *r;
+	int t1, t2, s;
+
 	if(n == nil)
+		return;
+	if(n->type != nil)
 		return;
 	switch(n->t){
 	case ASTALWAYS:
-		typecheck(n->n);
+		typecheck(n->n, nil);
 		break;
 	case ASTMODULE:
+	case ASTBLOCK:
+	case ASTFORK:
 		for(m = n->sc.n; m != nil; m = m->next)
-			typecheck(m);
+			typecheck(m, nil);
 		break;
 	case ASTAT:
-		typecheck(n->n1);
-		typecheck(n->n2);
+		typecheck(n->n1, nil);
+		insist(n->n1->type != nil);
+		if(n->n1->type->t == TYPMEM)
+			lerror(n, "memory as event");
+		typecheck(n->n2, nil);
+		break;
+	case ASTBIN:
+		typecheck(n->n1, ctxt);
+		typecheck(n->n2, ctxt);
+		n->isconst = n->n1->isconst && n->n2->isconst;
+		insist(n->n1->type != nil && n->n2->type != nil);
+		t1 = n->n1->type->t;
+		t2 = n->n2->type->t;
+		s = n->n1->type->sign && n->n2->type->sign;
+		if(t1 == TYPMEM || t2 == TYPMEM){
+			lerror(n, "memory in expression");
+			n->type = bittype;
+			return;
+		}
+		if(n->op == OPEVOR){
+			n->type = type(TYPEVENT);
+			return;
+		}
+		if(t1 == TYPEVENT || t2 == TYPEVENT){
+			lerror(n, "event in expression");
+			n->type = bittype;
+			return;
+		}
+		if(t1 == TYPREAL || t2 == TYPREAL)
+			switch(n->op){
+			case OPADD: case OPDIV: case OPMOD: case OPMUL: case OPSUB: case OPMAX: case OPEXP:
+				n->type = realtype;
+				return;
+			case OPEQ: case OPNEQ: case OPLT: case OPLE: case OPGT: case OPGE: case OPLAND: case OPLOR:
+				n->type = bittype;
+				return;
+			default:
+				lerror(n, "real as operand to '%O'", n->op);
+				n->type = bittype;
+				return; 
+			}
+		insist((t1 == TYPUNSZ || t1 == TYPBITS || t1 == TYPBITV) && (t2 == TYPUNSZ || t2 == TYPBITS || t2 == TYPBITV));
+		switch(n->op){
+		case OPADD: case OPDIV: case OPMOD: case OPMUL: case OPSUB: case OPMAX:
+		case OPAND: case OPOR: case OPNXOR: case OPXOR:
+			if(t1 == TYPUNSZ || t2 == TYPUNSZ || ctxt != nil && ctxt->t == TYPUNSZ)
+				n->type = type(TYPUNSZ, s);
+			else if(ctxt != nil && (ctxt->t == TYPBITS || ctxt->t == TYPBITV))
+				n->type = type(TYPBITS, s, maxi(maxi(n->n1->type->sz, n->n2->type->sz), ctxt->sz));
+			else
+				n->type = type(TYPBITS, s, maxi(n->n1->type->sz, n->n2->type->sz));
+			break;
+		case OPASL: case OPASR: case OPLSL: case OPLSR: case OPEXP:
+			n->type = n->n1->type;
+			break;
+		case OPEQS: case OPNEQS:
+		case OPEQ: case OPNEQ: case OPLT: case OPGT:
+		case OPLE: case OPGE: case OPLAND: case OPLOR:
+			n->type = bittype;
+			break;
+		default:
+			lerror(n, "unknown op '%O'", n->op);
+			break;
+		}
+		break;
+	case ASTUN:
+		typecheck(n->n1, nil);
+		n->isconst = n->n1->isconst;
+		insist(n->n1->type != nil);
+		t1 = n->n1->type->t;
+		if(t1 == TYPMEM)
+			lerror(n, "memory in expression");
+		if(t1 == TYPEVENT)
+			lerror(n, "event in expression");
+		if(n->op == OPLNOT)
+			n->type = bittype;
+		else if(t1 == TYPREAL){
+			if(n->op != OPUPLUS && n->op != OPUMINUS)
+				lerror(n, "real in expression");
+			n->type = n->n1->type;
+		}else if(ctxt != nil && ctxt->t == TYPUNSZ || t1 == TYPUNSZ)
+			n->type = type(TYPUNSZ, n->n1->type->sign);
+		else if(ctxt != nil && (ctxt->t == TYPBITS || ctxt->t == TYPBITV))
+			n->type = type(TYPBITS, n->n1->type->sign, maxi(n->n1->type->sz, ctxt->sz));
+		else
+			n->type = n->n1->type;
+		break;
+	case ASTCAT:
+		r = nil;
+		for(m = n->n1; m != nil; m = m->next){
+			typecheck(m, nil);
+			if(m->type == nil || m->type->t != TYPBITS && m->type->t != TYPBITV)
+				lerror(m, "%T in concatenation", m->type);
+			else
+				r = add(r, m->type->sz);
+		}
+		if(n->n2 != nil){
+			typecheck(n->n2, nil);
+			if(n->n2->type == nil || n->n2->type->t != TYPUNSZ && n->n2->type->t != TYPBITS && n->n2->type->t != TYPBITV)
+				lerror(n->n2, "%T in replication", n->n2->type);
+			else if(!n->n2->isconst)
+				lerror(n->n2, "replication factor not a constant");
+			else
+				r = cfold(node(ASTBIN, OPMUL, r, n->n2), unsztype);
+		}
+		n->type = type(TYPBITS, 0, r);
+		return;
+	case ASTSYM:
+		n->type = n->sym->type;
+		n->isconst = n->sym->t == SYMPARAM || n->sym->t == SYMLPARAM;
+		break;
+	case ASTCONST:
+		if(n->cons->sz == 0)
+			n->type = type(TYPUNSZ, n->cons->sign);
+		else
+			n->type = type(TYPBITS, n->cons->sign, node(ASTCINT, n->cons->sz));
+		n->isconst = 1;
+		break;
+	case ASTIDX:
+		typecheck(n->n1, nil);
+		typecheck(n->n2, nil);
+		typecheck(n->n3, nil);
+		t1 = n->n1->type->t;
+		if(n->op == 0 && t1 == TYPMEM){
+			n->type = n->n1->type->elem;
+			return;
+		}
+		if(t1 != TYPUNSZ && t1 != TYPBITS && t1 != TYPBITV){
+			lerror(n, "%T in indexing", n->n1->type);
+			n->type = bittype;
+			return;
+		}
+		switch(n->op){
+		case 0:
+			n->type = bittype;
+			break;
+		case 1:
+			n->type = type(TYPBITS, 0, width(n->n2, n->n3));
+			break;
+		case 2:
+		case 3:
+			n->type = type(TYPBITS, 0, n->n3);
+			break;
+		default:
+			lerror(n, "ASTIDX: unknown %d", n->op);
+		}
+		break;
+	case ASTIF:
+		typecheck(n->n1, nil);
+		typecheck(n->n2, nil);
+		typecheck(n->n3, nil);
+		break;
+	case ASTDASS:
+	case ASTASS:
+	case ASTCASS:
+		typecheck(n->n1, nil);
+		insist(n->n1->type != nil);
+		typecheck(n->n2, n->n1->type);
+		typecheck(n->n3, nil);
+		insist(n->n2->type != nil);
+		lvalcheck(n->n1, n->t == ASTCASS);
+		t1 = n->n2->type->t;
+		if(t1 != TYPUNSZ && t1 != TYPBITS && t1 != TYPBITV && t1 != TYPREAL)
+			lerror(n, "%T in assignment", n->n2->type);
 		break;
 	default:
 		fprint(2, "typecheck: unknown %A\n", n->t);
 	}
 }
+

@@ -14,4 +14,7 @@ int asteq(ASTNode*, ASTNode*);
 Symbol *decl(Symbol *, int, ASTNode *, Type *, ASTNode *);
 Symbol *portdecl(Symbol *, int, ASTNode *, Type *, ASTNode *);
 void checksym(ASTNode *);
-void typecheck(ASTNode *);
+void typecheck(ASTNode *, Type *);
+ASTNode *cfold(ASTNode *, Type *);
+ASTNode *repl(ASTNode *, ASTNode *);
+void typeok(Line *, Type *);

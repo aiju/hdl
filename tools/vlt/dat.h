@@ -16,43 +16,34 @@ struct Line {
 
 struct Type {
 	uchar t, sign;
-	union {
-		int sz;
-		struct {
-			ASTNode *lo, *hi;
-			Type *elem;
-		};
-	};
+	ASTNode *sz, *lo, *hi;
+	Type *elem;
 	Type *next;
 };
 
 enum {
 	TYPINVALID,
-	TYPCONST,
-	TYPBIT,
+	TYPUNSZ,
+	TYPBITS,
 	TYPBITV,
-	TYPINT,
-	TYPTIME,
 	TYPREAL,
 	TYPMEM,
+	TYPEVENT,
 };
+
+extern Type *inttype, *realtype, *timetype, *bittype, *sbittype;
 
 struct ASTNode {
 	int t;
 	union {
 		struct {
 			int op;
-			ASTNode *n1, *n2;
+			ASTNode *n1, *n2, *n3, *n4;
 		};
 		ASTNode *n;
+		int i;
 		Const *cons;
 		Symbol *sym;
-		struct {
-			ASTNode *l, *r, *d;
-		} ass;
-		struct {
-			ASTNode *c, *t, *e;
-		} cond;
 		struct {
 			SymTab *st;
 			ASTNode *n;
@@ -67,6 +58,8 @@ struct ASTNode {
 			ASTNode *ports;
 		} minst;
 	};
+	int isconst;
+	Type *type;
 	ASTNode *attrs;
 	ASTNode *next, **last;
 	Line;
@@ -74,8 +67,7 @@ struct ASTNode {
 
 struct Const {
 	mpint *n, *x;
-	int sz;
-	int ext;
+	uchar sz, ext, sign;
 };
 
 struct Symbol {
@@ -125,7 +117,7 @@ enum {
 	ASTINVAL,
 	ASTALWAYS,
 	ASTASS,
-	ASTASSIGN,
+	ASTCASS,
 	ASTAT,
 	ASTATTR,
 	ASTBIN,
@@ -134,12 +126,12 @@ enum {
 	ASTCASE,
 	ASTCASIT,
 	ASTCAT,
+	ASTCINT,
 	ASTCONST,
 	ASTDASS,
 	ASTDELAY,
 	ASTDISABLE,
 	ASTFOR,
-	ASTFORCE,
 	ASTFORK,
 	ASTFUNC,
 	ASTHIER,
@@ -197,9 +189,11 @@ enum {
 	OPUMINUS,
 	OPUPLUS,
 	OPXOR,
+	OPMAX,
 };
 
 #pragma varargck type "A" int
+#pragma varargck type "O" int
 extern Line curline;
 #define NOPE (abort(), nil)
 #define lint 1
