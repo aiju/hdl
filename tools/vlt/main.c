@@ -74,6 +74,7 @@ main(int argc, char **argv)
 {
 	lexinit();
 	astinit();
+	fmtinstall('B', mpfmt);
 	
 	ARGBEGIN{
 	default:

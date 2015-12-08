@@ -185,31 +185,106 @@ lexinit(void)
 }
 
 Biobuf *bp;
+int base;
 
-static Const *
-consparse(char *c)
+int
+basedigit(int c)
 {
-	Const *r;
-	char *p;
+	return strchr("0123456789xzXZ?abcdefABCDEF_", c) != nil;
+}
+
+ASTNode *
+makenumb(Const *s, int b, Const *n)
+{
+	Const c;
+	int sz;
 	
-	r = emalloc(sizeof(Const));
-	r->n = mpnew(0);
-	r->x = mpnew(0);
-	for(p = c; isdigit(*p); p++)
-		;
-	if(*p == 0){
-		r->n = strtomp(c, nil, 10, r->n);
-		return r;
+	if(s != nil && s->n != nil){
+		sz = mptoi(s->n);
+		mpfree(s->n);
+	}else
+		sz = 0;
+	c = *n;
+	if(c.n == nil) c.n = mpnew(0);
+	if(c.x == nil) c.x = mpnew(0);
+	if(sz != 0)
+		if((b & 1) != 0){
+			mpxtend(c.n, sz, c.n);
+			mpxtend(c.x, sz, c.x);
+		}else{
+			mptrunc(c.n, sz, c.n);
+			mptrunc(c.x, sz, c.x);
+		}
+	c.sz = sz;
+	c.sign = b & 1;
+	return node(ASTCONST, c);
+}
+
+void
+consparse(Const *c, char *s, int b)
+{
+	char t0[512], t1[512];
+	char yc;
+	int i;
+
+	memset(c, 0, sizeof(Const));
+	if(b == 0){
+		c->n = strtomp(s, nil, 10, nil);
+		return;
 	}
-	sysfatal("consparse: unfinished");
-	return r;
+	c->sign = b & 1;
+	b &= ~1;
+	if(s[1] == 0 && (s[0] == 'x' || s[0] == 'X' || s[0] == 'z' || s[0] == 'Z' || s[0] == '?'))
+		b = 2;
+	switch(b){
+	default: yc = '1'; break;
+	case 8: yc = '7'; break;
+	case 16: yc = 'f'; break;
+	}
+	for(i = 0; s[i] != 0; i++){
+		if(s[i] == 'x' || s[i] == 'X'){
+			t0[i] = '0';
+			t1[i] = yc;
+			if(b == 10)
+				goto nope;
+		}else if(s[i] == 'z' || s[i] == 'Z' || s[i] == '?'){
+			t0[i] = yc;
+			t1[i] = yc;
+			if(b == 10)
+				goto nope;
+		}else{
+			switch(b){
+			case 2: if(s[i] > '1') goto nope; break;
+			case 8: if(s[i] > '7') goto nope; break;
+			case 10: if(s[i] > '9') goto nope; break;
+			}
+			t0[i] = s[i];
+			t1[i] = '0';
+		}
+	}
+	t0[i] = 0;
+	t1[i] = 0;
+	switch(b){
+	default: c->sz = i; break;
+	case 8: c->sz = i * 3; break;
+	case 16: c->sz = i * 4; break;
+	}
+	c->n = strtomp(t0, nil, b, nil);
+	c->x = strtomp(t1, nil, b, nil);
+	if(s[0] == 'x' || s[0] == 'X' || s[0] == 'z' || s[0] == 'Z' || s[0] == '?'){
+		mpxtend(c->n, c->sz, c->n);
+		mpxtend(c->x, c->sz, c->x);
+	}
+	return;
+nope:
+	lerror(nil, "'%c' in %s number", s[i], b == 8 ? "octal": b == 16 ? "hexadecimal" : b == 2 ? "binary" : "decimal");
 }
 
 int
 yylex(void)
 {
 	int c;
-	static char buf[64];
+	static char buf[512], buf2[512];
 	char *p;
 	Keyword *kw;
 
@@ -218,6 +293,55 @@ yylex(void)
 			curline.lineno++;
 	if(c < 0)
 		return -1;
+	if(isdigit(c) || base && basedigit(c)){
+		for(p = buf, *p++ = c; c = Bgetc(bp), basedigit(c); )
+			if(c != '_' && p < buf + sizeof(buf) - 1)
+				*p++ = c;
+		if(c == '.' || c == 'e' || c == 'E'){
+			if(c == '.'){
+				*p++ = c;
+				while(c = Bgetc(bp), isdigit(c))
+					*p++ = c;
+				if(p[-1] == '.')
+					lerror(nil, "invalid floating point constant");
+			}
+			if(c == 'e' || c == 'E'){
+				*p++ = c;
+				if(c = Bgetc(bp), c == '-' || c == '+')
+					*p++ = c;
+				while(c = Bgetc(bp), isdigit(c))
+					*p++ = c;
+				if(!isdigit(p[-1]))
+					lerror(nil, "invalid floating point constant");
+			}
+			Bungetc(bp);
+			yylval.d = strtod(buf, nil);
+			return LFLOAT;
+		}
+		Bungetc(bp);
+		*p = 0;
+		consparse(&yylval.cons, buf, base);
+		base = 0;
+		return LNUMB;
+	}
+	base = 0;
+	if(c == '\''){
+		c = Bgetc(bp);
+		if(yylval.i = c == 's' || c == 'S', yylval.i)
+			c = Bgetc(bp);
+		if(c == 'o' || c == 'o')
+			yylval.i |= 8;
+		else if(c == 'h' || c == 'H')
+			yylval.i |= 16;
+		else if(c == 'b' || c == 'B')
+			yylval.i |= 2;
+		else if(c == 'd' || c == 'D')
+			yylval.i |= 10;
+		else
+			error(nil, "invalid base '%c'", c);
+		base = yylval.i;
+		return LBASE;
+	}
 	if(isalpha(c) || c == '_' || c == '$'){
 		for(p = buf, *p++ = c; c = Bgetc(bp), isalnum(c) || c == '_' || c == '$'; )
 			if(p < buf + sizeof(buf) - 1)
@@ -239,15 +363,6 @@ yylex(void)
 		yylval.sym = getsym(scope, 1, buf);
 		return LSYMB;
 	}
-	if(isdigit(c) || c == '\''){
-		for(p = buf, *p++ = c; c = Bgetc(bp), isalnum(c) || c == '\''; )
-			if(p < buf + sizeof(buf) - 1)
-				*p++ = c;
-		Bungetc(bp);
-		*p = 0;
-		yylval.cons = consparse(buf);
-		return LNUMB;
-	}
 	if(kw = oplook[c], kw != nil){
 		buf[0] = c;
 		buf[1] = Bgetc(bp);
@@ -268,3 +383,4 @@ yylex(void)
 	}
 	return c;
 }
+

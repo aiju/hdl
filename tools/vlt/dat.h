@@ -33,6 +33,11 @@ enum {
 
 extern Type *inttype, *realtype, *timetype, *bittype, *sbittype, *unsztype, *eventtype;
 
+struct Const {
+	mpint *n, *x;
+	uchar sz, sign;
+};
+
 struct ASTNode {
 	int t;
 	union {
@@ -42,7 +47,8 @@ struct ASTNode {
 		};
 		ASTNode *n;
 		int i;
-		Const *cons;
+		double d;
+		Const cons;
 		Symbol *sym;
 		struct {
 			SymTab *st;
@@ -63,11 +69,6 @@ struct ASTNode {
 	ASTNode *attrs;
 	ASTNode *next, **last;
 	Line;
-};
-
-struct Const {
-	mpint *n, *x;
-	uchar sz, ext, sign;
 };
 
 struct Symbol {
@@ -129,6 +130,7 @@ enum {
 	ASTCAT,
 	ASTCINT,
 	ASTCONST,
+	ASTCREAL,
 	ASTDASS,
 	ASTDELAY,
 	ASTDISABLE,

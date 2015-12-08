@@ -21,3 +21,4 @@ void typeok(Line *, Type *);
 void clearmarks(void);
 int markstr(char *);
 uint hash(char *);
+ASTNode *makenumb(Const *, int, Const *);

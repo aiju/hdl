@@ -21,6 +21,7 @@ static char *astname[] = {
 	[ASTCAT] "ASTCAT",
 	[ASTCINT] "ASTCINT",
 	[ASTCONST] "ASTCONST",
+	[ASTCREAL] "ASTCREAL",
 	[ASTDASS] "ASTDASS",
 	[ASTDELAY] "ASTDELAY",
 	[ASTDISABLE] "ASTDISABLE",
@@ -225,11 +226,16 @@ node(int t, ...)
 	va_start(va, t);
 	switch(t){
 	case ASTCONST:
-		n->cons = va_arg(va, Const *);
+		n->cons = va_arg(va, Const);
 		break;
 	case ASTCINT:
 		n->i = va_arg(va, int);
 		n->type = type(TYPUNSZ, va_arg(va, int));
+		n->isconst = 1;
+		break;
+	case ASTCREAL:
+		n->d = va_arg(va, double);
+		n->type = type(TYPREAL);
 		n->isconst = 1;
 		break;
 	case ASTSYM:
@@ -904,10 +910,10 @@ typecheck(ASTNode *n, Type *ctxt)
 		n->isconst = n->sym->t == SYMPARAM || n->sym->t == SYMLPARAM || n->sym->t == SYMGENVAR;
 		break;
 	case ASTCONST:
-		if(n->cons->sz == 0)
-			n->type = type(TYPUNSZ, n->cons->sign);
+		if(n->cons.sz == 0)
+			n->type = type(TYPUNSZ, n->cons.sign);
 		else
-			n->type = type(TYPBITS, n->cons->sign, node(ASTCINT, n->cons->sz));
+			n->type = type(TYPBITS, n->cons.sign, node(ASTCINT, n->cons.sz));
 		n->isconst = 1;
 		break;
 	case ASTIDX:

@@ -4,22 +4,23 @@
 #include "dat.h"
 #include "fns.h"
 
-Const *
+Const
 makeconst(int n)
 {
-	Const *c;
+	Const c;
 	
-	c = emalloc(sizeof(Const));
-	c->n = mpnew(n);
-	c->x = mpnew(0);
-	c->sign = 1;
+	c.n = mpnew(n);
+	c.x = mpnew(0);
+	c.sign = 1;
 	return c;
 }
 
-Const *
-constop(int, Const *, Const *)
+Const
+constop(int, Const, Const)
 {
-	return NOPE;
+	Const c;
+	
+	return c;
 }
 
 static ASTNode *
@@ -32,8 +33,8 @@ constfold(ASTNode *n)
 	case ASTCINT:
 		return n;
 	case ASTCONST:
-		if(n->type->t == TYPUNSZ && mpcmp(n->cons->x, mpzero) == 0)
-			return repl(n, node(ASTCINT, mptoi(n->cons->n), n->type->sign));
+		if(n->type->t == TYPUNSZ && mpcmp(n->cons.x, mpzero) == 0)
+			return repl(n, node(ASTCINT, mptoi(n->cons.n), n->type->sign));
 		return n;
 	case ASTSYM:
 		if(n->sym->t == SYMLPARAM)

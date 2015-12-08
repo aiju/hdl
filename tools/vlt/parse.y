@@ -22,7 +22,7 @@
 %union {
 	Symbol *sym;
 	ASTNode *node;
-	Const *cons;
+	Const cons;
 	Type *type;
 	struct {
 		ASTNode *lo, *hi;
@@ -40,6 +40,7 @@
 		int i;
 	} nodei;
 	int i;
+	double d;
 }
 
 %token LALWAYS LAND LASSIGN LAUTOMATIC LBEGIN LBUF LBUFIF0 LBUFIF1
@@ -61,7 +62,7 @@
 
 %type <node> expr primary attrs attr attrspecs attrspec const hiersymb hiersymbidx lexpr
 %type <node> args stat statnull lval lvals optdelaye delaye event caseitems caseitem
-%type <node> varass eventexpr blocknoitemstats modgens genblocknull genblock
+%type <node> varass eventexpr blocknoitemstats modgens genblocknull genblock numb
 %type <node> delayval moditem moditems modgen paramlist lordports lordport lnamports
 %type <node> lnamport lnparass nparass instance modinst instances contass contassigns
 %type <node> gencaseitems gencaseitem
@@ -74,6 +75,8 @@
 
 %token <cons> LNUMB
 %token <sym> LSYMB LSYSSYMB
+%token <i> LBASE
+%token <d> LFLOAT
 %token LATTRSTART LATTREND
 
 %token LONAND LONOR LONXOR LONXOR1 LOEQ LONEQ
@@ -259,7 +262,7 @@ nrtype: { $$ = 0; } | ntype { $$ = PORTNET; } | LREG { $$ = PORTREG; };
 iotype: LINPUT { $$ = PORTIN; } | LOUTPUT { $$ = PORTOUT; } | LINOUT { $$ = PORTIO; };
 delay2: | '#' delayval | '#' '(' delayval ')' | '#' '(' delayval ',' delayval ')' ;
 delay3: delay2 | '#' '(' delayval ',' delayval ',' delayval ')' ;
-delayval: LNUMB { $$ = node(ASTCONST, $1); } | LSYMB { $$ = node(ASTSYM, $1); };
+delayval: LNUMB { $$ = makenumb(nil, 0, &$1); } | LSYMB { $$ = node(ASTSYM, $1); };
 range: '[' const ':' const ']' { $$.hi = $2; $$.lo = $4; };
 
 modinst: LSYMB paramlist { modname = $1->name; modparams = $2; } instances { $$ = $4; };
@@ -321,12 +324,19 @@ expr:
 	| expr '?' attrs expr ':' expr { $$ = node(ASTTERN, $1, $4, $6, $3); }
 	;
 
-primary: LNUMB { $$ = node(ASTCONST, $1); }
+primary: numb
+	| LFLOAT { $$ = node(ASTCREAL, $1); }
 	| hiersymbidx
 	| '{' lexpr '}' { $$ = node(ASTCAT, $2, nil); }
 	| '{' expr '{' lexpr '}' '}' { $$ = node(ASTCAT, $4, $2); }
 	| hiersymb attrs '(' lexpr ')' { $$ = node(ASTCALL, $1, $4, $2); }
 	| LSYSSYMB args { $$ = node(ASTCALL, $1, $2, nil); }
+	;
+
+numb:
+	LNUMB { $$ = makenumb(nil, 0, &$1); }
+	| LBASE LNUMB { $$ = makenumb(nil, $1, &$2); }
+	| LNUMB LBASE LNUMB { $$ = makenumb(&$1, $2, &$3); }
 	;
 
 contassigns: contass | contassigns ',' contass { $$ = nodecat($1, $3); };
