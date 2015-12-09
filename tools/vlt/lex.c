@@ -938,6 +938,7 @@ loop:
 			goto c1;
 		}
 		lexungetc(c);
+		return '/';
 	}
 	if(c == '`'){
 		for(p = buf; c = lexgetc(), isalnum(c) || c == '_' || c == '$'; )
@@ -1024,6 +1025,12 @@ loop:
 		*p = 0;
 		yylval.sym = getsym(scope, 1, buf);
 		return LSYMB;
+	}
+	if(c == '"'){
+		if(getstring(buf, buf + sizeof(buf)) != '"')
+			error(nil, "unterminated string");
+		yylval.str = strdup(buf);
+		return LSTR;
 	}
 	if(kw = oplook[c], kw != nil){
 		buf[0] = c;

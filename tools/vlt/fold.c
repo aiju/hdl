@@ -31,6 +31,7 @@ constfold(ASTNode *n)
 
 	switch(n->t){
 	case ASTCINT:
+	case ASTSTRING:
 		return n;
 	case ASTCONST:
 		if(n->type->t == TYPUNSZ && mpcmp(n->cons.x, mpzero) == 0)
@@ -44,7 +45,7 @@ constfold(ASTNode *n)
 		n->n1 = constfold(n->n1);
 		n->n2 = constfold(n->n2);
 		if(n->type == nil || n->n1 == nil || n->n2 == nil)
-			return;
+			return n;
 		if(n->type->t == TYPUNSZ && n->n1->t == ASTCINT && n->n2->t == ASTCINT){
 			a = n->n1->i;
 			b = n->n2->i;

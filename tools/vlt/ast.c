@@ -41,6 +41,7 @@ static char *astname[] = {
 	[ASTMODULE] "ASTMODULE",
 	[ASTPCON] "ASTPCON",
 	[ASTREPEAT] "ASTREPEAT",
+	[ASTSTRING] "ASTSTRING",
 	[ASTSYM] "ASTSYM",
 	[ASTTASK] "ASTTASK",
 	[ASTTCALL] "ASTTCALL",
@@ -237,6 +238,9 @@ node(int t, ...)
 		n->d = va_arg(va, double);
 		n->type = type(TYPREAL);
 		n->isconst = 1;
+		break;
+	case ASTSTRING:
+		n->str = va_arg(va, char *);
 		break;
 	case ASTSYM:
 		n->sym = va_arg(va, Symbol *);
@@ -667,6 +671,10 @@ asteq(ASTNode *a, ASTNode *b)
 	switch(a->t){
 	case ASTCINT:
 		return a->i == b->i;
+	case ASTBIN: case ASTUN:
+		return a->op == b->op && asteq(a->n1, b->n1) && asteq(a->n2, b->n2);
+	case ASTSYM:
+		return a->sym == b->sym;
 	default:
 		fprint(2, "asteq: unknown %A\n", a->t);
 		return 0;
@@ -800,9 +808,11 @@ typecheck(ASTNode *n, Type *ctxt)
 		break;
 	case ASTAT:
 		typecheck(n->n1, nil);
-		insist(n->n1->type != nil);
-		if(n->n1->type->t == TYPMEM)
-			lerror(n, "memory as event");
+		if(n->n1 != nil){
+			insist(n->n1->type != nil);
+			if(n->n1->type->t == TYPMEM)
+				lerror(n, "memory as event");
+		}
 		typecheck(n->n2, nil);
 		break;
 	case ASTBIN:
@@ -1006,7 +1016,11 @@ typecheck(ASTNode *n, Type *ctxt)
 		typecheck(n->n1, nil);
 		if(n->n1->t != ASTSYM)
 			lerror(n, "%A in task call", n->n1->t);
-		else if(n->n1->sym->t != SYMTASK)
+		else if(n->n1->sym->name[0] == '$'){
+			for(m = n->n2; m != nil; m = m->next)
+				typecheck(m, nil);
+			return;
+		}else if(n->n1->sym->t != SYMTASK)
 			lerror(n, "%σ in task call", n->n1->sym->t);
 		else{
 			f = n->n1->sym->n;
@@ -1171,6 +1185,10 @@ typecheck(ASTNode *n, Type *ctxt)
 			typecheck(m->n2, nil);
 		}
 		break;
+	case ASTSTRING:
+		n->type = type(TYPBITS, 0, node(ASTCINT, strlen(n->str) * 8));
+		n->isconst = 1;
+		return;
 	case ASTCASIT:
 	case ASTPCON:
 	default:

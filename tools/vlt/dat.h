@@ -48,6 +48,7 @@ struct ASTNode {
 		ASTNode *n;
 		int i;
 		double d;
+		char *str;
 		Const cons;
 		Symbol *sym;
 		struct {
@@ -149,6 +150,7 @@ enum {
 	ASTIF,
 	ASTPCON,
 	ASTREPEAT,
+	ASTSTRING,
 	ASTSYM,
 	ASTTASK,
 	ASTTCALL,

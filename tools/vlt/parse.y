@@ -40,6 +40,7 @@
 	} nodei;
 	int i;
 	double d;
+	char *str;
 }
 
 %token LALWAYS LAND LASSIGN LAUTOMATIC LBEGIN LBUF LBUFIF0 LBUFIF1
@@ -76,6 +77,7 @@
 %token <sym> LSYMB LSYSSYMB
 %token <i> LBASE
 %token <d> LFLOAT
+%token <str> LSTR
 %token LATTRSTART LATTREND
 
 %token LONAND LONOR LONXOR LONXOR1 LOEQ LONEQ
@@ -261,7 +263,7 @@ nrtype: { $$ = 0; } | ntype { $$ = PORTNET; } | LREG { $$ = PORTREG; };
 iotype: LINPUT { $$ = PORTIN; } | LOUTPUT { $$ = PORTOUT; } | LINOUT { $$ = PORTIO; };
 delay2: | '#' delayval | '#' '(' delayval ')' | '#' '(' delayval ',' delayval ')' ;
 delay3: delay2 | '#' '(' delayval ',' delayval ',' delayval ')' ;
-delayval: LNUMB { $$ = makenumb(nil, 0, &$1); } | LSYMB { $$ = node(ASTSYM, $1); };
+delayval: LNUMB { $$ = makenumb(nil, 0, &$1); } | LFLOAT { $$ = node(ASTCREAL, $1); } | LSYMB { $$ = node(ASTSYM, $1); };
 range: '[' const ':' const ']' { $$.hi = $2; $$.lo = $4; };
 
 modinst: LSYMB paramlist { modname = $1->name; modparams = $2; } instances { $$ = $4; };
@@ -325,11 +327,13 @@ expr:
 
 primary: numb
 	| LFLOAT { $$ = node(ASTCREAL, $1); }
+	| LSTR { $$ = node(ASTSTRING, $1); }
 	| hiersymbidx
+	| '(' expr ')' { $$ = $2; }
 	| '{' lexpr '}' { $$ = node(ASTCAT, $2, nil); }
 	| '{' expr '{' lexpr '}' '}' { $$ = node(ASTCAT, $4, $2); }
 	| hiersymb attrs '(' lexpr ')' { $$ = node(ASTCALL, $1, $4, $2); }
-	| LSYSSYMB args { $$ = node(ASTCALL, $1, $2, nil); }
+	| LSYSSYMB args { $$ = node(ASTCALL, node(ASTSYM, $1), $2, nil); }
 	;
 
 numb:
@@ -443,7 +447,7 @@ stat:
 	| attrs LFORCE lval '=' expr ';' { lerror(nil, "unsupported construct ignored"); $$ = nil; }
 	| attrs LRELEASE lval ';' { lerror(nil, "unsupported construct ignored"); $$ = nil; }
 	| attrs delaye statnull { $$ = $2; $$->n2 = $3; $$->attrs = $1; }
-	| attrs LSYSSYMB args ';' { $$ = node(ASTTCALL, $2, $3, $1); }
+	| attrs LSYSSYMB args ';' { $$ = node(ASTTCALL, node(ASTSYM, $2), $3, $1); }
 	| attrs hiersymb args ';' { $$ = node(ASTTCALL, $2, $3, $1); }
 	| attrs LWAIT '(' expr ')' statnull { $$ = node(ASTWAIT, $4, $6, $1); }
 	| error { $$ = nil; }
@@ -455,6 +459,7 @@ event: '@' LSYMB { $$ = node(ASTAT, node(ASTSYM, $2)); }
 	| '@' '(' eventexpr ecomma ')' { $$ = node(ASTAT, $3); }
 	| '@' '*' { $$ = node(ASTAT, nil); }
 	| '@' '(' '*' ')' { $$ = node(ASTAT, nil); }
+	| '@' LATTRSTART ')' { $$ = node(ASTAT, nil); }
 	;
 eventexpr: expr
 	| LPOSEDGE expr { $$ = node(ASTUN, OPPOSEDGE, $2, nil); }
