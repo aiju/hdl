@@ -8,6 +8,11 @@
 #include "y.tab.h"
 
 typedef struct Keyword Keyword;
+typedef struct Macro Macro;
+typedef struct Piece Piece;
+typedef struct PiecePos PiecePos;
+
+enum { MAXARGS = 16 };
 
 struct Keyword {
 	char *name;
@@ -170,6 +175,406 @@ Keyword optable[] = {
 
 Keyword *keylook[128], *oplook[128];
 
+struct Piece {
+	char *str;
+	int arg;
+	Piece *next;
+};
+
+struct PiecePos {
+	Piece *p;
+	int n;
+	PiecePos *up;
+	Piece **args;
+	int nargs;
+	PiecePos *pa;
+	Macro *m;
+};
+
+struct Macro {
+	char *name;
+	Macro *next;
+	void (*f)(Macro *);
+	Piece *pieces;
+	int nargs;
+};
+enum { MACHASH = 256 };
+
+Macro *machash[MACHASH];
+
+Biobuf *bp;
+int base;
+int ungetch = -1;
+PiecePos *pstack;
+
+static void
+putpieces(Piece *p)
+{
+	Piece *np;
+	
+	for(; p != nil; p = np){
+		free(p->str);
+		np = p->next;
+		free(p);
+	}
+}
+
+static PiecePos *
+pleave(PiecePos *p)
+{
+	PiecePos *r;
+	int i;
+	
+	r = p->up;
+	if(r != nil && r->pa == p)
+		return r;
+	for(i = 0; i < p->nargs; i++)
+		putpieces(p->args[i]);
+	free(p->args);
+	free(p->pa);
+	free(p);
+	return r;
+}
+
+static int
+lexgetc(void)
+{
+	int c, i;
+
+	if(ungetch >= 0){
+		c = ungetch;
+		ungetch = -1;
+		return c;
+	}
+	while(pstack != nil){
+		if(pstack->p == nil){
+			pstack = pleave(pstack);
+			continue;
+		}
+		if(i = pstack->p->arg, i >= 0){
+			pstack->p = pstack->p->next;
+			pstack = pstack->pa;
+			pstack->p = pstack->up->args[i];
+			pstack->n = 0;
+			continue;
+		}
+		c = pstack->p->str[pstack->n++];
+		if(c == 0){
+			pstack->p = pstack->p->next;
+			pstack->n = 0;
+			continue;
+		}
+		return c;
+	}
+	c = Bgetc(bp);
+	if(c == '\n')
+		curline.lineno++;
+	return c;
+}
+
+static void
+lexungetc(char c)
+{
+	assert(ungetch < 0);
+	ungetch = c;
+}
+
+static void
+skipsp(void)
+{
+	int c;
+
+	while(c = lexgetc(), isspace(c) && c != '\n')
+		;
+	lexungetc(c);
+}
+
+static char *
+getident(char *p, char *e)
+{
+	int c;
+	
+	for(; c = lexgetc(), isalnum(c) || c == '_' || c == '$'; )
+		if(p < e - 1)
+			*p++ = c;
+	*p++ = 0;
+	lexungetc(c);
+	return p;
+}
+
+static void
+defdirect(char *s, void (*d)(Macro *))
+{
+	Macro *m, **p;
+	
+	m = emalloc(sizeof(Macro));
+	m->name = strdup(s);
+	m->f = d;
+	p = &machash[hash(s)%MACHASH];
+	m->next = *p;
+	*p = m;
+}
+
+static Macro *
+getmac(char *s)
+{
+	Macro *m;
+
+	for(m = machash[hash(s)%MACHASH]; m != nil; m = m->next)
+		if(strcmp(s, m->name) == 0)
+			return m;
+	return nil;
+}
+
+static void
+skipline(Macro *)
+{
+	int c;
+	while(c = lexgetc(), c >= 0 && c != '\n')
+		;
+}
+
+static void
+directnope(Macro *m)
+{
+	error(nil, "unimplemented directive `%s ignored", m->name);
+	skipline(nil);
+}
+
+static void
+addpiece(Macro *m, char *s, char **p, Piece ***pc)
+{
+	Piece *pp;
+	
+	pp = emalloc(sizeof(Piece));
+	**p = 0;
+	pp->str = strdup(s);
+	pp->arg = -1;
+	**pc = pp;
+	*pc = &pp->next;
+	*p = s;
+}
+
+static void
+addarg(Macro *m, int i, Piece ***pc)
+{
+	Piece *pp;
+	
+	pp = emalloc(sizeof(Piece));
+	pp->str = nil;
+	pp->arg = i;
+	**pc = pp;
+	*pc = &pp->next;
+}
+
+static void macsub(Macro *);
+static void
+define(Macro *)
+{
+	char abuf[512], tbuf[512], ibuf[128], *p, *e, *args[MAXARGS];
+	int nargs, i;
+	char c;
+	Macro *m, **mp;
+	Piece **pc;
+	#define addchar {if(p + 1 >= e) addpiece(m, tbuf, &p, &pc); *p++ = c;}
+
+	skipsp();
+	getident(ibuf, ibuf+sizeof(ibuf));
+	m = emalloc(sizeof(Macro));
+	m->name = strdup(ibuf);
+	m->f = macsub;
+	pc = &m->pieces;
+	c = lexgetc();
+	nargs = 0;
+	if(c == '('){
+		p = abuf;
+		e = abuf + sizeof(abuf);
+		do{
+			if(nargs == nelem(args)){
+				error(nil, "too many arguments for macro");
+				goto out;
+			}
+			skipsp();
+			args[nargs] = p;
+			p = getident(p, e);
+			if(*args[nargs] == 0)
+				goto nope;
+			nargs++;
+			skipsp();
+			c = lexgetc();
+		}while(c == ',');
+		if(c != ')')
+			goto nope;
+	}else
+		lexungetc(c);
+	skipsp();
+	p = tbuf;
+	e = tbuf + sizeof(tbuf);
+	*p++ = ' ';
+next:
+	while(c = lexgetc(), c >= 0 && c != '\n'){
+		if(c == '\\'){
+			c = lexgetc();
+			if(c != '\n')
+				lexungetc(c);
+		}
+		if(c == '"'){
+			addchar;
+			while(c = lexgetc(), c >= 0 && c != '\n' && c != '"'){
+				if(c == '\\'){
+					addchar;
+					c = lexgetc();
+					if(c < 0 || c == '\n') break;
+				}
+				addchar;
+			}
+			if(c < 0 || c == '\n'){
+				error(nil, "newline in string");
+				goto out;
+			}
+			addchar;
+			continue;
+		}
+		if(c == '/'){
+			c = lexgetc();
+			if(c == '/'){
+				skipline(nil);
+				break;
+			}
+			lexungetc(c);
+			c = '/';
+		}
+		if(isalpha(c) || c == '_' || c == '`' || c == '\''){
+			ibuf[0] = c;
+			getident(ibuf + 1, ibuf + sizeof(ibuf));
+			for(i = 0; i < nargs; i++)
+				if(strcmp(args[i], ibuf) == 0){
+					addpiece(m, tbuf, &p, &pc);
+					addarg(m, i, &pc);
+					goto next;
+				}
+			if(p + strlen(ibuf) + 1 >= e)
+				addpiece(m, tbuf, &p, &pc);
+			p = strecpy(p, e, ibuf);
+			continue;
+		}
+		addchar;
+	}
+	c = ' ';
+	addchar;
+	addpiece(m, tbuf, &p, &pc);
+	mp = &machash[hash(m->name) % MACHASH];
+	m->nargs = nargs;
+	m->next = *mp;
+	*mp = m;
+	return;
+nope:
+	error(nil, "invalid `define syntax");
+out:
+	skipline(nil);
+}
+
+static void
+piecescopy(Macro *m, Piece *p, Piece **args, int nargs)
+{
+	PiecePos *pp;
+	
+	for(pp = pstack; pp != nil; pp = pp->up)
+		if(pp->m == m){
+			error(nil, "recursive invocation of macro `%s", m->name);
+			return;
+		}
+	pp = emalloc(sizeof(PiecePos));
+	pp->m = m;
+	pp->p = p;
+	pp->nargs = nargs;
+	if(nargs != 0){
+		pp->args = emalloc(sizeof(Piece *) * nargs);
+		memcpy(pp->args, args, sizeof(Piece *) * nargs);
+		pp->pa = emalloc(sizeof(PiecePos));
+		pp->pa->up = pp;
+	}
+	pp->up = pstack;
+	pstack = pp;
+}
+
+static void
+macsub(Macro *m)
+{
+	char tbuf[512];
+	Piece *args[MAXARGS], **pc;
+	int nargs, c, par, i;
+	char *p, *e;
+
+	memset(args, 0, sizeof(args));
+	nargs = 0;
+	if(m->nargs != 0){
+		skipsp();
+		c = lexgetc();
+		if(c != '(')
+			goto toofew;
+		p = tbuf;
+		e = tbuf + sizeof(tbuf);
+		par = 0;
+		pc = &args[nargs];
+		for(;;){
+			c = lexgetc();
+			if(c < 0){
+				error(nil, "unexpected eof");
+				goto out;
+			}
+			if(c == '(') par++;
+			if(par == 0){
+				if(c == ','){
+					if(++nargs == MAXARGS)
+						goto toomany;
+					addpiece(m, tbuf, &p, &pc);
+					pc = &args[nargs];
+					continue;
+				}
+				if(c == ')') break;
+			}else if(c == ')')
+				par--;
+			if(c == '"'){
+				addchar;
+				while(c = lexgetc(), c >= 0 && c != '\n' && c != '"'){
+					if(c == '\\'){
+						addchar;
+						c = lexgetc();
+						if(c < 0 || c == '\n') break;
+					}
+					addchar;
+				}
+				if(c < 0 || c == '\n'){
+					error(nil, "newline in string");
+					goto out;
+				}
+				addchar;
+				continue;
+			}
+			addchar;
+		}
+		addpiece(m, tbuf, &p, &pc);
+		nargs++;
+		if(nargs < m->nargs){
+		toofew:
+			error(nil, "too few arguments to macro `%s", m->name);
+			goto out;
+		}
+		if(nargs > m->nargs){
+		toomany:
+			error(nil, "too many arguments to macro `%s", m->name);
+			goto out;
+		}
+	}
+	piecescopy(m, m->pieces, args, nargs);
+	return;
+out:
+	for(i = 0; i < nargs; i++)
+		putpieces(args[i]);
+}
+#undef addchar
+
 void
 lexinit(void)
 {
@@ -182,15 +587,31 @@ lexinit(void)
 		if(oplook[*kw->name] == nil)
 			oplook[*kw->name] = kw;
 
+	defdirect("begin_keywords", directnope);
+	defdirect("celldefine", directnope);
+	defdirect("default_nettype", skipline);
+	defdirect("define", define);
+	defdirect("else", directnope);
+	defdirect("elsif", directnope);
+	defdirect("end_keywords", directnope);
+	defdirect("endcelldefine", directnope);
+	defdirect("endif", directnope);
+	defdirect("ifdef", directnope);
+	defdirect("ifndef", directnope);
+	defdirect("include", directnope);
+	defdirect("line", directnope);
+	defdirect("nounconnected_drive", directnope);
+	defdirect("pragma", directnope);
+	defdirect("resetall", directnope);
+	defdirect("timescale", skipline);
+	defdirect("unconnected_drive", directnope);
+	defdirect("undef", directnope);
 }
-
-Biobuf *bp;
-int base;
 
 int
 basedigit(int c)
 {
-	return strchr("0123456789xzXZ?abcdefABCDEF_", c) != nil;
+	return isalnum(c) || c == '_' || c == '?';
 }
 
 ASTNode *
@@ -257,6 +678,7 @@ consparse(Const *c, char *s, int b)
 			case 2: if(s[i] > '1') goto nope; break;
 			case 8: if(s[i] > '7') goto nope; break;
 			case 10: if(s[i] > '9') goto nope; break;
+			case 16: if(!isxdigit(s[i])) goto nope; break;
 			}
 			t0[i] = s[i];
 			t1[i] = '0';
@@ -287,38 +709,69 @@ yylex(void)
 	static char buf[512], buf2[512];
 	char *p;
 	Keyword *kw;
+	Macro *m;
 
-	while(c = Bgetc(bp), isspace(c))
-		if(c == '\n')
-			curline.lineno++;
+loop:
+	while(c = lexgetc(), isspace(c))
+		;
 	if(c < 0)
 		return -1;
+	if(c == '/'){
+		c = lexgetc();
+		if(c == '/'){
+			while(c = lexgetc(), c >= 0 && c != '\n')
+				;
+			goto loop;
+		}else if(c == '*'){
+		c0:	c = lexgetc();
+			if(c < 0) return -1;
+		c1:	if(c != '*') goto c0;
+			c = lexgetc();
+			if(c < 0) return -1;
+			if(c == '/') goto loop;
+			goto c1;
+		}
+		lexungetc(c);
+	}
+	if(c == '`'){
+		for(p = buf; c = lexgetc(), isalnum(c) || c == '_' || c == '$'; )
+			*p++ = c;
+		*p = 0;
+		lexungetc(c);
+		m = getmac(buf);
+		if(m != nil)
+			m->f(m);
+		else
+			error(nil, "undeclared macro `%s", buf);
+		goto loop;
+	}
 	if(isdigit(c) || base && basedigit(c)){
-		for(p = buf, *p++ = c; c = Bgetc(bp), basedigit(c); )
+		for(p = buf, *p++ = c; c = lexgetc(), basedigit(c); )
 			if(c != '_' && p < buf + sizeof(buf) - 1)
 				*p++ = c;
 		if(c == '.' || c == 'e' || c == 'E'){
 			if(c == '.'){
 				*p++ = c;
-				while(c = Bgetc(bp), isdigit(c))
+				while(c = lexgetc(), isdigit(c))
 					*p++ = c;
 				if(p[-1] == '.')
 					lerror(nil, "invalid floating point constant");
 			}
 			if(c == 'e' || c == 'E'){
 				*p++ = c;
-				if(c = Bgetc(bp), c == '-' || c == '+')
+				if(c = lexgetc(), c == '-' || c == '+')
 					*p++ = c;
-				while(c = Bgetc(bp), isdigit(c))
+				while(c = lexgetc(), isdigit(c))
 					*p++ = c;
 				if(!isdigit(p[-1]))
 					lerror(nil, "invalid floating point constant");
 			}
-			Bungetc(bp);
+			*p = 0;
+			lexungetc(c);
 			yylval.d = strtod(buf, nil);
 			return LFLOAT;
 		}
-		Bungetc(bp);
+		lexungetc(c);
 		*p = 0;
 		consparse(&yylval.cons, buf, base);
 		base = 0;
@@ -326,9 +779,9 @@ yylex(void)
 	}
 	base = 0;
 	if(c == '\''){
-		c = Bgetc(bp);
+		c = lexgetc();
 		if(yylval.i = c == 's' || c == 'S', yylval.i)
-			c = Bgetc(bp);
+			c = lexgetc();
 		if(c == 'o' || c == 'o')
 			yylval.i |= 8;
 		else if(c == 'h' || c == 'H')
@@ -343,10 +796,10 @@ yylex(void)
 		return LBASE;
 	}
 	if(isalpha(c) || c == '_' || c == '$'){
-		for(p = buf, *p++ = c; c = Bgetc(bp), isalnum(c) || c == '_' || c == '$'; )
+		for(p = buf, *p++ = c; c = lexgetc(), isalnum(c) || c == '_' || c == '$'; )
 			if(p < buf + sizeof(buf) - 1)
 				*p++ = c;
-		Bungetc(bp);
+		lexungetc(c);
 		*p = 0;
 		if(kw = keylook[buf[0]], kw != nil)
 			for(; kw->name != nil && *kw->name == buf[0]; kw++)
@@ -356,29 +809,30 @@ yylex(void)
 		return buf[0] == '$' ? LSYSSYMB : LSYMB;
 	}
 	if(c == '\\'){
-		for(p = buf; c = Bgetc(bp), c >= 0 && !isspace(c); )
+		for(p = buf; c = lexgetc(), c >= 0 && !isspace(c); )
 			if(p < buf + sizeof(buf) - 1)
 				*p++ = c;
+		lexungetc(c);
 		*p = 0;
 		yylval.sym = getsym(scope, 1, buf);
 		return LSYMB;
 	}
 	if(kw = oplook[c], kw != nil){
 		buf[0] = c;
-		buf[1] = Bgetc(bp);
+		buf[1] = lexgetc();
 		for(; kw->name != nil && kw->name[0] == buf[0]; kw++)
 			if(kw->name[1] == buf[1])
 				goto found;
-		Bungetc(bp);
+		lexungetc(buf[1]);
 		return c;
 	found:
 		if(kw[1].name == nil || kw[1].name[2] == 0)
 			return kw->tok;
 		assert(kw[1].name[0] == buf[0] && kw[1].name[1] == buf[1]);
-		c = Bgetc(bp);
+		c = lexgetc();
 		if(c == kw[1].name[2])
 			return kw[1].tok;
-		Bungetc(bp);
+		lexungetc(c);
 		return kw->tok;
 	}
 	return c;
