@@ -215,6 +215,7 @@ Macro *machash[MACHASH];
 
 int base;
 int ungetch = -1;
+int iflevel;
 PiecePos *pstack;
 File *curfile;
 static Line nilline = {"<nil>", 0};
@@ -707,6 +708,79 @@ directline(Macro *)
 	curfile->lineno = newn;
 }
 
+static void
+directif(Macro *m)
+{
+	char buf[512];
+	int c;
+
+	skipsp();
+	getident(buf, buf+sizeof(buf));
+	skipline(nil);
+	if(*buf == 0){
+		lerror(nil, "`if syntax error");
+		return;
+	}
+	iflevel++;
+	if((getmac(buf) != nil) ^ (m->name[3] == 'n'))
+		return;
+loop:
+	while(c = lexgetc(), c >= 0)
+		if(c == '`'){
+			getident(buf, buf+sizeof(buf));
+			if(strcmp(buf, "else") == 0 || strcmp(buf, "elsif") == 0 || strcmp(buf, "endif") == 0)
+				break;
+		}
+	if(c < 0) return;
+	if(buf[2] == 'd'){
+		skipline(nil);
+		iflevel--;
+		return;
+	}
+	if(buf[3] == 'i'){
+		skipsp();
+		getident(buf, buf+sizeof(buf));
+		if(*buf == 0){
+			lerror(nil, "`elsif syntax error");
+			return;
+		}
+		if(getmac(buf) == nil)
+			goto loop;
+	}
+	skipline(nil);
+}
+
+static void
+directendif(Macro *)
+{
+	if(iflevel == 0)
+		lerror(nil, "stray `endif");
+	else
+		--iflevel;
+}
+
+static void
+directelse(Macro *m)
+{
+	char buf[512];
+	int c;
+
+	if(iflevel == 0){
+		lerror(nil, "stray `%s", m->name);
+		return;
+	}
+	skipline(nil);
+	while(c = lexgetc(), c >= 0)
+		if(c == '`'){
+			getident(buf, buf+sizeof(buf));
+			if(strcmp(buf, "endif") == 0){
+				iflevel--;
+				skipline(nil);
+				return;
+			}
+		}
+}
+
 void
 lexinit(void)
 {
@@ -723,13 +797,13 @@ lexinit(void)
 	defdirect("celldefine", directnope);
 	defdirect("default_nettype", skipline);
 	defdirect("define", define);
-	defdirect("else", directnope);
-	defdirect("elsif", directnope);
+	defdirect("else", directelse);
+	defdirect("elsif", directelse);
 	defdirect("end_keywords", directnope);
 	defdirect("endcelldefine", directnope);
-	defdirect("endif", directnope);
-	defdirect("ifdef", directnope);
-	defdirect("ifndef", directnope);
+	defdirect("endif", directendif);
+	defdirect("ifdef", directif);
+	defdirect("ifndef", directif);
 	defdirect("include", include);
 	defdirect("line", directline);
 	defdirect("nounconnected_drive", directnope);
@@ -977,6 +1051,7 @@ parse(char *file)
 {
 	extern int yyparse(void);
 
+	iflevel = 0;
 	curfile = emalloc(sizeof(File));
 	curfile->bp = Bopen(file, OREAD);
 	if(curfile->bp == nil){
@@ -990,6 +1065,8 @@ parse(char *file)
 	Bterm(curfile->bp);
 	free(curfile);
 	curline = &nilline;
+	if(iflevel != 0)
+		error(nil, "missing `endif");
 	return 0;
 }
 
