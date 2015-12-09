@@ -82,5 +82,5 @@ main(int argc, char **argv)
 	}ARGEND;
 	
 	while(argc-- != 0)
-		parse(*argv);
+		parse(*argv++);
 }

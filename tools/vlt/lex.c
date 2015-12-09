@@ -193,6 +193,7 @@ struct PiecePos {
 	int nargs;
 	PiecePos *pa;
 	Macro *m;
+	int ungetch;
 };
 
 struct Macro {
@@ -255,12 +256,12 @@ lexgetc(void)
 {
 	int c, i;
 
-	if(ungetch >= 0){
-		c = ungetch;
-		ungetch = -1;
-		return c;
-	}
 	while(pstack != nil){
+		if(pstack->ungetch >= 0){
+			c = pstack->ungetch;
+			pstack->ungetch = -1;
+			return c;
+		}
 		if(pstack->p == nil){
 			pstack = pleave(pstack);
 			continue;
@@ -280,6 +281,11 @@ lexgetc(void)
 		}
 		return c;
 	}
+	if(ungetch >= 0){
+		c = ungetch;
+		ungetch = -1;
+		return c;
+	}
 	for(;;){
 		if(curfile == nil) return -1;
 		c = Bgetc(curfile->bp);
@@ -293,8 +299,10 @@ lexgetc(void)
 static void
 lexungetc(char c)
 {
-	assert(ungetch < 0);
-	ungetch = c;
+	if(pstack != nil)
+		pstack->ungetch = c;
+	else
+		ungetch = c;
 }
 
 static void
@@ -556,6 +564,7 @@ piecescopy(Macro *m, Piece *p, Piece **args, int nargs)
 	pp->m = m;
 	pp->p = p;
 	pp->nargs = nargs;
+	pp->ungetch = -1;
 	if(nargs != 0){
 		pp->args = emalloc(sizeof(Piece *) * nargs);
 		memcpy(pp->args, args, sizeof(Piece *) * nargs);
@@ -1082,13 +1091,23 @@ filedown(char *fn)
 {
 	File *f;
 	Biobuf *bp;
+	char *s, *p, *q, *qq;
 	
 	for(f = curfile; f != nil; f = f->up)
 		if(strcmp(f->filen, fn) == 0){
 			error(nil, "'%s' included recursively", fn);
 			return;
 		}
-	bp = Bopen(fn, OREAD);
+	if(fn[0] != '/'){
+		s = emalloc(strlen(curfile->filen) + strlen(fn) + 1);
+		for(p = curline->filen, q = qq = s; *p != 0; p++)
+			if((*q++ = *p) == '/')
+				qq = q;
+		strcpy(qq, fn);
+		bp = Bopen(s, OREAD);
+		free(s);
+	}else
+		bp = Bopen(fn, OREAD);
 	if(bp == nil){
 		error(nil, "%r");
 		return;
