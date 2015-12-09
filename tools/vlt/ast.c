@@ -131,7 +131,7 @@ makesym(SymTab *st, char *n)
 	h = hash(n) % SYMHASH;
 	s->next = st->sym[h];
 	s->st = st;
-	s->Line = curline;
+	s->Line = *curline;
 	st->sym[h] = s;
 	return s;
 }
@@ -222,7 +222,7 @@ node(int t, ...)
 	n = emalloc(sizeof(ASTNode));
 	n->last = &n->next;
 	n->t = t;
-	n->Line = curline;
+	n->Line = *curline;
 	va_start(va, t);
 	switch(t){
 	case ASTCONST:
@@ -382,10 +382,10 @@ decl(Symbol *s, int t, ASTNode *n, Type *typ, ASTNode *attrs)
 		break;
 	}
 	if(typ != nil)
-		typeok(&curline, typ);
+		typeok(curline, typ);
 	s->t = t;
 	s->n = n;
-	s->Line = curline;
+	s->Line = *curline;
 	s->type = typ;
 	s->attrs = attrs;
 	return s;

@@ -24,7 +24,7 @@ error(Line *l, char *fmt, ...)
 	static char buf[ERRMAX];
 	
 	if(l == nil)
-		l = &curline;
+		l = curline;
 	va_start(va, fmt);
 	snprint(buf, sizeof(buf), "%s:%d %s\n", l->filen, l->lineno, fmt);
 	vfprint(2, buf, va);

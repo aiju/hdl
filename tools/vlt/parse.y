@@ -7,7 +7,6 @@
 #include "fns.h"
 
 
-	Line curline;
 	static Type *curtype;
 	static int cursymt, curdir;
 	static int netmode;
@@ -475,25 +474,6 @@ caseitem: lexpr ecomma ':' statnull { $$ = node(ASTCASIT, $1, $4); }
 args: { $$ = nil; } | '(' lexpr ecomma ')' { $$ = $2; };
 
 %%
-
-int
-parse(char *file)
-{
-	extern Biobuf *bp;
-	extern int lineno;
-	extern int yyparse(void);
-
-	bp = Bopen(file, OREAD);
-	if(bp == nil){
-		fprint(2, "%s %r\n", file);
-		return -1;
-	}
-	curline.filen = strdup(file);
-	curline.lineno = 1;
-	yyparse();
-	Bterm(bp);
-	return 0;
-}
 
 void
 yyerror(char *fmt)

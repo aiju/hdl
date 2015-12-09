@@ -203,7 +203,7 @@ enum {
 
 #pragma varargck type "A" int
 #pragma varargck type "O" int
-extern Line curline;
+extern Line *curline;
 #define NOPE (abort(), nil)
 #define lint 1
 #define lerror error

@@ -11,6 +11,10 @@ typedef struct Keyword Keyword;
 typedef struct Macro Macro;
 typedef struct Piece Piece;
 typedef struct PiecePos PiecePos;
+typedef struct File File;
+
+static void filedown(char *s);
+static void fileup(void);
 
 enum { MAXARGS = 16 };
 
@@ -198,14 +202,23 @@ struct Macro {
 	Piece *pieces;
 	int nargs;
 };
+
+struct File {
+	Line;
+	Biobuf *bp;
+	File *up;
+};
+
 enum { MACHASH = 256 };
 
 Macro *machash[MACHASH];
 
-Biobuf *bp;
 int base;
 int ungetch = -1;
 PiecePos *pstack;
+File *curfile;
+static Line nilline = {"<nil>", 0};
+Line *curline = &nilline;
 
 static void
 putpieces(Piece *p)
@@ -266,9 +279,13 @@ lexgetc(void)
 		}
 		return c;
 	}
-	c = Bgetc(bp);
-	if(c == '\n')
-		curline.lineno++;
+	for(;;){
+		if(curfile == nil) return -1;
+		c = Bgetc(curfile->bp);
+		if(c == '\n') curfile->lineno++;
+		if(c >= 0 || curfile->up == nil) break;
+		fileup();
+	}
 	return c;
 }
 
@@ -294,12 +311,62 @@ getident(char *p, char *e)
 {
 	int c;
 	
-	for(; c = lexgetc(), isalnum(c) || c == '_' || c == '$'; )
+	while(c = lexgetc(), isalnum(c) || c == '_' || c == '$')
 		if(p < e - 1)
 			*p++ = c;
 	*p++ = 0;
 	lexungetc(c);
 	return p;
+}
+
+static int
+getstring(char *p, char *e)
+{
+	int c, i, v;
+
+	while(c = lexgetc(), c >= 0 && c != '"' && c != '\n'){
+		if(c == '\\')
+			switch(c = lexgetc()){
+			case 'n': if(p < e - 1) *p++ = '\n'; break;
+			case 't': if(p < e - 1) *p++ = '\t'; break;
+			case '\\': if(p < e - 1) *p++ = '\\'; break;
+			case '"': if(p < e - 1) *p++ = '"'; break;
+			case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7':
+				v = c - '0';
+				for(i = 1; i < 3; i++){
+					c = lexgetc();
+					if(c >= '0' && c <= '7'){
+						v = v * 8 + c - '0';
+					}else{
+						lexungetc(c);
+						break;
+					}
+				}
+				if(p < e - 1)
+					*p++ = v;
+				break;
+			default:
+				lerror(nil, "invalid escape sequence '\\%c'", c);
+				if(p < e - 1)
+					*p++ = c;
+			}
+		else if(p < e - 1)
+			*p++ = c;
+	}
+	*p = 0;
+	return c;
+}
+
+static int
+getnumb(void)
+{
+	int c, d;
+
+	d = 0;
+	while(c = lexgetc(), isdigit(c))
+		d = d * 10 + c - '0';
+	lexungetc(c);
+	return d;
 }
 
 static void
@@ -342,7 +409,7 @@ directnope(Macro *m)
 }
 
 static void
-addpiece(Macro *m, char *s, char **p, Piece ***pc)
+addpiece(char *s, char **p, Piece ***pc)
 {
 	Piece *pp;
 	
@@ -356,7 +423,7 @@ addpiece(Macro *m, char *s, char **p, Piece ***pc)
 }
 
 static void
-addarg(Macro *m, int i, Piece ***pc)
+addarg(int i, Piece ***pc)
 {
 	Piece *pp;
 	
@@ -376,7 +443,7 @@ define(Macro *)
 	char c;
 	Macro *m, **mp;
 	Piece **pc;
-	#define addchar {if(p + 1 >= e) addpiece(m, tbuf, &p, &pc); *p++ = c;}
+	#define addchar {if(p + 1 >= e) addpiece(tbuf, &p, &pc); *p++ = c;}
 
 	skipsp();
 	getident(ibuf, ibuf+sizeof(ibuf));
@@ -449,12 +516,12 @@ next:
 			getident(ibuf + 1, ibuf + sizeof(ibuf));
 			for(i = 0; i < nargs; i++)
 				if(strcmp(args[i], ibuf) == 0){
-					addpiece(m, tbuf, &p, &pc);
-					addarg(m, i, &pc);
+					addpiece(tbuf, &p, &pc);
+					addarg(i, &pc);
 					goto next;
 				}
 			if(p + strlen(ibuf) + 1 >= e)
-				addpiece(m, tbuf, &p, &pc);
+				addpiece(tbuf, &p, &pc);
 			p = strecpy(p, e, ibuf);
 			continue;
 		}
@@ -462,7 +529,7 @@ next:
 	}
 	c = ' ';
 	addchar;
-	addpiece(m, tbuf, &p, &pc);
+	addpiece(tbuf, &p, &pc);
 	mp = &machash[hash(m->name) % MACHASH];
 	m->nargs = nargs;
 	m->next = *mp;
@@ -528,7 +595,7 @@ macsub(Macro *m)
 				if(c == ','){
 					if(++nargs == MAXARGS)
 						goto toomany;
-					addpiece(m, tbuf, &p, &pc);
+					addpiece(tbuf, &p, &pc);
 					pc = &args[nargs];
 					continue;
 				}
@@ -554,7 +621,7 @@ macsub(Macro *m)
 			}
 			addchar;
 		}
-		addpiece(m, tbuf, &p, &pc);
+		addpiece(tbuf, &p, &pc);
 		nargs++;
 		if(nargs < m->nargs){
 		toofew:
@@ -574,6 +641,71 @@ out:
 		putpieces(args[i]);
 }
 #undef addchar
+
+static void
+undef(Macro *)
+{
+	char buf[512];
+	Macro **mp, *m;
+
+	skipsp();
+	getident(buf, buf + sizeof(buf));
+	if(*buf == 0){
+		error(nil, "undef syntax error");
+		skipline(nil);
+		return;
+	}
+	for(mp = &machash[hash(buf) % MACHASH]; m = *mp, m != nil; mp = &m->next)
+		if(strcmp(m->name, buf) == 0)
+			break;
+	if(m == nil){
+		lerror(nil, "undef macro not defined");
+		return;
+	}
+	*mp = m->next;
+	putpieces(m->pieces);
+	free(m);
+}
+
+static void
+include(Macro *)
+{
+	char tbuf[512];
+	int c;
+	
+	skipsp();
+	if(c = lexgetc(), c != '"' || getstring(tbuf, tbuf + sizeof(tbuf)) != '"'){
+		lerror(nil, "`include syntax error");
+		skipline(nil);
+		return;
+	}
+	skipline(nil);
+	filedown(tbuf);
+}
+
+static void
+directline(Macro *)
+{
+	int newn, c;
+	char tbuf[512];
+
+	skipsp();
+	if(c = lexgetc(), !isdigit(c)){
+	out:
+		lerror(nil, "`line syntax error");
+		skipline(nil);
+		return;
+	}
+	lexungetc(c);
+	newn = getnumb();
+	skipsp();
+	if(c = lexgetc(), c != '"' || getstring(tbuf, tbuf + sizeof(tbuf)) != '"')
+		goto out;
+	skipline(nil);
+	if(strcmp(curfile->filen, tbuf) != 0)
+		curfile->filen = strdup(tbuf);
+	curfile->lineno = newn;
+}
 
 void
 lexinit(void)
@@ -598,14 +730,14 @@ lexinit(void)
 	defdirect("endif", directnope);
 	defdirect("ifdef", directnope);
 	defdirect("ifndef", directnope);
-	defdirect("include", directnope);
-	defdirect("line", directnope);
+	defdirect("include", include);
+	defdirect("line", directline);
 	defdirect("nounconnected_drive", directnope);
 	defdirect("pragma", directnope);
 	defdirect("resetall", directnope);
 	defdirect("timescale", skipline);
 	defdirect("unconnected_drive", directnope);
-	defdirect("undef", directnope);
+	defdirect("undef", undef);
 }
 
 int
@@ -739,10 +871,12 @@ loop:
 		*p = 0;
 		lexungetc(c);
 		m = getmac(buf);
-		if(m != nil)
-			m->f(m);
+		if(m == nil)
+			lerror(nil, "undeclared macro `%s", buf);
+		else if(pstack != nil && m->f != macsub)
+			lerror(nil, "directive in macro ignored");
 		else
-			error(nil, "undeclared macro `%s", buf);
+			m->f(m);
 		goto loop;
 	}
 	if(isdigit(c) || base && basedigit(c)){
@@ -838,3 +972,60 @@ loop:
 	return c;
 }
 
+int
+parse(char *file)
+{
+	extern int yyparse(void);
+
+	curfile = emalloc(sizeof(File));
+	curfile->bp = Bopen(file, OREAD);
+	if(curfile->bp == nil){
+		fprint(2, "%s %r\n", file);
+		return -1;
+	}
+	curfile->filen = strdup(file);
+	curfile->lineno = 1;
+	curline = curfile;
+	yyparse();
+	Bterm(curfile->bp);
+	free(curfile);
+	curline = &nilline;
+	return 0;
+}
+
+static void
+filedown(char *fn)
+{
+	File *f;
+	Biobuf *bp;
+	
+	for(f = curfile; f != nil; f = f->up)
+		if(strcmp(f->filen, fn) == 0){
+			error(nil, "'%s' included recursively", fn);
+			return;
+		}
+	bp = Bopen(fn, OREAD);
+	if(bp == nil){
+		error(nil, "%r");
+		return;
+	}
+	f = emalloc(sizeof(File));
+	f->bp = bp;
+	f->up = curfile;
+	f->filen = strdup(fn);
+	f->lineno = 1;
+	curfile = f;
+	curline = f;
+}
+
+static void
+fileup(void)
+{
+	File *f;
+	
+	f = curfile->up;
+	Bterm(curfile->bp);
+	free(curfile);
+	curfile = f;
+	curline = f;
+}

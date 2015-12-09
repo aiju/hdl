@@ -43,6 +43,8 @@ constfold(ASTNode *n)
 	case ASTBIN:
 		n->n1 = constfold(n->n1);
 		n->n2 = constfold(n->n2);
+		if(n->type == nil || n->n1 == nil || n->n2 == nil)
+			return;
 		if(n->type->t == TYPUNSZ && n->n1->t == ASTCINT && n->n2->t == ASTCINT){
 			a = n->n1->i;
 			b = n->n2->i;
