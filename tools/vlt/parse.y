@@ -349,7 +349,7 @@ lval: hiersymbidx | '{' lvals ecomma '}' { $$ = node(ASTCAT, $2, nil); };
 lvals: lval | lvals ',' lval { $$ = nodecat($1, $3); };
 
 hiersymbidx:
-	hiersymb { checksym($$ = $1); }
+	hiersymb { $$ = $1; }
 	| hiersymbidx '[' expr ']' { $$ = node(ASTIDX, 0, $1, $3, nil); }
 	| hiersymbidx '[' const ':' const ']' { $$ = node(ASTIDX, 1, $1, $3, $5); }
 	| hiersymbidx '[' expr LOPLUSCOLON const ']' { $$ = node(ASTIDX, 2, $1, $3, $5); }

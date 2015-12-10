@@ -417,6 +417,12 @@ portdecl(Symbol *s, int dir, ASTNode *n, Type *type, ASTNode *attrs)
 			lerror(nil, "'%s' redeclared", s->name);
 			return s;
 		}else{
+			if(s->type == nil)
+				s->type = type;
+			else if(s->type->t != type->t || !asteq(s->type->sz, type->sz))
+				lerror(nil, "'%s' redeclared with different width", s->name);
+			else if(s->type->sign < type->sign)
+				s->type = type;
 			s->dir |= dir;
 			goto dircheck;
 		}
@@ -885,6 +891,8 @@ typecheck(ASTNode *n, Type *ctxt)
 			lerror(n, "event in expression");
 		if(n->op == OPLNOT)
 			n->type = bittype;
+		else if(n->op == OPPOSEDGE || n->op == OPNEGEDGE)
+			n->type = eventtype;
 		else if(t1 == TYPREAL){
 			if(n->op != OPUPLUS && n->op != OPUMINUS)
 				lerror(n, "real in expression");
@@ -916,7 +924,12 @@ typecheck(ASTNode *n, Type *ctxt)
 		n->type = type(TYPBITS, 0, r);
 		return;
 	case ASTSYM:
-		n->type = n->sym->type;
+		checksym(n);
+		if(n->sym->type == nil){
+			lerror(n, "'%s' declared without a type", n->sym->name);
+			n->type = bittype;
+		}else
+			n->type = n->sym->type;
 		n->isconst = n->sym->t == SYMPARAM || n->sym->t == SYMLPARAM || n->sym->t == SYMGENVAR;
 		break;
 	case ASTCONST:
