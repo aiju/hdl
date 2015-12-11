@@ -22,3 +22,4 @@ void clearmarks(void);
 int markstr(char *);
 uint hash(char *);
 ASTNode *makenumb(Const *, int, Const *);
+int cfgparse(char *);

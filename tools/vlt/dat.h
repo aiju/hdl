@@ -115,6 +115,7 @@ struct SymTab {
 	Symbol *ports, **lastport;
 };
 extern SymTab *scope;
+extern SymTab global;
 
 enum {
 	ASTINVAL,

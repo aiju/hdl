@@ -69,6 +69,12 @@ markstr(char *s)
 	return 0;
 }
 
+static void
+usage(void)
+{
+	fprint(2, "usage: %s [-c cfg] [files]\n", argv0);
+}
+
 void
 main(int argc, char **argv)
 {
@@ -77,6 +83,9 @@ main(int argc, char **argv)
 	fmtinstall('B', mpfmt);
 	
 	ARGBEGIN{
+	case 'c':
+		cfgparse(EARGF(usage()));
+		break;
 	default:
 		sysfatal("usage");
 	}ARGEND;
