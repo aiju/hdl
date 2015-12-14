@@ -8,6 +8,7 @@ OFILES=\
 	ast.$O \
 	fold.$O \
 	cfg.$O \
+	aijubrd.$O \
 
 YFILES=parse.y
 HFILES=dat.h fns.h
@@ -17,3 +18,5 @@ HFILES=dat.h fns.h
 lex.$O: y.tab.c
 
 YFLAGS=$YFLAGS -D1 -v
+
+aijubrd.$O: ps7.h

@@ -511,13 +511,9 @@ width(ASTNode *a, ASTNode *b)
 {
 	int v, ai, bi;
 
-	if(a == nil && b == nil)
-		return node(ASTCINT, 0);
-	if(b == nil || b->t == ASTCINT && b->i == 0)
-		return a;
-	if(b->t == ASTCINT && a->t == ASTCINT){
-		ai = a->i;
-		bi = b->i - 1;
+	if((b == nil || b->t == ASTCINT) && (a == nil || a->t == ASTCINT)){
+		ai = a != nil ? a->i + 1 : 1;
+		bi = b != nil ? b->i : 0;
 		v = ai - bi;
 		if(((ai ^ bi) & (ai ^ v)) >= 0)
 			return node(ASTCINT, v);
@@ -687,7 +683,7 @@ asteq(ASTNode *a, ASTNode *b)
 	}
 }
 
-void
+static int
 checksym(ASTNode *n)
 {
 	static uchar okexpr[] = {
@@ -696,16 +692,21 @@ checksym(ASTNode *n)
 
 	switch(n->t){
 	case ASTSYM:
-		if(n->sym->t == SYMNONE)
-			lerror(n, "'%s' undeclared", n->sym->name);
-		else if(!okexpr[n->sym->t])
+		if(n->sym->t == SYMNONE){
+			if(n->sym->whine++ == 0)
+				lerror(n, "'%s' undeclared", n->sym->name);
+			return 1;
+		}else if(!okexpr[n->sym->t]){
 			lerror(n, "'%s' of type '%σ' invalid in expression", n->sym->name, n->sym->t);
-		return;
+			return 1;
+		}
+		return 0;
 	case ASTHIER:
-		return;
+		return 0;
 	default:
 		fprint(2, "checksym: unknown %A\n", n->t);
 	}
+	return 0;
 }
 
 #define insist(t) if(t){} else {lerror(n, "phase error: t"); return;}
@@ -740,10 +741,13 @@ lvalcheck(ASTNode *n, int cont)
 			else
 				goto wire;
 			return;
+		case SYMNONE:
+			return;
 		default:
 			lerror(n, "invalid lval (%σ)", n->sym->t);
 		}
 	case ASTIDX:
+		insist(n->n1 != nil);
 		if(n->n1->t != ASTSYM || n->n1->sym->t != SYMREG || n->n1->sym->type->t != TYPMEM)
 			lvalcheck(n->n1, cont);
 		break;
@@ -924,8 +928,9 @@ typecheck(ASTNode *n, Type *ctxt)
 		n->type = type(TYPBITS, 0, r);
 		return;
 	case ASTSYM:
-		checksym(n);
-		if(n->sym->type == nil){
+		if(checksym(n))
+			n->type = bittype;
+		else if(n->sym->type == nil){
 			lerror(n, "'%s' declared without a type", n->sym->name);
 			n->type = bittype;
 		}else
@@ -1052,11 +1057,10 @@ typecheck(ASTNode *n, Type *ctxt)
 		}
 		break;
 	case ASTCALL:
-		typecheck(n->n1, nil);
 		if(n->n1->t != ASTSYM)
 			lerror(n, "%A in function call", n->n1->t);
 		else if(n->n1->sym->t != SYMFUNC)
-			lerror(n, "%σ in function call", n->n1->sym->t);
+			lerror(n, "'%s' %σ in function call", n->n1->sym->name, n->n1->sym->t);
 		else{
 			f = n->n1->sym->n;
 			n->type = n->n1->sym->type;

@@ -3,57 +3,39 @@
 #include <mp.h>
 #include <bio.h>
 #include <ctype.h>
+#include <regexp.h>
 #include "dat.h"
 #include "fns.h"
 
-typedef struct CFile CFile;
-typedef struct CPort CPort;
-typedef struct CModule CModule;
-typedef struct CWire CWire;
-
-static Biobuf *bp;
-static char str[512];
-static int peeked;
-static int errors;
-static Line cfgline;
-
-struct CFile {
-	Line;
-	char *name;
-	CFile *next;
-};
-
-struct CPort {
-	Line;
-	char *name;
-	char *targ;
-	char *ext;
-	CPort *next;
-	CWire *w;
-};
-
-struct CWire {
-	Line;
-	char *name;
-	CModule *driver;
-};
-
-struct CModule {
-	Line;
-	char *name, *inst;
-	CPort *ports;
-	CModule *next;
-	ASTNode *node;
-};
-
-static CFile *files;
-static CModule *mods;
-
 enum {
-	LSTRING = 0xff00,
+	MAXFIELDS = 16
 };
 
-static void
+CFile *files;
+CModule *mods;
+CWire *wires[WIREHASH];
+static CTab nulltab;
+CTab *cfgtab = &nulltab;
+
+typedef struct TabName TabName;
+struct TabName {
+	char *n;
+	CTab *t;
+};
+extern CTab aijutab;
+TabName tabs[] = {
+	"aijuboard", &aijutab,
+	nil, nil,
+};
+
+static Biobuf *bp, *ob;
+char str[512];
+static int peeked;
+static int cfgerrors;
+static Line cfgline;
+char *topname;
+
+void
 cfgerror(Line *l, char *fmt, ...)
 {
 	va_list va;
@@ -65,6 +47,7 @@ cfgerror(Line *l, char *fmt, ...)
 	snprint(buf, sizeof(buf), "%s:%d %s\n", l->filen, l->lineno, fmt);
 	vfprint(2, buf, va);
 	va_end(va);
+	cfgerrors++;
 }
 
 static int
@@ -109,7 +92,7 @@ peek(void)
 	return peeked;
 }
 
-static int
+int
 expect(int t)
 {
 	if(lex() != t){
@@ -122,17 +105,17 @@ expect(int t)
 static void
 doports(CModule *m)
 {
-	CPort *p, **pp;
+	CPortMask *p, **pp;
 	int c;
 	
-	pp = &m->ports;
+	pp = &m->portms;
 	while(c = lex(), c != '}'){
 		if(c != LSTRING){
 		err:
 			cfgerror(nil, "syntax error in port");
 			continue;
 		}
-		p = emalloc(sizeof(CPort));
+		p = emalloc(sizeof(CPortMask));
 		p->name = strdup(str);
 		p->Line = cfgline;
 		c = lex();
@@ -153,10 +136,19 @@ doports(CModule *m)
 			if(c != '>') goto err;
 			c = lex();
 		}
+		if(c == LSTRING && cfgtab->auxparse != nil){
+			cfgtab->auxparse(m, p);
+			c = lex();
+		}
 		if(c != ';') goto err;
 		*pp = p;
 		pp = &p->next;
 	}
+	p = emalloc(sizeof(CPortMask));
+	p->name = strdup("*");
+	p->targ = strdup("*");
+	p->Line = cfgline;
+	*pp = p;
 }
 
 static void
@@ -185,8 +177,12 @@ static void
 dodesign(void)
 {
 	CModule *m, **mp;
+	CPortMask *p;
 	int c;
 
+	if(expect(LSTRING))
+		return;
+	topname = strdup(str);
 	if(expect('{'))
 		return;
 	mp = &mods;
@@ -208,6 +204,11 @@ dodesign(void)
 		else if(c != ';'){
 			cfgerror(nil, "syntax error in module");
 			continue;
+		}else{
+			m->portms = p = emalloc(sizeof(CPortMask));
+			p->name = strdup("*");
+			p->targ = strdup("*");
+			p->Line = cfgline;
 		}
 		*mp = m;
 		mp = &m->next;
@@ -218,6 +219,8 @@ static void
 toplevel(void)
 {
 	int c;
+	TabName *tb;
+
 	for(;;){
 		c = lex();
 		if(c < 0)
@@ -227,6 +230,13 @@ toplevel(void)
 		if(strcmp(str, "board") == 0){
 			if(expect(LSTRING) || expect(';'))
 				continue;
+			for(tb = tabs; tb->n != nil; tb++)
+				if(strcmp(tb->n, str) == 0){
+					cfgtab = tb->t;
+					break;
+				}
+			if(tb->n == nil)
+				cfgerror(nil, "unknown board '%s'", str);
 			continue;
 		}else if(strcmp(str, "files") == 0){
 			dofiles();
@@ -239,60 +249,266 @@ toplevel(void)
 	}
 }
 
-static void
-findmods(void)
+void
+findmod(CModule *m)
 {
 	CFile *f;
-	CModule *m, *n;
+	CModule *n;
 	char buf[512], *p, *q, *e;
 	int sub, i;
 	Symbol *s;
-	
-	for(f = files; f != nil; f = f->next)
-		if(strchr(f->name, '*') == nil)
-			parse(f->name);
-	for(m = mods; m != nil; m = m->next){
+
+	s = getsym(&global, 0, m->name);
+	for(f = files; f != nil && s->t == SYMNONE; f = f->next){
+		e = buf + sizeof(buf);
+		q = buf;
+		sub = 0;
+		for(p = f->name; *p != 0; p++)
+			if(*p == '*'){
+				q = strecpy(q, e, m->name);
+				sub++;
+			}else if(q < e - 1)
+				*q++ = *p;
+		*q = 0;
+		if(sub == 0)
+			continue;
+		if(access(buf, AREAD) < 0)
+			continue;
+		parse(buf);
 		s = getsym(&global, 0, m->name);
-		for(f = files; f != nil && s->t == SYMNONE; f = f->next){
-			e = buf + sizeof(buf);
-			q = buf;
-			sub = 0;
-			for(p = f->name; *p != 0; p++)
-				if(*p == '*'){
-					q = strecpy(q, e, m->name);
-					sub++;
-				}else if(q < e - 1)
-					*q++ = *p;
-			if(sub == 0)
-				continue;
-			if(access(buf, AREAD) < 0)
-				continue;
-			parse(buf);
-			s = getsym(&global, 0, m->name);
-		}
-		if(s->t == SYMNONE)
-			cfgerror(m, "'%s' module not found", m->name);
-		else if(s->t == SYMMODULE)
-			m->node = s->n;
-		else
-			cfgerror(m, "'%s' not a module", s->name);
-		if(m->inst == nil){
-			for(i = 0; ; i++){
-				sprint(buf, "%s%d", m->name, i);
-				for(n = mods; n != nil; n = n->next)
-					if(n->inst != nil && strcmp(buf, n->inst) == 0)
-						break;
-				if(n == nil)
-					break;
-			}
-			m->inst = strdup(buf);
-		}
 	}
+	if(s->t == SYMNONE)
+		cfgerror(m, "'%s' module not found", m->name);
+	else if(s->t == SYMMODULE)
+		m->node = s->n;
+	else
+		cfgerror(m, "'%s' not a module", s->name);
+	if(m->inst == nil){
+		for(i = 0; ; i++){
+			sprint(buf, "%s%d", m->name, i);
+			for(n = mods; n != nil; n = n->next)
+				if(n->inst != nil && strcmp(buf, n->inst) == 0)
+					break;
+			if(n == nil)
+				break;
+		}
+		m->inst = strdup(buf);
+	}
+}
+
+static Reprog *
+wildcomp(char *mask)
+{
+	char *b, *p, *q;
+	Reprog *rc;
+	
+	q = b = emalloc(strlen(mask) * 4 + 3);
+	*q++ = '^';
+	for(p = mask; *p != 0; p++)
+		if(*p == '*'){
+			*q++ = '(';
+			*q++ = '.';
+			*q++ = '*';
+			*q++ = ')';
+		}else
+			*q++ = *p;
+	*q = '$';
+	rc = regcomp(b);
+	free(b);
+	return rc;
+}
+
+static char *
+wildsub(char *s, Resub *rs, int nrs)
+{
+	int i, l;
+	char *p, *q;
+	char *b;
+	
+	l = 0;
+	i = 1;
+	for(p = s; *p != 0; p++)
+		if(*p == '*' && i < nrs && rs[i].sp != nil){
+			l += rs[i].ep - rs[i].sp;
+			i++;
+		}else
+			l++;
+	q = b = emalloc(l + 1);
+	i = 1;
+	for(p = s; *p != 0; p++)
+		if(*p == '*' && i < nrs && rs[i].sp != nil){
+			memcpy(q, rs[i].sp, rs[i].ep - rs[i].sp);
+			q += rs[i].ep - rs[i].sp;
+		}else
+			*q++ = *p;
+	return b;	
+}
+
+CWire *
+getwire(char *s)
+{
+	CWire **wp, *w;
+	
+	for(wp = &wires[hash(s) % WIREHASH]; w = *wp, w != nil; wp = &w->next)
+		if(strcmp(w->name, s) == 0)
+			return w;
+	w = emalloc(sizeof(CWire));
+	w->name = strdup(s);
+	*wp = w;
+	return w;
+}
+
+void
+matchports(CModule *m)
+{
+	CPortMask *pm;
+	CPort *p, **pp;
+	CWire *w;
+	SymTab *st;
+	Symbol *s;
+	char *sub;
+	Resub fields[MAXFIELDS];
+	Reprog *re;
+	int match;
+
+	if(m->node == nil)
+		return;
+	st = m->node->sc.st;
+	assert(st != nil);
+	clearmarks();
+	pp = &m->ports;
+	for(pm = m->portms; pm != nil; pm = pm->next){
+		match = 0;
+		re = wildcomp(pm->name);
+		for(s = st->ports; s != nil; s = s->portnext){
+			fields[0].sp = fields[0].ep = nil;
+			if(strmark(s->name) != 0 || !regexec(re, s->name, fields, nelem(fields)))
+				continue;
+			markstr(s->name);
+			p = emalloc(sizeof(CPort));
+			p->Line = pm->Line;
+			p->port = s;
+			sub = wildsub(pm->targ, fields, nelem(fields));
+			p->wire = w = getwire(sub);
+			free(sub);
+			if(p->type == nil){
+				w->type = s->type;
+				w->Line = pm->Line;
+			}
+			p->dir = s->dir & 3;
+			if(pm->ext != nil)
+				if(w->ext == nil)
+					w->ext = pm->ext;
+				else if(strcmp(w->ext, pm->ext) != 0)
+					cfgerror(pm, "'%s' conflicting port names");
+			if(cfgtab->portinst != nil)
+				cfgtab->portinst(m, p, pm);
+			*pp = p;
+			pp = &p->next;
+			match++;
+		}
+		free(re);
+		if(match == 0 && strcmp(pm->name, "*") != 0)
+			cfgerror(pm, "'%s' not found", pm->name);
+	}
+}
+
+static void
+wireput(CWire *w, int f)
+{
+	Type *t;
+
+	if(f != 0)
+		Bprint(ob, f == 1 ? "\t%s wire " : ",\n\t%s wire ", w->dir == PORTIO ? "inout" : w->dir == PORTOUT ? "output" : "input");
+	else
+		Bprint(ob, "\twire ");
+	t = w->type;
+	if(t == nil)
+		cfgerror(w, "type nil");
+	else if(t->t != TYPBITS && t->t != TYPBITV)
+		cfgerror(w, "wrong type %T", t);
+	else if(t->sz->t != ASTCINT)
+		cfgerror(w, "unsupported %A", t->sz->t);
+	else if(t->sz->i != 1)
+		Bprint(ob, "[%d:0] ", t->sz->i - 1);
+	Bprint(ob, f == 0 ? "%s;\n" : "%s", w->name);
+}
+
+static void
+checkdriver(CModule *m)
+{
+	CPort *p;
+	CWire *w;
+	
+	for(p = m->ports; p != nil; p = p->next){
+		w = p->wire;
+		if(w->driver != nil && (p->dir & 3) == PORTOUT)
+			cfgerror(p, "'%s' multi-driven net", w->name);
+		if(w->driver == nil && ((p->dir & 3) == PORTOUT || (p->dir & 3) == PORTIO)){
+			w->driver = m;
+			if(p->port->type != nil)
+				w->type = p->port->type;
+			w->dir = p->dir;
+		}
+		if((p->dir & 3) == PORTIO)
+			w->dir = PORTIO;
+	}
+}
+
+static void
+checkundriven(void)
+{
+	int i;
+	CWire *w;
+
+	for(i = 0; i < WIREHASH; i++)
+		for(w = wires[i]; w != nil; w = w->next)
+			if(w->driver == nil && w->ext == nil)
+				cfgerror(w, "'%s' undriven wire", w->name);
+}
+
+static void
+outmod(void)
+{
+	CWire *w;
+	CModule *m;
+	CPort *p;
+	int i, f;
+
+	Bprint(ob, "module %s(\n", topname);
+	f = 1;
+	for(i = 0; i < WIREHASH; i++)
+		for(w = wires[i]; w != nil; w = w->next)
+			if(w->ext != nil){
+				wireput(w, f);
+				f = 2;
+			}
+	Bprint(ob, "\n);\n\n");
+	for(i = 0; i < WIREHASH; i++)
+		for(w = wires[i]; w != nil; w = w->next)
+			if(w->ext == nil)
+				wireput(w, 0);
+	Bprint(ob, "\n");
+	for(m = mods; m != nil; m = m->next){
+		Bprint(ob, "\t%s %s(\n", m->name, m->inst);
+		f = 0;
+		for(p = m->ports; p != nil; p = p->next){
+			Bprint(ob, f ? ",\n\t\t.%s(%s)" : "\t\t.%s(%s)", p->port->name, p->wire->name);
+			f = 1;
+		}
+		Bprint(ob, "\n\t);\n");
+	}
+	Bprint(ob, "endmodule\n");
+	Bflush(ob);
+
 }
 
 int
 cfgparse(char *fn)
 {
+	CModule *m;
+	CFile *f;
+
 	bp = Bopen(fn, OREAD);
 	if(bp == nil){
 		fprint(2, "%r\n");
@@ -300,11 +516,32 @@ cfgparse(char *fn)
 	}
 	cfgline.lineno = 1;
 	cfgline.filen = fn;
-	errors = 0;
+	cfgerrors = 0;
 	peeked = -1;
 	toplevel();
-	if(errors != 0)
-		return -1;
-	findmods();
+	if(cfgerrors != 0) return -1;
+	
+	for(f = files; f != nil; f = f->next)
+		if(strchr(f->name, '*') == nil)
+			parse(f->name);
+
+	for(m = mods; m != nil; m = m->next)
+		findmod(m);
+	if(cfgerrors != 0) return -1;
+
+	for(m = mods; m != nil; m = m->next)
+		matchports(m);
+	if(cfgerrors != 0) return -1;
+
+	if(cfgtab->postmatch != nil)
+		cfgtab->postmatch();
+
+	for(m = mods; m != nil; m = m->next)
+		checkdriver(m);
+	checkundriven();
+
+	ob = Bfdopen(1, OWRITE);
+	if(ob == nil) sysfatal("Bopenfd: %r");
+	outmod();
 	return 0;
 }

@@ -62,10 +62,22 @@ markstr(char *s)
 	
 	for(p = &marks[hash(s)%MARKH]; (m = *p) != nil; p = &m->next)
 		if(strcmp(m->s, s) == 0)
-			return ++m->ctr;
+			return m->ctr++;
 	m = emalloc(sizeof(Mark));
 	m->s = s;
+	m->ctr = 1;
 	*p = m;
+	return 0;
+}
+
+int
+strmark(char *s)
+{
+	Mark *m;
+	
+	for(m = marks[hash(s)%MARKH]; m != nil; m = m->next)
+		if(strcmp(m->s, s) == 0)
+			return m->ctr;
 	return 0;
 }
 

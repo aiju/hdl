@@ -82,6 +82,7 @@ struct Symbol {
 	Type *type;
 	int dir;
 	ASTNode *attrs;
+	int whine;
 };
 
 enum {
@@ -206,7 +207,78 @@ enum {
 
 #pragma varargck type "A" int
 #pragma varargck type "O" int
-extern Line *curline;
+extern Line *curline, nilline;
 #define NOPE (abort(), nil)
 #define lint 1
 #define lerror error
+
+typedef struct CFile CFile;
+typedef struct CPortMask CPortMask;
+typedef struct CPort CPort;
+typedef struct CModule CModule;
+typedef struct CWire CWire;
+typedef struct CTab CTab;
+
+struct CFile {
+	Line;
+	char *name;
+	CFile *next;
+};
+
+struct CPortMask {
+	Line;
+	char *name;
+	char *targ;
+	char *ext;
+	void *aux;
+	CPortMask *next;
+};
+
+struct CPort {
+	Line;
+	CWire *wire;
+	Type *type;
+	Symbol *port;
+	CPort *next;
+	void *aux;
+	int dir;
+};
+
+struct CWire {
+	Line;
+	char *name;
+	Type *type;
+	CModule *driver;
+	CWire *next;
+	char *ext;
+	int dir;
+};
+
+struct CModule {
+	Line;
+	char *name, *inst;
+	CPortMask *portms;
+	CPort *ports;
+	CModule *next;
+	ASTNode *node;
+};
+
+struct CTab {
+	void (*auxparse)(CModule *, CPortMask *);
+	void (*portinst)(CModule *, CPort *, CPortMask *);
+	void (*postmatch)(void);
+};
+
+enum {
+	WIREHASH = 256
+};
+
+extern CFile *files;
+extern CModule *mods;
+extern CWire *wires[WIREHASH];
+extern char *topname;
+extern CTab *cfgtab;
+
+enum {
+	LSTRING = 0xff00,
+};

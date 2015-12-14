@@ -373,8 +373,11 @@ funcdecl:
 		}
 	| LFUNCTION automatic ptype LSYMB '(' {
 			$<node>$ = newscope(ASTFUNC, $4, curattrs, $3);
+			oldports0 = oldports;
+			oldports = 3;
 		} funcports ')' ';' blockitems stat LENDFUNCTION {
 			scopeup();
+			oldports = oldports0;
 			$<node>6->sc.n = $stat;
 		}
 	;
@@ -390,8 +393,10 @@ taskdecl:
 		}
 	| LTASK automatic LSYMB '(' {
 			$<node>$ = newscope(ASTTASK, $3, curattrs, nil);
+			oldports0 = oldports;
 		} taskports ')' ';' blockitems stat LENDTASK {
 			scopeup();
+			oldports = oldports0;
 			$<node>5->sc.n = $stat;
 		}
 	;

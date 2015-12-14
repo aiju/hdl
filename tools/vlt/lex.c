@@ -219,7 +219,7 @@ int ungetch = -1;
 int iflevel;
 PiecePos *pstack;
 File *curfile;
-static Line nilline = {"<nil>", 0};
+Line nilline = {"<nil>", 0};
 Line *curline = &nilline;
 
 static void
