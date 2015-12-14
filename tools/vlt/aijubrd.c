@@ -1,6 +1,7 @@
 #include <u.h>
 #include <libc.h>
 #include <mp.h>
+#include <bio.h>
 #include "dat.h"
 #include "fns.h"
 
@@ -28,14 +29,47 @@ struct Mapped {
 	int fl;
 	char *port;
 	char *name;
-	int abits;
 	CModule *mod;
-	Mapped *next;
+	Mapped *next, *anext;
 	
 	CPort *req, *ack, *addr, *rdata, *wdata, *err, *wr, *wstrb;
 };
 
 static Mapped *maps, **mapslast = &maps;
+static Mapped *mapas;
+
+enum { ADDRBITS = 30 };
+
+static void
+mapsalloc(Mapped *n)
+{
+	Mapped *m, **mp;
+	int lhi;
+	
+	if(n->base < 0){
+		for(mp = &mapas, lhi = 0; m = *mp, m != nil; mp = &m->anext){
+			if(m->base - lhi >= n->range)
+				break;
+			lhi = m->base + m->range;
+		}
+		if(m == nil && ((1<<ADDRBITS) - lhi) < n->range)
+			cfgerror(m, "out of address space");
+		else{
+			*mp = n;
+			n->base = lhi;
+		}
+		return;
+	}
+	for(mp = &mapas; m = *mp, m != nil; mp = &m->anext)
+		if(m->base + m->range > n->base)
+			break;
+	if(m != nil && m->base < n->base + n->range){
+		cfgerror(m, "'%s' (%#x,%#x) overlaps with '%s' (%#x,%#x)", m->name, m->base, m->base + m->range, n->name, n->base, n->base + n->range);
+		return;
+	}
+	n->anext = m;
+	*mp = n;
+}
 
 static void
 aijuauxparse(CModule *, CPortMask *pm)
@@ -101,6 +135,8 @@ aijuportinst(CModule *mp, CPort *p, CPortMask *pm)
 	m->Line = pm->Line;
 	*mapslast = m;
 	mapslast = &m->next;
+	if(m->base != -1)
+		mapsalloc(m);
 }
 
 static CPort *
@@ -169,6 +205,9 @@ aijupostmatch(void)
 		bits32 = type(TYPBITS, 0, node(ASTCINT, 32));
 	if(maps == nil)
 		return;
+	for(ma = maps; ma != nil; ma = ma->next)
+		if(ma->base < 0)
+			mapsalloc(ma);
 	m = emalloc(sizeof(CModule));
 	m->Line = nilline;
 	m->name = strdup("_intercon");
@@ -224,8 +263,135 @@ aijupostmatch(void)
 			addnet(p->wire, p->port->type, 4 - p->dir, &pp);
 }
 
+static void
+dowire(Biobuf *bp, CPort *p, char *fmt)
+{
+	if(p != nil && p->wire != nil)
+		Bprint(bp, fmt, p->wire->name);
+}
+
+static void
+printaddrs(Biobuf *bp, Mapped *m, char *ind)
+{
+	int b, e, s, i;
+	
+	b = m->base;
+	e = m->base + m->range;
+	while(b < e){
+		for(s = 1<<clog2(e - b); s != 1; s >>= 1)
+			if((b & s-1) == 0)
+				break;
+		Bprint(bp, "%s%d'b", ind, ADDRBITS);
+		for(i = 1<<ADDRBITS; i >= s; i >>= 1)
+			Bputc(bp, '0' + ((b & i) != 0));
+		for(; i != 0; i >>= 1)
+			Bputc(bp, 'z');
+		b += s;
+		Bprint(bp, b < e ? ",\n" : ": ");
+	}
+}
+
+static void
+aijupostout(Biobuf *bp)
+{
+	CModule *m;
+	Mapped *ma;
+	int i;
+	
+	for(m = mods; m != nil; m = m->next)
+		if(strcmp(m->name, "_intercon") == 0)
+			break;
+	if(m == nil)
+		return;
+	Bprint(bp,
+		"\nmodule _intercon(\n"
+		"\tinput wire clk,\n"
+		"\tinput wire rstn,\n"
+		"\tinput wire _outreq,\n"
+		"\toutput reg _outack,\n"
+		"\toutput reg _outerr,\n"
+		"\tinput wire [31:0] _outaddr,\n"
+		"\tinput wire [3:0] _outwstrb,\n"
+		"\tinput wire [31:0] _outwdata,\n"
+		"\toutput reg [31:0] _outrdata"
+	);
+	for(ma = maps; ma != nil; ma = ma->next){
+		dowire(bp, ma->req, ",\n\toutput reg %s");
+		dowire(bp, ma->ack, ",\n\tinput wire %s");
+		dowire(bp, ma->err, ",\n\tinput wire %s");
+		dowire(bp, ma->addr, ",\n\toutput wire [31:0] %s");
+		dowire(bp, ma->rdata, ",\n\tinput wire [31:0] %s");
+		dowire(bp, ma->wdata, ",\n\toutput wire [31:0] %s");
+		dowire(bp, ma->wr, ",\n\toutput wire %s");
+		dowire(bp, ma->wstrb, ",\n\toutput wire [3:0] %s");
+	}
+	Bprint(bp, "\n);\n\n");
+	
+	Bprint(bp, "\tlocalparam IDLE = 0;\n");
+	for(ma = maps, i = 1; ma != nil; ma = ma->next, i++)
+		Bprint(bp, "\tlocalparam WAIT_%s = %d;\n", ma->name, i);
+	
+	Bprint(bp, "\treg [%d:0] state;\n\n", clog2(i+1)-1);
+	
+	Bprint(bp, "\talways @(posedge clk or negedge rstn)\n"
+		"\t\tif(!rstn) begin\n"
+		"\t\t\tstate <= IDLE;\n"
+		"\t\t\t_outack <= 1'b0;\n"
+		"\t\t\t_outerr <= 1'b0;\n"
+		"\t\t\t_outrdata <= 32'bx;\n");
+	for(ma = maps; ma != nil; ma = ma->next)
+		dowire(bp, ma->req, "\t\t\t%s <= 1'b0;\n");
+	Bprint(bp, "\t\tend else begin\n");
+	for(ma = maps; ma != nil; ma = ma->next)
+		dowire(bp, ma->req, "\t\t\t%s <= 1'b0;\n");
+	Bprint(bp, "\t\t\tcase(state)\n"
+		"\t\t\tIDLE:\n"
+		"\t\t\t\tif(_outreq)\n"
+		"\t\t\t\t\tcasez(_outaddr[%d:0])\n"
+		"\t\t\t\t\tdefault: begin\n"
+		"\t\t\t\t\t\t_outack <= 1'b1;\n"
+		"\t\t\t\t\t\t_outerr <= 1'b1;\n"
+		"\t\t\t\t\tend\n", ADDRBITS - 1);
+	for(ma = maps; ma != nil; ma = ma->next){
+		printaddrs(bp, ma, "\t\t\t\t\t");
+		Bprint(bp, "begin\n");
+		if(ma->fl != 3)
+			Bprint(bp, "\t\t\t\t\t\tif(%s_outwr) begin\n"
+				"\t\t\t\t\t\t\t_outack <= 1'b1;\n"
+				"\t\t\t\t\t\t\t_outerr <= 1'b1;\n"
+				"\t\t\t\t\t\tend else begin\n"
+				"\t\t\t\t\t\t\tstate <= WAIT_%s;\n"
+				"\t\t\t\t\t\t\t%sreq <= 1'b1;\n"
+				"\t\t\t\t\t\tend\n"
+				"\t\t\t\t\tend\n", 
+				ma->fl == MAPRD ? "" : "!", ma->name, ma->name);
+		else
+			Bprint(bp, "\t\t\t\t\t\tstate <= WAIT_%s;\n"
+				"\t\t\t\t\t\t%sreq <= 1'b1;\n"
+				"\t\t\t\t\tend\n", ma->name, ma->name);
+	}
+	Bprint(bp, "\t\t\t\t\tendcase\n");
+	for(ma = maps; ma != nil; ma = ma->next){
+		Bprint(bp, "\t\t\tWAIT_%s:\n"
+		"\t\t\t\tif(%sack) begin\n"
+		"\t\t\t\t\t_outack <= 1'b1;\n"
+		"\t\t\t\t\t_outerr <= %s;\n", ma->name, ma->name, ma->err != nil ? ma->err->wire->name : "1'b0");
+		dowire(bp, ma->rdata, "\t\t\t\t\t_outrdata <= %s;\n");
+		Bprint(bp, "\t\t\t\tend\n");
+	}
+	Bprint(bp, "\t\t\tendcase\n\t\tend\n\n");
+	for(ma = maps; ma != nil; ma = ma->next){
+		dowire(bp, ma->addr, "\tassign %s = _outaddr;\n");
+		dowire(bp, ma->wr, "\tassign %s = _outwr;\n");
+		dowire(bp, ma->wdata, "\tassign %s = _outwdata;\n");
+		dowire(bp, ma->wstrb, "\tassign %s = _outwstrb;\n");
+	}
+	Bprint(bp, "endcase\n");
+}
+
 CTab aijutab = {
 	.auxparse = aijuauxparse,
 	.portinst = aijuportinst,
 	.postmatch = aijupostmatch,
+	.postout = aijupostout,
 };

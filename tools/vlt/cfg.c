@@ -414,7 +414,7 @@ matchports(CModule *m)
 }
 
 static void
-wireput(CWire *w, int f)
+wireput(Biobuf *ob, CWire *w, int f)
 {
 	Type *t;
 
@@ -480,14 +480,14 @@ outmod(void)
 	for(i = 0; i < WIREHASH; i++)
 		for(w = wires[i]; w != nil; w = w->next)
 			if(w->ext != nil){
-				wireput(w, f);
+				wireput(ob, w, f);
 				f = 2;
 			}
 	Bprint(ob, "\n);\n\n");
 	for(i = 0; i < WIREHASH; i++)
 		for(w = wires[i]; w != nil; w = w->next)
 			if(w->ext == nil)
-				wireput(w, 0);
+				wireput(ob, w, 0);
 	Bprint(ob, "\n");
 	for(m = mods; m != nil; m = m->next){
 		Bprint(ob, "\t%s %s(\n", m->name, m->inst);
@@ -499,8 +499,6 @@ outmod(void)
 		Bprint(ob, "\n\t);\n");
 	}
 	Bprint(ob, "endmodule\n");
-	Bflush(ob);
-
 }
 
 int
@@ -543,5 +541,8 @@ cfgparse(char *fn)
 	ob = Bfdopen(1, OWRITE);
 	if(ob == nil) sysfatal("Bopenfd: %r");
 	outmod();
+	if(cfgtab->postout != nil)
+		cfgtab->postout(ob);
+	Bterm(ob);
 	return 0;
 }

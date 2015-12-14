@@ -1,5 +1,6 @@
 #include <u.h>
 #include <libc.h>
+#include <bio.h>
 #include <mp.h>
 #include "dat.h"
 #include "fns.h"
@@ -85,6 +86,19 @@ static void
 usage(void)
 {
 	fprint(2, "usage: %s [-c cfg] [files]\n", argv0);
+}
+
+int
+clog2(uint n)
+{
+	int r;
+	static int l[16] = {0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3};
+
+	r = 0;
+	if((n & 0xFFFF0000) != 0) { r += 16; n >>= 16; }
+	if((n & 0xFF00) != 0) { r += 8; n >>= 8; }
+	if((n & 0xF0) != 0) { r += 4; n >>= 4; }
+	return r + l[n];
 }
 
 void

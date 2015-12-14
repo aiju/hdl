@@ -28,3 +28,4 @@ int expect(int);
 void findmod(CModule *);
 void matchports(CModule *);
 CWire *getwire(char *);
+int clog2(uint);

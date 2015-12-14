@@ -267,6 +267,7 @@ struct CTab {
 	void (*auxparse)(CModule *, CPortMask *);
 	void (*portinst)(CModule *, CPort *, CPortMask *);
 	void (*postmatch)(void);
+	void (*postout)(Biobuf *);
 };
 
 enum {
