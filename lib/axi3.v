@@ -1,109 +1,60 @@
 `default_nettype none
+/* limitation in vlt -- to axibe axireplaced axiby a parameter */
+`define ID 12
 
-module axi3
-	#(parameter ADDR = 32,
-	parameter DATA = 32,
-	parameter ID = 12)
-(
-	clk,
-	resetn,
-	arvalid,
-	awvalid,
-	bready,
-	rready,
-	wlast,
-	wvalid,
-	arid,
-	awid,
-	wid,
-	arburst,
-	arlock,
-	arsize,
-	awburst,
-	awlock,
-	awsize,
-	arprot,
-	awprot,
-	araddr,
-	awaddr,
-	wdata,
-	arcache,
-	arlen,
-	arqos,
-	awcache,
-	awlen,
-	awqos,
-	wstrb,
-	arready,
-	awready,
-	bvalid,
-	rlast,
-	rvalid,
-	wready,
-	bid,
-	rid,
-	bresp,
-	rresp,
-	rdata,
+module axi3 #(
+	parameter TIMEOUT = 1048575
+) (
+	input wire clk,
+	input wire rstn,
 	
-	outaddr,
-	outrdata,
-	outwdata,
-	outwr,
-	outreq,
-	outack,
-	outwstrb,
-	outerr
+	output wire axiaclk,
+	
+	input wire axiarvalid,
+	output reg axiarready,
+	input wire [31:0] axiaraddr,
+	input wire [1:0] axiarburst, axiarlock,
+	input wire [2:0] axiarsize, axiarprot,
+	input wire [3:0] axiarlen, axiarcache, axiarqos,
+	input wire [`ID-1:0] axiarid,
+	
+	output reg axirvalid,
+	input wire axirready,
+	output reg [31:0] axirdata,
+	output reg [`ID-1:0] axirid,
+	output reg [1:0] axirresp,
+	output reg axirlast,
+
+	input wire axiawvalid,
+	output reg axiawready,
+	input wire [31:0] axiawaddr,
+	input wire [1:0] axiawburst, axiawlock,
+	input wire [2:0] axiawsize, axiawprot,
+	input wire [3:0] axiawlen, axiawcache, axiawqos,
+	input wire [`ID-1:0] axiawid,
+	
+	input wire axiwvalid,
+	output reg axiwready,
+	input wire [31:0] axiwdata,
+	input wire [3:0] axiwstrb,
+	input wire [`ID-1:0] axiwid,
+	input wire axiwlast,
+	
+	output reg axibvalid,
+	input wire axibready,
+	output reg [1:0] axibresp,
+	output reg [`ID-1:0] axibid,
+	
+	output reg [31:0] outaddr,
+	input wire [31:0] outrdata,
+	output reg [31:0] outwdata,
+	output reg outwr,
+	output reg outreq,
+	input wire outack,
+	input wire outerr,
+	output reg [3:0] outwstrb
 );
 
-	parameter TIMEBITS = 20;
-	parameter TIMEOUT = 1048575;
-	
-	input wire clk, resetn;
-	
-	input wire awvalid;
-	output reg awready;
-	input wire [1:0] awburst, awlock;
-	input wire [2:0] awsize, awprot;
-	input wire [3:0] awlen, awcache, awqos;
-	input wire [ID-1:0] awid;
-	input wire [ADDR-1:0] awaddr;
-	
-	input wire arvalid;
-	output reg arready;
-	input wire [1:0] arburst, arlock;
-	input wire [2:0] arsize, arprot;
-	input wire [3:0] arlen, arcache, arqos;
-	input wire [ID-1:0] arid;
-	input wire [ADDR-1:0] araddr;
-	
-	input wire wvalid, wlast;
-	output reg wready;
-	input wire [DATA/8-1:0] wstrb;
-	input wire [ID-1:0] wid;
-	input wire [DATA-1:0] wdata;
-
-	output reg bvalid;
-	input wire bready;
-	output reg [1:0] bresp;
-	output reg [ID-1:0] bid;
-	
-	output reg rvalid;
-	input wire rready;
-	output reg [1:0] rresp;
-	output reg rlast;
-	output reg [ID-1:0] rid;
-	output reg [DATA-1:0] rdata;
-	
-	output reg [ADDR-1:0] outaddr;
-	input wire [DATA-1:0] outrdata;
-	output reg [DATA-1:0] outwdata;
-	output reg outwr;
-	output reg outreq;
-	input wire outack;
-	input wire outerr;
-	output reg [DATA/8-1:0] outwstrb;
-	
 	localparam OKAY = 0;
 	localparam EXOKAY = 1;
 	localparam SLVERR = 2;
@@ -112,25 +63,7 @@ module axi3
 	localparam INCR = 1;
 	localparam WRAP = 2;
 	
-	reg [1:0] awburst0;
-	reg [2:0] awsize0;
-	reg [ID-1:0] awid0;
-	reg [ADDR-1:0] awaddr0;
-	
-	reg [1:0] arburst0;
-	reg [2:0] arsize0;
-	reg [3:0] arlen0;
-	reg [ADDR-1:0] araddr0;
-	
-	reg outerr0;
-	reg [ADDR-1:0] curaddr, nextaddr;
-	reg [1:0] burst, bresp_;
-	reg [2:0] size;
-	reg [7:0] sizedec;
-	reg [TIMEBITS-1:0] timer;
-	reg timeout, timeout0;
-	
-	reg [2:0] state, state_, state0;
+	reg [2:0] state;
 	localparam IDLE = 0;
 	localparam READOUT = 1;
 	localparam READREPLY = 2;
@@ -138,171 +71,124 @@ module axi3
 	localparam WRITEOUT = 4;
 	localparam WRRESP = 5;
 	
-	reg setoutaddrr, setoutaddrw, latchrdata, latchwdata, latchar, latchaw, incraddr, incwaddr, starttime;
-	reg rpend, rpend_, write;
+	reg rpend;
+	reg [31:0] axiawaddr0, axiaraddr0;
+	reg [1:0] axiawburst0, axiarburst0;
+	reg [3:0] axiawlen0, axiarlen0;
+	reg [31:0] timer;
 	
-	always @(posedge clk, negedge resetn) begin
-		state <= !resetn ? IDLE : state_;
-		rpend <= !resetn ? 0 : rpend_;
-		state0 <= !resetn ? IDLE : state;
-	end
+	assign axiaclk = clk;
 	
-	always @(posedge clk) begin
-		bresp <= bresp_;
-		if(latchaw) begin
-			awaddr0 <= awaddr;
-			awburst0 <= awburst;
-			awsize0 <= awsize;
-			arlen0 <= arlen;
-			bid <= awid;
-		end
-		if(latchar) begin
-			araddr0 <= araddr;
-			arburst0 <= arburst;
-			arsize0 <= arsize;
-			arlen0 <= arlen;
-			rid <= arid;
-		end
-		if(incwaddr)
-			awaddr0 <= nextaddr;
-		if(incraddr) begin
-			araddr0 <= nextaddr;
-			arlen0 <= arlen0 - 1;
-		end
-		if(latchwdata) begin
-			outwdata <= wdata;
-			outwstrb <= wstrb;
-		end
-		if(latchrdata) begin
-			rdata <= outrdata;
-			outerr0 <= outerr;
-			timeout0 <= timeout;
-		end
-		if(timer > 0)
-			timer <= timer - 1;
-		if(starttime)
-			timer <= TIMEOUT;
-	end
-	
-	always @(*) begin
-		burst = write ? awburst0 : arburst0;
-		size = write ? awsize0 : arsize0;
-		sizedec = 0;
-		sizedec[size] = 1;
-		curaddr = write ? awaddr0 : araddr0;
-		case(burst)
-		default: nextaddr = curaddr;
-		INCR: nextaddr = curaddr + sizedec;
+	function [31:0] nextaddr(input [31:0] addr, input [1:0] axiburst);
+		case(axiburst)
+		default: axiaraddr = addr;
+		INCR: axiaraddr = addr + 4;
 		endcase
-		
-		timeout = TIMEOUT != 0 && timer == 0;
-		
-		outaddr = write ? awaddr0 : araddr0;
-	end
+	endfunction
 	
-	always @(*) begin
-		state_ = state;
-		write = 0;
-		awready = 0;
-		arready = 0;
-		wready = 0;
-		rvalid = 0;
-		bvalid = 0;
-		rlast = 0;
-		rresp = 0;
-		rpend_ = rpend;
-		
-		latchar = 0;
-		latchaw = 0;
-		latchrdata = 0;
-		latchwdata = 0;
-		incraddr = 0;
-		incwaddr = 0;
-		setoutaddrr = 0;
-		setoutaddrw = 0;
-		starttime = 0;
-		bresp_ = bresp;
-		
-		outaddr = 'hx;
-		outwdata = 'hx;
-		outwr = 0;
-		outreq = 0;
-		case(state)
-		IDLE: begin
-			awready = 1;
-			arready = 1;
-			if(awvalid) begin
-				if(arvalid) begin
-					latchar = 1;
-					rpend_ = 1;
+	always @(posedge clk or negedge rstn)
+		if(!rstn) begin
+			rpend <= 0;
+			axiaraddr0 <= 32'bx;
+			axiarburst0 <= 2'bx;
+			axiarlen0 <= 4'bx;
+			axiawaddr0 <= 32'bx;
+			axiawburst0 <= 2'bx;
+			axiawlen0 <= 4'bx;
+		end else begin
+			outreq <= 0;
+			case(state)
+			IDLE: begin
+				axiarready <= 0;
+				axiawready <= 0;
+				if(axiarvalid) begin
+					axiaraddr0 <= nextaddr(axiaraddr, axiarburst);
+					axiarburst0 <= axiarburst;
+					axiarlen0 <= axiarlen;
+					axiarlen0 <= axiarlen;
+					axirid <= axiarid;
+					rpend <= axiawvalid;
 				end
-				state_ = WAITWRDATA;
-				latchaw = 1;
-				bresp_ = 0;
-			end else if(arvalid) begin
-				state_ = READOUT;
-				starttime = 1;
-				latchar = 1;
-			end
-		end
-		READOUT: begin
-			outreq = state0 != READOUT;
-			if(outack || timeout) begin
-				state_ = READREPLY;
-				latchrdata = 1;
-			end
-		end
-		READREPLY: begin
-			rvalid = 1;
-			rresp = timeout0 ? DECERR : outerr0 ? SLVERR : OKAY;
-			rlast = arlen0 == 0;
-			if(rready)
-				if(rlast)
-					state_ = IDLE;
-				else begin
-					state_ = READOUT;
-					incraddr = 1;
-					starttime = 1;
+				if(axiawvalid) begin
+					axibresp <= OKAY;
+					axiawaddr0 <= axiawaddr;
+					axiawburst0 <= axiawburst;
+					axiawlen0 <= axiawlen;
+					axiawlen0 <= axiawlen;
+					axiwready <= 1;
 				end
-		end
-		WAITWRDATA: begin
-			write = 1;
-			wready = 1;
-			if(wvalid) begin
-				latchwdata = 1;
-				if(wstrb == 0) begin
-					if(wlast)
-						state_ = WRRESP;
+				if(axiarvalid) begin
+					outreq <= 1;
+					outaddr <= axiaraddr;
+					outwr <= 0;
+					state <= READOUT;
+					timer <= TIMEOUT;
 				end else begin
-					state_ = WRITEOUT;
-					starttime = 1;
+					state <= WAITWRDATA;
 				end
 			end
-		end
-		WRITEOUT: begin
-			write = 1;
-			outwr = 1;
-			outreq = state0 != WRITEOUT;
-			if(outack || timeout) begin
-				if(timeout)
-					bresp_ = DECERR;
-				else if(outerr)
-					bresp_ = SLVERR;
-				state_ = wlast ? WRRESP : WAITWRDATA;
+			READOUT: begin
+				timer <= timer - 1;
+				if(outack || timer == 0) begin
+					axirvalid <= 1;
+					axirdata <= outrdata;
+					axirresp <= timer == 0 ? DECERR : outerr ? SLVERR : OKAY;
+					axirlast <= axiarlen0 == 0;
+					state <= READREPLY;
+				end
 			end
+			READREPLY:
+				if(axirready) begin
+					axirvalid <= 0;
+					if(axirlast)
+						state <= IDLE;
+					else begin
+						state <= READOUT;
+						outreq <= 1;
+						outaddr <= axiaraddr0;
+						axiaraddr0 <= nextaddr(axiaraddr0, axiarburst0);
+						axiarlen0 <= axiarlen0 - 1;
+						timer <= TIMEOUT;
+					end
+				end
+			WAITWRDATA:
+				if(axiwvalid) begin
+					axiwready <= 0;
+					outreq <= 1;
+					outaddr <= axiawaddr0;
+					outwr <= 1;
+					outwdata <= axiwdata;
+					outwstrb <= axiwstrb;
+					state <= WRITEOUT;
+					axiawaddr0 <= nextaddr(axiawaddr0, axiawburst0);
+				end
+			WRITEOUT: begin
+				timer <= timer - 1;
+				if(outack || timer == 0) begin
+					if(axiwlast) begin
+						axibvalid <= 1;
+						state <= WRRESP;
+					end else
+						state <= WAITWRDATA;
+					if(timer == 0)
+						axibresp <= DECERR;
+					else if(outerr)
+						axibresp <= SLVERR;
+				end
+			end
+			WRRESP:
+				if(axibready) begin
+					axibvalid <= 0;
+					if(rpend) begin
+						rpend <= 0;
+						state <= READOUT;
+						outreq <= 1;
+						outaddr <= axiaraddr0;
+						outwr <= 0;
+						timer <= TIMEOUT;
+					end
+				end
+			endcase
 		end
-		WRRESP: begin
-			write = 1;
-			bvalid = 1;
-			if(bready)
-				if(rpend) begin
-					rpend_ = 0;
-					state_ = READOUT;
-					starttime = 1;
-				end else
-					state_ = IDLE;
-		end
-		endcase
-	end
-	
+
 endmodule
