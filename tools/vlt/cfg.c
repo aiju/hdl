@@ -396,11 +396,16 @@ matchports(CModule *m)
 				w->Line = pm->Line;
 			}
 			p->dir = s->dir & 3;
-			if(pm->ext != nil)
+			if(pm->ext != nil){
+				sub = wildsub(pm->ext, fields, nelem(fields));
 				if(w->ext == nil)
-					w->ext = pm->ext;
-				else if(strcmp(w->ext, pm->ext) != 0)
-					cfgerror(pm, "'%s' conflicting port names");
+					w->ext = sub;
+				else{
+					if(strcmp(w->ext, sub) != 0)
+						cfgerror(pm, "'%s' conflicting port names '%s' != '%s'", w->name, w->ext, sub);
+					free(sub);
+				}
+			}
 			if(cfgtab->portinst != nil)
 				cfgtab->portinst(m, p, pm);
 			*pp = p;

@@ -7,9 +7,9 @@
 
 typedef struct PS7Port {
 	char *lname, *uname;
-	int sz;
+	int sz, out;
 } PS7Port;
-PS7Port ports[] = {
+static PS7Port ps7ports[] = {
 #include "ps7.h"
 };
 
@@ -37,6 +37,7 @@ struct Mapped {
 
 static Mapped *maps, **mapslast = &maps;
 static Mapped *mapas;
+static SymTab dummytab;
 
 enum { ADDRBITS = 30 };
 
@@ -157,7 +158,6 @@ static void
 addnet(CWire *w, Type *t, int dir, CPort ***pp)
 {
 	CPort *p;
-	static SymTab dummytab;
 	
 	assert(w != nil);
 	p = emalloc(sizeof(CPort));
@@ -193,6 +193,44 @@ addpm(char *pn, char *wn, char *ext, CPortMask ***pp)
 }
 
 static void
+ps7match(void)
+{
+	CWire *w;
+	int i;
+	PS7Port *p;
+	CPort *q, **pp;
+	CModule *m, **mp;
+
+	for(mp = &mods; m = *mp, m != nil; mp = &m->next)
+		;	
+	m = emalloc(sizeof(CModule));
+	m->Line = nilline;
+	m->name = strdup("PS7");
+	m->inst = strdup("_PS7");
+	*mp = m;
+	pp = &m->ports;
+	for(i = 0; i < WIREHASH; i++)
+		for(w = wires[i]; w != nil; w = w->next){
+			if(w->ext == nil)
+				continue;
+			for(p = ps7ports; p < ps7ports + nelem(ps7ports); p++)
+				if(strcmp(p->lname, w->ext) == 0)
+					break;
+			if(p == ps7ports + nelem(ps7ports))
+				continue;
+			q = emalloc(sizeof(CPort));
+			q->wire = w;
+			q->port = getsym(&dummytab, 0, p->uname);
+			q->type = type(TYPBITS, 0, node(ASTCINT, p->sz));
+			q->dir = p->out ? PORTOUT : PORTIN;
+			*pp = q;
+			pp = &q->next;
+			free(w->ext);
+			w->ext = nil;
+		}
+}
+
+static void
 aijupostmatch(void)
 {
 	Mapped *ma;
@@ -204,7 +242,7 @@ aijupostmatch(void)
 	if(bits32 == nil)
 		bits32 = type(TYPBITS, 0, node(ASTCINT, 32));
 	if(maps == nil)
-		return;
+		goto over;
 	for(ma = maps; ma != nil; ma = ma->next)
 		if(ma->base < 0)
 			mapsalloc(ma);
@@ -250,7 +288,7 @@ aijupostmatch(void)
 	mc->inst = "_axi3";
 	mc->Line = nilline;
 	ppm = &mc->portms;
-	addpm("axi*", "gp0*", "gp0*", &ppm);
+	addpm("axi*", "_gp0*", "maxigp0*", &ppm);
 	addpm("out*", "_out*", nil, &ppm);
 	addpm("*", "*", nil, &ppm);
 	*mp = mc;
@@ -261,6 +299,9 @@ aijupostmatch(void)
 	for(p = mc->ports; p != nil; p = p->next)
 		if(strncmp(p->port->name, "out", 3) == 0)
 			addnet(p->wire, p->port->type, 4 - p->dir, &pp);
+
+over:
+	ps7match();
 }
 
 static void
