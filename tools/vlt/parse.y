@@ -65,7 +65,7 @@
 %type <node> varass eventexpr blocknoitemstats modgens genblocknull genblock numb
 %type <node> delayval moditem moditems modgen paramlist lordports lordport lnamports
 %type <node> lnamport lnparass nparass instance modinst instances contass contassigns
-%type <node> gencaseitems gencaseitem
+%type <node> gencaseitems gencaseitem taskdecl funcdecl
 %type <nodei> blockitemstats
 %type <type> stype ptype
 %type <range> range
@@ -161,9 +161,9 @@ modgen:
 	| attrs localparamdecl ';' { $$ = nil; }
 	| attrs genvardecl ';' { $$ = nil; }
 	| attrs LASSIGN delay3 contassigns ecomma ';' { $$ = $4; }
-	| attrs taskdecl { $$ = nil; }
-	| attrs funcdecl { $$ = nil; }
-	| attrs modinst ';' { $$ = $2; }
+	| attrs taskdecl { $2->attrs = $1; $$ = $2; }
+	| attrs funcdecl { $2->attrs = $1; $$ = $2; }
+	| attrs modinst ';' { $$ = $2; $2->attrs = $1; }
 	| attrs LINITIAL stat { $$ = node(ASTINITIAL, $3, $1); }
 	| attrs LALWAYS stat { $$ = node(ASTALWAYS, $3, $1); }
 	| attrs LDEFPARAM paramassigns ';' { lerror(nil, "unsupported construct ignored"); }
@@ -370,6 +370,7 @@ funcdecl:
 			scopeup();
 			oldports = oldports0;
 			$<node>6->sc.n = $stat;
+			$$ = $<node>6;
 		}
 	| LFUNCTION automatic ptype LSYMB '(' {
 			$<node>$ = newscope(ASTFUNC, $4, curattrs, $3);
@@ -379,6 +380,7 @@ funcdecl:
 			scopeup();
 			oldports = oldports0;
 			$<node>6->sc.n = $stat;
+			$$ = $<node>6;
 		}
 	;
 taskdecl:
@@ -390,6 +392,7 @@ taskdecl:
 			scopeup();
 			oldports = oldports0;
 			$<node>5->sc.n = $stat;
+			$$ = $<node>5;
 		}
 	| LTASK automatic LSYMB '(' {
 			$<node>$ = newscope(ASTTASK, $3, curattrs, nil);
@@ -398,6 +401,7 @@ taskdecl:
 			scopeup();
 			oldports = oldports0;
 			$<node>5->sc.n = $stat;
+			$$ = $<node>5;
 		}
 	;
 
