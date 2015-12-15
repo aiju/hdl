@@ -377,6 +377,7 @@ aijupostout(CDesign *d, Biobuf *bp)
 		"\tinput wire clk,\n"
 		"\tinput wire rstn,\n"
 		"\tinput wire _outreq,\n"
+		"\tinput wire _outwr,\n"
 		"\toutput reg _outack,\n"
 		"\toutput reg _outerr,\n"
 		"\tinput wire [31:0] _outaddr,\n"
@@ -455,7 +456,7 @@ aijupostout(CDesign *d, Biobuf *bp)
 		dowire(bp, ma->wdata, "\tassign %s = _outwdata;\n");
 		dowire(bp, ma->wstrb, "\tassign %s = _outwstrb;\n");
 	}
-	Bprint(bp, "endcase\n");
+	Bprint(bp, "endmodule\n");
 }
 
 CTab aijutab = {
