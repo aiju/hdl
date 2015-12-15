@@ -33,6 +33,46 @@ static int cfgerrors;
 static Line cfgline;
 static CDesign *design;
 
+typedef struct EEnv EEnv;
+struct EEnv {
+	ASTNode *n;
+	int env;
+};
+#pragma varargck type "N" EEnv
+
+static int
+exprfmt(Fmt *f)
+{
+	EEnv e;
+	ASTNode *n;
+
+	e = va_arg(f->args, EEnv);
+	n = e.n;
+	switch(n->t){
+	case ASTCINT: return fmtprint(f, "%d", n->i);
+	case ASTSYM: return fmtprint(f, "%s", n->sym->name);
+	case ASTIDX:
+		switch(n->op){
+		case 0: return fmtprint(f, "%N[%N]", (EEnv) {n->n1, e.env}, (EEnv) {n->n2, e.env});
+		case 1: return fmtprint(f, "%N[%N:%N]", (EEnv) {n->n1, e.env}, (EEnv) {n->n2, e.env}, (EEnv) {n->n3, e.env});
+		case 2: return fmtprint(f, "%N[%N+:%N]", (EEnv) {n->n1, e.env}, (EEnv) {n->n2, e.env}, (EEnv) {n->n3, e.env});
+		case 3: return fmtprint(f, "%N[%N-:%N]", (EEnv) {n->n1, e.env}, (EEnv) {n->n2, e.env}, (EEnv) {n->n3, e.env});
+		default:
+			fprint(2, "printexpr: unknown index type %d\n", n->t);
+			return fmtstrcpy(f, "???");
+		}
+	default:
+		fprint(2, "printexpr: unknown node %A\n", n->t);
+		return fmtstrcpy(f, "???");
+	}
+}
+
+static int
+expr1fmt(Fmt *f)
+{
+	return fmtprint(f, "%N", (EEnv) {va_arg(f->args, ASTNode *), 0});
+}
+
 void
 cfgerror(Line *l, char *fmt, ...)
 {
@@ -98,6 +138,23 @@ expect(int t)
 		return -1;
 	}
 	return 0;
+}
+
+static ASTNode *
+cfgexpr(void)
+{
+	ASTNode *n;
+	int i;
+	
+	expect(LSTRING);
+	n = node(ASTSYM, getsym(&dummytab, 0, str));
+	if(peek() != '[')
+		return n;
+	expect('[');
+	expect(LSTRING);
+	i = atoi(str);
+	expect(']');
+	return node(ASTIDX, 0, n, node(ASTCINT, i), nil);
 }
 
 static void
@@ -171,11 +228,65 @@ dofiles(void)
 	}			
 }
 
+static void
+dowire(CDesign *d)
+{
+	CWire *w;
+	int c;
+	
+	if(expect(LSTRING))
+		return;
+	w = getwire(d, str);
+	w->Line = cfgline;
+	w->type = bittype;
+	c = lex();
+	if(c == '='){
+		w->val = cfgexpr();
+		c = lex();
+	}
+	if(c == '<' && !expect(LSTRING) && !expect('>')){
+		w->ext = strdup(str);
+		c = lex();
+	}
+	if(c != ';')
+		cfgerror(nil, "syntax error in wire");
+}
+
+static void
+domod(CDesign *d, CModule ***mp)
+{
+	CModule *m;
+	CPortMask *p;
+	int c;
+
+	m = emalloc(sizeof(CModule));
+	m->d = d;
+	m->name = strdup(str);
+	m->Line = cfgline;
+	c = lex();
+	if(c == LSTRING){
+		m->inst = strdup(str);
+		c = lex();
+	}
+	if(c == '{')
+		doports(m);
+	else if(c != ';'){
+		cfgerror(nil, "syntax error in module");
+		return;
+	}else{
+		m->portms = p = emalloc(sizeof(CPortMask));
+		p->name = strdup("*");
+		p->targ = strdup("*");
+		p->Line = cfgline;
+	}
+	**mp = m;
+	*mp = &m->next;
+}
+
 static CDesign *
 dodesign(void)
 {
-	CModule *m, **mp;
-	CPortMask *p;
+	CModule **mp;
 	CDesign *d;
 	int c;
 
@@ -191,28 +302,10 @@ dodesign(void)
 			cfgerror(nil, "syntax error in design");
 			continue;
 		}
-		m = emalloc(sizeof(CModule));
-		m->d = d;
-		m->name = strdup(str);
-		m->Line = cfgline;
-		c = lex();
-		if(c == LSTRING){
-			m->inst = strdup(str);
-			c = lex();
-		}
-		if(c == '{')
-			doports(m);
-		else if(c != ';'){
-			cfgerror(nil, "syntax error in module");
-			continue;
-		}else{
-			m->portms = p = emalloc(sizeof(CPortMask));
-			p->name = strdup("*");
-			p->targ = strdup("*");
-			p->Line = cfgline;
-		}
-		*mp = m;
-		mp = &m->next;
+		if(strcmp(str, "wire") == 0)
+			dowire(d);
+		else
+			domod(d, &mp);
 	}
 	return d;
 }
@@ -440,7 +533,13 @@ wireput(Biobuf *ob, CWire *w, int f)
 		cfgerror(w, "unsupported %A", t->sz->t);
 	else if(t->sz->i != 1)
 		Bprint(ob, "[%d:0] ", t->sz->i - 1);
-	Bprint(ob, f == 0 ? "%s;\n" : "%s", w->name);
+	if(f == 0)
+		if(w->val != nil)
+			Bprint(ob, "%s = %n;\n", w->name, w->val);
+		else
+			Bprint(ob, "%s;\n", w->name);
+	else
+		Bprint(ob, "%s", w->name);
 }
 
 static void
@@ -451,7 +550,7 @@ checkdriver(CModule *m)
 	
 	for(p = m->ports; p != nil; p = p->next){
 		w = p->wire;
-		if(w->driver != nil && (p->dir & 3) == PORTOUT)
+		if((w->val != nil || w->driver != nil) && (p->dir & 3) == PORTOUT)
 			cfgerror(p, "'%s' multi-driven net", w->name);
 		if(w->driver == nil && ((p->dir & 3) == PORTOUT || (p->dir & 3) == PORTIO)){
 			w->driver = m;
@@ -471,9 +570,12 @@ checkundriven(CDesign *d)
 	CWire *w;
 
 	for(i = 0; i < WIREHASH; i++)
-		for(w = d->wires[i]; w != nil; w = w->next)
-			if(w->driver == nil && w->ext == nil)
+		for(w = d->wires[i]; w != nil; w = w->next){
+			if(w->val != nil)
+				w->dir = PORTOUT;
+			if(w->driver == nil && w->ext == nil && w->val == nil)
 				cfgerror(w, "'%s' undriven wire", w->name);
+		}
 }
 
 static void
@@ -508,6 +610,13 @@ outmod(CDesign *d)
 		Bprint(ob, "\n\t);\n");
 	}
 	Bprint(ob, "endmodule\n");
+}
+
+void
+cfginit(void)
+{
+	fmtinstall('n', expr1fmt);
+	fmtinstall('N', exprfmt);
 }
 
 int

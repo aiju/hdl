@@ -5,7 +5,7 @@
 #include "dat.h"
 #include "fns.h"
 
-SymTab global;
+SymTab global, dummytab;
 SymTab *scope = &global;
 
 static char *astname[] = {

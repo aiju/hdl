@@ -116,7 +116,7 @@ struct SymTab {
 	Symbol *ports, **lastport;
 };
 extern SymTab *scope;
-extern SymTab global;
+extern SymTab global, dummytab;
 
 enum {
 	ASTINVAL,
@@ -205,8 +205,14 @@ enum {
 	OPMAX,
 };
 
+#pragma varargck argpos error 2
+#pragma varargck argpos lerror 2
+#pragma varargck argpos cfgerror 2
 #pragma varargck type "A" int
 #pragma varargck type "O" int
+#pragma varargck type "T" Type*
+#pragma varargck type "n" ASTNode*
+#pragma varargck type "σ" int
 extern Line *curline, nilline;
 #define NOPE (abort(), nil)
 #define lint 1
@@ -247,12 +253,15 @@ struct CPort {
 
 struct CWire {
 	Line;
+	
 	char *name;
 	Type *type;
 	CModule *driver;
-	CWire *next;
+	ASTNode *val;
 	char *ext;
 	int dir;
+
+	CWire *next;
 };
 
 struct CModule {

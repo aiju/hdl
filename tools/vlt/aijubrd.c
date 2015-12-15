@@ -37,7 +37,6 @@ struct Mapped {
 
 static Mapped *maps, **mapslast = &maps;
 static Mapped *mapas;
-static SymTab dummytab;
 
 enum { ADDRBITS = 30 };
 
@@ -193,6 +192,30 @@ addpm(char *pn, char *wn, char *ext, CPortMask ***pp)
 }
 
 static void
+clkrstn(CDesign *d)
+{
+	CWire *w;
+	
+	w = getwire(d, "_fclkclk");
+	w->Line = nilline;
+	w->ext = strdup("fclkclk");
+	
+	w = getwire(d, "_fclkresetn");
+	w->Line = nilline;
+	w->ext = strdup("fclkresetn");
+	
+	w = getwire(d, "clk");
+	w->Line = nilline;
+	w->type = bittype;
+	w->val = node(ASTIDX, 0, node(ASTSYM, getsym(&dummytab, 0, "_fclkclk")), node(ASTCINT, 0));
+
+	w = getwire(d, "rstn");
+	w->Line = nilline;
+	w->type = bittype;
+	w->val = node(ASTIDX, 0, node(ASTSYM, getsym(&dummytab, 0, "_fclkresetn")), node(ASTCINT, 0));
+}
+
+static void
 ps7match(CDesign *d)
 {
 	CWire *w;
@@ -222,7 +245,7 @@ ps7match(CDesign *d)
 			q = emalloc(sizeof(CPort));
 			q->wire = w;
 			q->port = getsym(&dummytab, 0, p->uname);
-			q->type = type(TYPBITS, 0, node(ASTCINT, p->sz));
+			w->type = q->type = type(TYPBITS, 0, node(ASTCINT, p->sz));
 			q->dir = p->out ? PORTOUT : PORTIN;
 			*pp = q;
 			pp = &q->next;
@@ -304,6 +327,7 @@ aijupostmatch(CDesign *d)
 			addnet(p->wire, p->port->type, 4 - p->dir, &pp);
 
 over:
+	clkrstn(d);
 	ps7match(d);
 }
 

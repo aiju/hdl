@@ -106,6 +106,7 @@ main(int argc, char **argv)
 {
 	lexinit();
 	astinit();
+	cfginit();
 	fmtinstall('B', mpfmt);
 	
 	ARGBEGIN{

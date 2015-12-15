@@ -29,3 +29,4 @@ void findmod(CModule *);
 void matchports(CModule *);
 CWire *getwire(CDesign *, char *);
 int clog2(uint);
+void cfginit(void);
