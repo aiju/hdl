@@ -9,3 +9,7 @@ usage_statistics_webtalk.html
 *.jou
 vivado*.str
 build
+y.tab.c
+y.tab.h
+y.output
+y.debug
