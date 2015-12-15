@@ -10,6 +10,8 @@ OFILES=\
 	cfg.$O \
 	aijubrd.$O \
 
+BIN=/$objtype/bin
+
 YFILES=parse.y
 HFILES=dat.h fns.h
 
