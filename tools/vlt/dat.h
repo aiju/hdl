@@ -214,9 +214,7 @@ enum {
 #pragma varargck type "n" ASTNode*
 #pragma varargck type "σ" int
 extern Line *curline, nilline;
-#define NOPE (abort(), nil)
-#define lint 1
-#define lerror error
+int lint;
 
 typedef struct CFile CFile;
 typedef struct CPortMask CPortMask;

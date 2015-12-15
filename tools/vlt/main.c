@@ -32,6 +32,22 @@ error(Line *l, char *fmt, ...)
 	va_end(va);
 }
 
+void
+lerror(Line *l, char *fmt, ...)
+{
+	va_list va;
+	static char buf[ERRMAX];
+	
+	if(!lint)
+		return;
+	if(l == nil)
+		l = curline;
+	va_start(va, fmt);
+	snprint(buf, sizeof(buf), "%s:%d %s\n", l->filen, l->lineno, fmt);
+	vfprint(2, buf, va);
+	va_end(va);
+}
+
 typedef struct Mark Mark;
 struct Mark {
 	char *s;
@@ -82,12 +98,6 @@ strmark(char *s)
 	return 0;
 }
 
-static void
-usage(void)
-{
-	fprint(2, "usage: %s [-c cfg] [files]\n", argv0);
-}
-
 int
 clog2(uint n)
 {
@@ -101,22 +111,44 @@ clog2(uint n)
 	return r + l[n];
 }
 
+static void
+usage(void)
+{
+	fprint(2, "usage: %s [ -l ] files\n", argv0);
+	fprint(2, "       %s [ -l ] -c cfg-file\n", argv0);
+	exits("usage");
+}
+
 void
 main(int argc, char **argv)
 {
+	int cfgmode;
+
 	lexinit();
 	astinit();
 	cfginit();
 	fmtinstall('B', mpfmt);
 	
+	cfgmode = 0;
+	
 	ARGBEGIN{
 	case 'c':
-		cfgparse(EARGF(usage()));
+		cfgmode++;
+		break;
+	case 'l':
+		lint++;
 		break;
 	default:
-		sysfatal("usage");
+		usage();
 	}ARGEND;
 	
+	if(cfgmode){
+		if(argc != 1)
+			usage();
+		if(cfgparse(*argv) < 0)
+			exits("errors");
+		exits(nil);
+	}
 	while(argc-- != 0)
 		parse(*argv++);
 }
