@@ -12,8 +12,6 @@ enum {
 };
 
 CFile *files;
-CModule *mods;
-CWire *wires[WIREHASH];
 static CTab nulltab;
 CTab *cfgtab = &nulltab;
 
@@ -33,7 +31,7 @@ char str[512];
 static int peeked;
 static int cfgerrors;
 static Line cfgline;
-char *topname;
+static CDesign *design;
 
 void
 cfgerror(Line *l, char *fmt, ...)
@@ -173,25 +171,28 @@ dofiles(void)
 	}			
 }
 
-static void
+static CDesign *
 dodesign(void)
 {
 	CModule *m, **mp;
 	CPortMask *p;
+	CDesign *d;
 	int c;
 
 	if(expect(LSTRING))
-		return;
-	topname = strdup(str);
+		return nil;
+	d = emalloc(sizeof(CDesign));
+	d->name = strdup(str);
 	if(expect('{'))
-		return;
-	mp = &mods;
+		return nil;
+	mp = &d->mods;
 	while(c = lex(), c != '}'){
 		if(c != LSTRING){
 			cfgerror(nil, "syntax error in design");
 			continue;
 		}
 		m = emalloc(sizeof(CModule));
+		m->d = d;
 		m->name = strdup(str);
 		m->Line = cfgline;
 		c = lex();
@@ -213,6 +214,7 @@ dodesign(void)
 		*mp = m;
 		mp = &m->next;
 	}
+	return d;
 }
 
 static void
@@ -242,7 +244,9 @@ toplevel(void)
 			dofiles();
 			continue;
 		}else if(strcmp(str, "design") == 0){
-			dodesign();
+			if(design != nil)
+				cfgerror(nil, "multiple designs in one file");
+			design = dodesign();
 			continue;
 		}else
 			cfgerror(nil, "unknown directive '%s'", str);
@@ -286,7 +290,7 @@ findmod(CModule *m)
 	if(m->inst == nil){
 		for(i = 0; ; i++){
 			sprint(buf, "%s%d", m->name, i);
-			for(n = mods; n != nil; n = n->next)
+			for(n = m->d->mods; n != nil; n = n->next)
 				if(n->inst != nil && strcmp(buf, n->inst) == 0)
 					break;
 			if(n == nil)
@@ -345,11 +349,11 @@ wildsub(char *s, Resub *rs, int nrs)
 }
 
 CWire *
-getwire(char *s)
+getwire(CDesign *d, char *s)
 {
 	CWire **wp, *w;
 	
-	for(wp = &wires[hash(s) % WIREHASH]; w = *wp, w != nil; wp = &w->next)
+	for(wp = &d->wires[hash(s) % WIREHASH]; w = *wp, w != nil; wp = &w->next)
 		if(strcmp(w->name, s) == 0)
 			return w;
 	w = emalloc(sizeof(CWire));
@@ -389,7 +393,7 @@ matchports(CModule *m)
 			p->Line = pm->Line;
 			p->port = s;
 			sub = wildsub(pm->targ, fields, nelem(fields));
-			p->wire = w = getwire(sub);
+			p->wire = w = getwire(m->d, sub);
 			free(sub);
 			if(p->type == nil){
 				w->type = s->type;
@@ -461,40 +465,40 @@ checkdriver(CModule *m)
 }
 
 static void
-checkundriven(void)
+checkundriven(CDesign *d)
 {
 	int i;
 	CWire *w;
 
 	for(i = 0; i < WIREHASH; i++)
-		for(w = wires[i]; w != nil; w = w->next)
+		for(w = d->wires[i]; w != nil; w = w->next)
 			if(w->driver == nil && w->ext == nil)
 				cfgerror(w, "'%s' undriven wire", w->name);
 }
 
 static void
-outmod(void)
+outmod(CDesign *d)
 {
 	CWire *w;
 	CModule *m;
 	CPort *p;
 	int i, f;
 
-	Bprint(ob, "module %s(\n", topname);
+	Bprint(ob, "module %s(\n", d->name);
 	f = 1;
 	for(i = 0; i < WIREHASH; i++)
-		for(w = wires[i]; w != nil; w = w->next)
+		for(w = d->wires[i]; w != nil; w = w->next)
 			if(w->ext != nil){
 				wireput(ob, w, f);
 				f = 2;
 			}
 	Bprint(ob, "\n);\n\n");
 	for(i = 0; i < WIREHASH; i++)
-		for(w = wires[i]; w != nil; w = w->next)
+		for(w = d->wires[i]; w != nil; w = w->next)
 			if(w->ext == nil)
 				wireput(ob, w, 0);
 	Bprint(ob, "\n");
-	for(m = mods; m != nil; m = m->next){
+	for(m = d->mods; m != nil; m = m->next){
 		Bprint(ob, "\t%s %s(\n", m->name, m->inst);
 		f = 0;
 		for(p = m->ports; p != nil; p = p->next){
@@ -523,31 +527,35 @@ cfgparse(char *fn)
 	peeked = -1;
 	toplevel();
 	if(cfgerrors != 0) return -1;
+	if(design == nil) {
+		cfgerror(nil, "no design");
+		return -1;
+	}
 	
 	for(f = files; f != nil; f = f->next)
 		if(strchr(f->name, '*') == nil)
 			parse(f->name);
 
-	for(m = mods; m != nil; m = m->next)
+	for(m = design->mods; m != nil; m = m->next)
 		findmod(m);
 	if(cfgerrors != 0) return -1;
 
-	for(m = mods; m != nil; m = m->next)
+	for(m = design->mods; m != nil; m = m->next)
 		matchports(m);
 	if(cfgerrors != 0) return -1;
 
 	if(cfgtab->postmatch != nil)
-		cfgtab->postmatch();
+		cfgtab->postmatch(design);
 
-	for(m = mods; m != nil; m = m->next)
+	for(m = design->mods; m != nil; m = m->next)
 		checkdriver(m);
-	checkundriven();
+	checkundriven(design);
 
 	ob = Bfdopen(1, OWRITE);
 	if(ob == nil) sysfatal("Bopenfd: %r");
-	outmod();
+	outmod(design);
 	if(cfgtab->postout != nil)
-		cfgtab->postout(ob);
+		cfgtab->postout(design, ob);
 	Bterm(ob);
 	return 0;
 }

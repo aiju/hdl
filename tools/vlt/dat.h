@@ -218,6 +218,7 @@ typedef struct CPort CPort;
 typedef struct CModule CModule;
 typedef struct CWire CWire;
 typedef struct CTab CTab;
+typedef struct CDesign CDesign;
 
 struct CFile {
 	Line;
@@ -261,23 +262,27 @@ struct CModule {
 	CPort *ports;
 	CModule *next;
 	ASTNode *node;
+	CDesign *d;
 };
 
 struct CTab {
 	void (*auxparse)(CModule *, CPortMask *);
 	void (*portinst)(CModule *, CPort *, CPortMask *);
-	void (*postmatch)(void);
-	void (*postout)(Biobuf *);
+	void (*postmatch)(CDesign *);
+	void (*postout)(CDesign *, Biobuf *);
 };
 
 enum {
 	WIREHASH = 256
 };
 
+struct CDesign {
+	CModule *mods;
+	CWire *wires[WIREHASH];
+	char *name;
+};
+
 extern CFile *files;
-extern CModule *mods;
-extern CWire *wires[WIREHASH];
-extern char *topname;
 extern CTab *cfgtab;
 
 enum {

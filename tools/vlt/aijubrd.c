@@ -193,7 +193,7 @@ addpm(char *pn, char *wn, char *ext, CPortMask ***pp)
 }
 
 static void
-ps7match(void)
+ps7match(CDesign *d)
 {
 	CWire *w;
 	int i;
@@ -201,16 +201,17 @@ ps7match(void)
 	CPort *q, **pp;
 	CModule *m, **mp;
 
-	for(mp = &mods; m = *mp, m != nil; mp = &m->next)
+	for(mp = &d->mods; m = *mp, m != nil; mp = &m->next)
 		;	
 	m = emalloc(sizeof(CModule));
+	m->d = d;
 	m->Line = nilline;
 	m->name = strdup("PS7");
 	m->inst = strdup("_PS7");
 	*mp = m;
 	pp = &m->ports;
 	for(i = 0; i < WIREHASH; i++)
-		for(w = wires[i]; w != nil; w = w->next){
+		for(w = d->wires[i]; w != nil; w = w->next){
 			if(w->ext == nil)
 				continue;
 			for(p = ps7ports; p < ps7ports + nelem(ps7ports); p++)
@@ -231,7 +232,7 @@ ps7match(void)
 }
 
 static void
-aijupostmatch(void)
+aijupostmatch(CDesign *d)
 {
 	Mapped *ma;
 	CModule *m, *mc, **mp;
@@ -247,12 +248,13 @@ aijupostmatch(void)
 		if(ma->base < 0)
 			mapsalloc(ma);
 	m = emalloc(sizeof(CModule));
+	m->d = d;
 	m->Line = nilline;
 	m->name = strdup("_intercon");
 	m->inst = m->name;
 	pp = &m->ports;
-	addnet(getwire("clk"), bittype, PORTIN, &pp);
-	addnet(getwire("rstn"), bittype, PORTIN, &pp);
+	addnet(getwire(d, "clk"), bittype, PORTIN, &pp);
+	addnet(getwire(d, "rstn"), bittype, PORTIN, &pp);
 	for(ma = maps; ma != nil; ma = ma->next){
 		ma->req = getport(ma, "req");
 		ma->ack = getport(ma, "ack");
@@ -278,12 +280,13 @@ aijupostmatch(void)
 		addnetpo(ma->err, bittype, PORTIN, &pp);
 		addnetpo(ma->wstrb, bittype, PORTOUT, &pp);
 	}
-	for(mp = &mods; *mp != nil; mp = &(*mp)->next)
+	for(mp = &d->mods; *mp != nil; mp = &(*mp)->next)
 		;
 	*mp = m;
 	mp = &m->next;
 	
 	mc = emalloc(sizeof(CModule));
+	mc->d = d;
 	mc->name = "axi3";
 	mc->inst = "_axi3";
 	mc->Line = nilline;
@@ -301,7 +304,7 @@ aijupostmatch(void)
 			addnet(p->wire, p->port->type, 4 - p->dir, &pp);
 
 over:
-	ps7match();
+	ps7match(d);
 }
 
 static void
@@ -333,13 +336,13 @@ printaddrs(Biobuf *bp, Mapped *m, char *ind)
 }
 
 static void
-aijupostout(Biobuf *bp)
+aijupostout(CDesign *d, Biobuf *bp)
 {
 	CModule *m;
 	Mapped *ma;
 	int i;
 	
-	for(m = mods; m != nil; m = m->next)
+	for(m = d->mods; m != nil; m = m->next)
 		if(strcmp(m->name, "_intercon") == 0)
 			break;
 	if(m == nil)
