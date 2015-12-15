@@ -272,6 +272,7 @@ struct CModule {
 	CModule *next;
 	ASTNode *node;
 	CDesign *d;
+	char *attrs;
 };
 
 struct CTab {

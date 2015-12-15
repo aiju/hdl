@@ -601,7 +601,7 @@ outmod(CDesign *d)
 				wireput(ob, w, 0);
 	Bprint(ob, "\n");
 	for(m = d->mods; m != nil; m = m->next){
-		Bprint(ob, "\t%s %s(\n", m->name, m->inst);
+		Bprint(ob, "\t%s%s %s(\n", m->attrs != nil ? m->attrs : "", m->name, m->inst);
 		f = 0;
 		for(p = m->ports; p != nil; p = p->next){
 			Bprint(ob, f ? ",\n\t\t.%s(%s)" : "\t\t.%s(%s)", p->port->name, p->wire->name);

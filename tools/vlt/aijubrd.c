@@ -231,6 +231,7 @@ ps7match(CDesign *d)
 	m->Line = nilline;
 	m->name = strdup("PS7");
 	m->inst = strdup("_PS7");
+	m->attrs = strdup("(* DONT_TOUCH=\"YES\" *)");
 	*mp = m;
 	pp = &m->ports;
 	for(i = 0; i < WIREHASH; i++)
