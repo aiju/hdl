@@ -1,5 +1,5 @@
 `default_nettype none
-/* limitation in vlt -- to axibe axireplaced axiby a parameter */
+/* limitation in vlt -- to be replaced by a parameter */
 `define ID 12
 
 module axi3 #(
@@ -74,21 +74,50 @@ module axi3 #(
 	reg rpend;
 	reg [31:0] axiawaddr0, axiaraddr0;
 	reg [1:0] axiawburst0, axiarburst0;
+	reg [1:0] axiawsize0, axiarsize0;
 	reg [3:0] axiawlen0, axiarlen0;
 	reg [31:0] timer;
 	
 	assign axiaclk = clk;
 	
-	function [31:0] nextaddr(input [31:0] addr, input [1:0] axiburst);
+	function [31:0] nextaddr(input [31:0] addr, input [1:0] axiburst, input [1:0] size);
 		case(axiburst)
-		default: axiaraddr = addr;
-		INCR: axiaraddr = addr + 4;
+		default: nextaddr = addr;
+		INCR: nextaddr = addr + (1<<size);
 		endcase
 	endfunction
 	
+	initial begin
+		state = IDLE;
+		axiarready = 1'b0;
+		axiawready = 1'b1;
+		axirvalid = 1'b0;
+		axibvalid = 1'b0;
+		axiwready = 1'b0;
+		outreq = 1'b0;
+	end
+	
 	always @(posedge clk or negedge rstn)
 		if(!rstn) begin
+			state <= IDLE;
 			rpend <= 0;
+			timer <= 32'bx;
+			axiarready <= 1'b1;
+			axirvalid <= 1'b0;
+			axirdata <= 32'bx;
+			axirid <= {`ID{1'bx}};
+			axirresp <= 2'bx;
+			axirlast <= 1'bx;
+			axiawready <= 1'b1;
+			axiwready <= 1'b0;
+			axibvalid <= 1'b0;
+			axibresp <= 2'bx;
+			axibid <= {`ID{1'bx}};
+			outaddr <= 32'bx;
+			outwdata <= 32'bx;
+			outwr <= 1'bx;
+			outreq <= 1'b0;
+			outwstrb <= 4'bx;
 			axiaraddr0 <= 32'bx;
 			axiarburst0 <= 2'bx;
 			axiarlen0 <= 4'bx;
@@ -99,31 +128,34 @@ module axi3 #(
 			outreq <= 0;
 			case(state)
 			IDLE: begin
-				axiarready <= 0;
-				axiawready <= 0;
+				if(axiarvalid || axiawvalid) begin
+					axiarready <= 0;
+					axiawready <= 0;
+				end
 				if(axiarvalid) begin
-					axiaraddr0 <= nextaddr(axiaraddr, axiarburst);
+					axiaraddr0 <= nextaddr(axiaraddr, axiarburst, axiarsize);
 					axiarburst0 <= axiarburst;
 					axiarlen0 <= axiarlen;
-					axiarlen0 <= axiarlen;
+					axiarsize0 <= axiarsize;
 					axirid <= axiarid;
-					rpend <= axiawvalid;
+					if(axiawvalid)
+						rpend <= 1'b1;
+					else begin
+						outreq <= 1;
+						outaddr <= axiaraddr;
+						outwr <= 0;
+						state <= READOUT;
+						timer <= TIMEOUT;
+					end
 				end
 				if(axiawvalid) begin
 					axibresp <= OKAY;
 					axiawaddr0 <= axiawaddr;
 					axiawburst0 <= axiawburst;
 					axiawlen0 <= axiawlen;
-					axiawlen0 <= axiawlen;
+					axiawsize0 <= axiawsize;
 					axiwready <= 1;
-				end
-				if(axiarvalid) begin
-					outreq <= 1;
-					outaddr <= axiaraddr;
-					outwr <= 0;
-					state <= READOUT;
-					timer <= TIMEOUT;
-				end else begin
+					axibid <= axiawid;
 					state <= WAITWRDATA;
 				end
 			end
@@ -132,7 +164,7 @@ module axi3 #(
 				if(outack || timer == 0) begin
 					axirvalid <= 1;
 					axirdata <= outrdata;
-					axirresp <= timer == 0 ? DECERR : outerr ? SLVERR : OKAY;
+					axirresp <= !outack ? DECERR : outerr ? SLVERR : OKAY;
 					axirlast <= axiarlen0 == 0;
 					state <= READREPLY;
 				end
@@ -140,13 +172,15 @@ module axi3 #(
 			READREPLY:
 				if(axirready) begin
 					axirvalid <= 0;
-					if(axirlast)
+					if(axirlast) begin
 						state <= IDLE;
-					else begin
+						axiarready <= 1'b1;
+						axiawready <= 1'b1;
+					end else begin
 						state <= READOUT;
 						outreq <= 1;
 						outaddr <= axiaraddr0;
-						axiaraddr0 <= nextaddr(axiaraddr0, axiarburst0);
+						axiaraddr0 <= nextaddr(axiaraddr0, axiarburst0, axiarsize0);
 						axiarlen0 <= axiarlen0 - 1;
 						timer <= TIMEOUT;
 					end
@@ -160,7 +194,8 @@ module axi3 #(
 					outwdata <= axiwdata;
 					outwstrb <= axiwstrb;
 					state <= WRITEOUT;
-					axiawaddr0 <= nextaddr(axiawaddr0, axiawburst0);
+					axiawaddr0 <= nextaddr(axiawaddr0, axiawburst0, axiawsize0);
+					timer <= TIMEOUT;
 				end
 			WRITEOUT: begin
 				timer <= timer - 1;
@@ -168,9 +203,11 @@ module axi3 #(
 					if(axiwlast) begin
 						axibvalid <= 1;
 						state <= WRRESP;
-					end else
+					end else begin
+						axiwready <= 1;
 						state <= WAITWRDATA;
-					if(timer == 0)
+					end
+					if(!outack)
 						axibresp <= DECERR;
 					else if(outerr)
 						axibresp <= SLVERR;
@@ -186,6 +223,10 @@ module axi3 #(
 						outaddr <= axiaraddr0;
 						outwr <= 0;
 						timer <= TIMEOUT;
+					end else begin
+						state <= IDLE;
+						axiarready <= 1'b1;
+						axiawready <= 1'b1;
 					end
 				end
 			endcase

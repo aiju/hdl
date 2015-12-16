@@ -411,7 +411,8 @@ aijupostout(CDesign *d, Biobuf *bp)
 		"\t\t\t_outrdata <= 32'bx;\n");
 	for(ma = maps; ma != nil; ma = ma->next)
 		dowire(bp, ma->req, "\t\t\t%s <= 1'b0;\n");
-	Bprint(bp, "\t\tend else begin\n");
+	Bprint(bp, "\t\tend else begin\n"
+		"\t\t\t_outack <= 1'b0;\n");
 	for(ma = maps; ma != nil; ma = ma->next)
 		dowire(bp, ma->req, "\t\t\t%s <= 1'b0;\n");
 	Bprint(bp, "\t\t\tcase(state)\n"
@@ -444,6 +445,7 @@ aijupostout(CDesign *d, Biobuf *bp)
 	for(ma = maps; ma != nil; ma = ma->next){
 		Bprint(bp, "\t\t\tWAIT_%s:\n"
 		"\t\t\t\tif(%sack) begin\n"
+		"\t\t\t\t\tstate <= IDLE;\n"
 		"\t\t\t\t\t_outack <= 1'b1;\n"
 		"\t\t\t\t\t_outerr <= %s;\n", ma->name, ma->name, ma->err != nil ? ma->err->wire->name : "1'b0");
 		dowire(bp, ma->rdata, "\t\t\t\t\t_outrdata <= %s;\n");
