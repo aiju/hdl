@@ -1178,6 +1178,7 @@ typecheck(ASTNode *n, Type *ctxt)
 		condcheck(n->n2);
 		if(!n->n2->isconst)
 			lerror(n, "generate for condition not constant");
+		typecheck(n->n4, nil);
 		break;
 	case ASTGENIF:
 		typecheck(n->n1, nil);
