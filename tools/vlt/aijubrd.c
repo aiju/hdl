@@ -246,7 +246,7 @@ ps7match(CDesign *d)
 			q = emalloc(sizeof(CPort));
 			q->wire = w;
 			q->port = getsym(&dummytab, 0, p->uname);
-			w->type = q->type = type(TYPBITS, 0, node(ASTCINT, p->sz));
+			w->type = q->type = type(TYPBITS, 0, node(ASTCINT, p->sz + 1));
 			q->dir = p->out ? PORTOUT : PORTIN;
 			*pp = q;
 			pp = &q->next;
