@@ -151,7 +151,7 @@ aijuauxparse(CModule *, CPortMask *pm)
 		range <<= 20;
 	else if(*p == 'G')
 		range <<= 30;
-	else
+	else if(*p != 0)
 		goto syntax;
 	if(expect(')'))
 		return;
