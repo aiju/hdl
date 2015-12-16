@@ -504,6 +504,8 @@ getwire(CDesign *d, char *s)
 			return w;
 	w = emalloc(sizeof(CWire));
 	w->name = strdup(s);
+	w->Line = nilline;
+	w->exthi = -1;
 	*wp = w;
 	return w;
 }
