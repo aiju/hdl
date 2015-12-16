@@ -600,6 +600,10 @@ outmod(CDesign *d)
 			if(w->ext == nil)
 				wireput(ob, w, 0);
 	Bprint(ob, "\n");
+	for(i = 0; i < WIREHASH; i++)
+		for(w = d->wires[i]; w != nil; w = w->next)
+			if(w->ext != nil && w->val != nil)
+				Bprint(ob, "\tassign %s = %n;\n", w->name, w->val);	
 	for(m = d->mods; m != nil; m = m->next){
 		Bprint(ob, "\t%s%s %s(\n", m->attrs != nil ? m->attrs : "", m->name, m->inst);
 		f = 0;
