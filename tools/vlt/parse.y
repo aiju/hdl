@@ -174,9 +174,9 @@ modgen:
 	;
 
 genblock:
-	{ $<node>$ = newscope(ASTBLOCK, getsym(scope, 0, smprint("genblk%d", ++genblkn)), nil, nil); } modgen { ($$ = $<node>1)->n = $2;  }
-	| LBEGIN { $<node>$ = newscope(ASTBLOCK, getsym(scope, 0, smprint("genblk%d", ++genblkn)), nil, nil); } modgens LEND { ($$ = $<node>2)->n = $3; }
-	| LBEGIN ':' LSYMB { $<node>$ = newscope(ASTBLOCK, $3, nil, nil); } modgens LEND { ($$ = $<node>4)->n = $5; }
+	{ $<node>$ = newscope(ASTBLOCK, getsym(scope, 0, smprint("genblk%d", ++genblkn)), nil, nil); } modgen { ($$ = $<node>1)->n = $2; scopeup();  }
+	| LBEGIN { $<node>$ = newscope(ASTBLOCK, getsym(scope, 0, smprint("genblk%d", ++genblkn)), nil, nil); } modgens LEND { ($$ = $<node>2)->n = $3; scopeup(); }
+	| LBEGIN ':' LSYMB { $<node>$ = newscope(ASTBLOCK, $3, nil, nil); } modgens LEND { ($$ = $<node>4)->n = $5; scopeup(); }
 	;
 genblocknull: genblock | ';' { $$ = nil; };
 gencaseitems: gencaseitem | gencaseitems gencaseitem { $$ = nodecat($1, $2); };
