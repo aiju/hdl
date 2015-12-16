@@ -223,6 +223,7 @@ typedef struct CModule CModule;
 typedef struct CWire CWire;
 typedef struct CTab CTab;
 typedef struct CDesign CDesign;
+typedef struct CExt CExt;
 
 struct CFile {
 	Line;
@@ -230,11 +231,16 @@ struct CFile {
 	CFile *next;
 };
 
+struct CExt {
+	char *ext;
+	int exthi, extlo;
+};
+
 struct CPortMask {
 	Line;
 	char *name;
 	char *targ;
-	char *ext;
+	CExt;
 	void *aux;
 	CPortMask *next;
 };
@@ -251,12 +257,12 @@ struct CPort {
 
 struct CWire {
 	Line;
+	CExt;
 	
 	char *name;
 	Type *type;
 	CModule *driver;
 	ASTNode *val;
-	char *ext;
 	int dir;
 
 	CWire *next;

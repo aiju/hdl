@@ -157,6 +157,48 @@ cfgexpr(void)
 	return node(ASTIDX, 0, n, node(ASTCINT, i), nil);
 }
 
+static int
+extparse(CExt *e)
+{
+	int c;
+	char *p;
+	
+	c = lex();
+	if(c == '>'){
+		e->ext = strdup("*");
+		return 0;
+	}else if(c != LSTRING){
+	error:
+		cfgerror(nil, "syntax error in ext");
+		e->ext = nil;
+		return -1;
+	}
+	e->ext = strdup(str);
+	c = lex();
+	if(c == '['){
+		expect(LSTRING);
+		e->exthi = strtol(str, &p, 10);
+		if(*p != 0) goto error;	
+		c = lex();
+		if(c == ':'){
+			expect(LSTRING);
+			e->extlo = strtol(str, &p, 10);
+			if(*p != 0) goto error;
+			c = lex();
+		}else
+			e->extlo = e->exthi;
+		if(c != ']')
+			goto error;
+		c = lex();
+	}else{
+		e->exthi = -1;
+		e->extlo = 0;
+	}
+	if(c != '>')
+		goto error;
+	return 0;
+}
+
 static void
 doports(CModule *m)
 {
@@ -182,13 +224,7 @@ doports(CModule *m)
 		}else
 			p->targ = p->name;
 		if(c == '<'){
-			c = lex();
-			if(c == LSTRING){
-				p->ext = strdup(str);
-				c = lex();
-			}else
-				p->ext = "\1";
-			if(c != '>') goto err;
+			if(extparse(p)) continue;
 			c = lex();
 		}
 		if(c == LSTRING && cfgtab->auxparse != nil){
@@ -232,24 +268,41 @@ static void
 dowire(CDesign *d)
 {
 	CWire *w;
-	int c;
+	char *p;
+	int c, hi, lo;
 	
-	if(expect(LSTRING))
+	c = lex();
+	hi = 0;
+	lo = 0;
+	if(c == '['){
+		if(expect(LSTRING)) return;
+		hi = strtol(str, &p, 10);
+		if(*p != 0) goto error;
+		if(expect(':') || expect(LSTRING)) return;
+		lo = strtol(str, &p, 10);
+		if(*p != 0) goto error;
+		if(expect(']')) return;
+		c = lex();
+	}
+	if(c != LSTRING){
+	error:
+		cfgerror(nil, "syntax error in wire");
 		return;
+	}
 	w = getwire(d, str);
 	w->Line = cfgline;
-	w->type = bittype;
+	w->type = type(TYPBITV, 0, node(ASTCINT, hi), node(ASTCINT, lo));
 	c = lex();
 	if(c == '='){
 		w->val = cfgexpr();
 		c = lex();
 	}
-	if(c == '<' && !expect(LSTRING) && !expect('>')){
-		w->ext = strdup(str);
+	if(c == '<'){
+		extparse(w);
 		c = lex();
 	}
 	if(c != ';')
-		cfgerror(nil, "syntax error in wire");
+		goto error;
 }
 
 static void

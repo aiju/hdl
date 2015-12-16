@@ -296,7 +296,13 @@ ps7match(CDesign *d)
 			q = emalloc(sizeof(CPort));
 			q->wire = w;
 			q->port = getsym(&dummytab, 0, p->uname);
-			w->type = q->type = type(TYPBITS, 0, node(ASTCINT, p->sz + 1));
+			if(w->exthi < 0) w->exthi = p->sz;
+			if(w->exthi > p->sz){
+				cfgerror(w, "'%s' [%d:%d] out of bounds", w->name, w->exthi, w->extlo);
+				w->exthi = p->sz;
+			}
+			if(w->extlo != 0) cfgerror(w, "'%s' [%d:%d] not implemented", w->name, w->exthi, w->extlo);
+			w->type = q->type = type(TYPBITS, 0, node(ASTCINT, w->exthi + 1));
 			q->dir = p->out ? PORTOUT : PORTIN;
 			*pp = q;
 			pp = &q->next;
@@ -330,9 +336,12 @@ checkports(CDesign *d)
 				cfgerror(w, "'%s' strange type '%T'", w->name, w->type);
 				goto nope;
 			}
-			if(w->type->sz->i > b->i + 1){
-				cfgerror(w, "'%s' port too large (%d > %d)", w->name, w->type->sz->i, b->i + 1);
-				goto nope;
+			if(w->exthi < 0)
+				w->exthi = w->type->sz->i - 1;
+			if(w->extlo < 0 || w->exthi > b->i){
+				cfgerror(w, "'%s' [%d:%d] out of bounds", w->name, w->exthi, w->extlo);
+				if(w->extlo < 0) w->extlo = 0;
+				if(w->exthi > b->i) w->exthi = b->i;
 			}
 		}
 }
@@ -547,7 +556,7 @@ aijupostout(CDesign *d, Biobuf *bp)
 static int
 aijuout(CDesign *d, Biobuf *bp, char *name)
 {
-	int i;
+	int i, j;
 	CWire *w;
 	BPort *b;
 
@@ -566,9 +575,9 @@ aijuout(CDesign *d, Biobuf *bp, char *name)
 					break;
 			assert(b != bports + nelem(bports) && w->type != nil &&
 				(w->type->t == TYPBITS || w->type->t == TYPBITV) &&
-				w->type->sz->t == ASTCINT &&
-				w->type->sz->i <= b->i + 1);
-			for(; b->i > 0; b++)
+				w->type->hi->t == ASTCINT &&
+				w->type->lo->t == ASTCINT);
+			for(; b->i > w->extlo; b++)
 				;
 			if(w->type->sz->i == 1){
 				Bprint(bp, "set_property IOSTANDARD LVCMOS33 [get_ports {%s}]\n"
@@ -576,11 +585,13 @@ aijuout(CDesign *d, Biobuf *bp, char *name)
 					w->name, b->pin, w->name);
 				continue;
 			}
-			do
+			j = w->type->lo->i;
+			do{
 				Bprint(bp, "set_property IOSTANDARD LVCMOS33 [get_ports {%s[%d]}]\n"
 					"set_property PACKAGE_PIN %s [get_ports {%s[%d]}]\n",
-					w->name, b->i, b->pin, w->name, b->i);
-			while(b >= bports && (--b)->i != 0);
+					w->name, j, b->pin, w->name, j);
+				j++;
+			}while(b >= bports && (b--)->i != w->exthi);
 		}
 	
 	return 0;
