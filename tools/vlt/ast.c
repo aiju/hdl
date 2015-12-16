@@ -373,10 +373,12 @@ repl(ASTNode *n, ASTNode *r)
 Symbol *
 decl(Symbol *s, int t, ASTNode *n, Type *typ, ASTNode *attrs)
 {
+	extern int oldports;
+
 	if(s->st != scope)
 		s = makesym(scope, s->name);
 	if(s->t != SYMNONE)
-		if(s->t == SYMPORT)
+		if(s->t == SYMPORT && oldports != 0)
 			portdecl(s, PORTNET, n, typ, attrs);
 		else
 			lerror(nil, "'%s' redeclared", s->name);
@@ -694,7 +696,7 @@ checksym(ASTNode *n)
 	switch(n->t){
 	case ASTSYM:
 		if(n->sym->t == SYMNONE){
-			if(n->sym->whine++ == 0)
+			if(n->sym->whine++ < 10)
 				lerror(n, "'%s' undeclared", n->sym->name);
 			return 1;
 		}else if(!okexpr[n->sym->t]){
