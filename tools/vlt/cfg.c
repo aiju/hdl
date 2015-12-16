@@ -620,7 +620,7 @@ cfginit(void)
 }
 
 int
-cfgparse(char *fn)
+cfgparse(char *fn, char *mode)
 {
 	CModule *m;
 	CFile *f;
@@ -662,9 +662,13 @@ cfgparse(char *fn)
 
 	ob = Bfdopen(1, OWRITE);
 	if(ob == nil) sysfatal("Bopenfd: %r");
-	outmod(design);
-	if(cfgtab->postout != nil)
-		cfgtab->postout(design, ob);
+	if(mode == nil){
+		outmod(design);
+		if(cfgtab->postout != nil)
+			cfgtab->postout(design, ob);
+	}else
+		if(cfgtab->out == nil || cfgtab->out(design, ob, mode) < 0)
+			sysfatal("'%s' invalid output", mode);
 	Bterm(ob);
 	return 0;
 }

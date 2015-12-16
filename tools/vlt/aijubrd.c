@@ -13,6 +13,56 @@ static PS7Port ps7ports[] = {
 #include "ps7.h"
 };
 
+typedef struct BPort {
+	char *name;
+	int i;
+	char *pin;
+} BPort;
+static BPort bports[] = {
+	"gp", 29, "P2",
+	"gp", 28, "P3",
+	"gp", 27, "N1",
+	"gp", 26, "N3",
+	"gp", 25, "M1",
+	"gp", 24, "M2",
+	"gp", 23, "M3",
+	"gp", 22, "M4",
+	"gp", 21, "L4",
+	"gp", 20, "L1",
+	"gp", 19, "L2",
+	"gp", 18, "K2",
+	"gp", 17, "K3",
+	"gp", 16, "J1",
+	"gp", 15, "J2",
+	"gp", 14, "H1",
+	"gp", 13, "H3",
+	"gp", 12, "G1",
+	"gp", 11, "G2",
+	"gp", 10, "F1",
+	"gp", 9, "F2",
+	"gp", 8, "E2",
+	"gp", 7, "D1",
+	"gp", 6, "D2",
+	"gp", 5, "C1",
+	"gp", 4, "D3",
+	"gp", 3, "A1",
+	"gp", 2, "E3",
+	"gp", 1, "E4",
+	"gp", 0, "C6",
+	"hotplug", 0, "R2",
+	"int", 0, "A7",
+	"led", 5, "A2",
+	"led", 4, "B3",
+	"led", 3, "B1",
+	"led", 2, "B2",
+	"led", 1, "C3",
+	"led", 0, "C5",
+	"lsound", 0, "A4",
+	"rsound", 0, "B4",
+	"scl", 0, "A6",
+	"sda", 0, "A5",
+};
+
 extern char str[];
 
 typedef struct Mapped Mapped;
@@ -256,6 +306,38 @@ ps7match(CDesign *d)
 }
 
 static void
+checkports(CDesign *d)
+{
+	int i;
+	CWire *w;
+	BPort *b;
+	
+	for(i = 0; i < WIREHASH; i++)
+		for(w = d->wires[i]; w != nil; w = w->next){
+			if(w->ext == nil)
+				continue;
+			for(b = bports; b < bports + nelem(bports); b++)
+				if(strcmp(w->ext, b->name) == 0)
+					break;
+			if(b == bports + nelem(bports)){
+				cfgerror(w, "'%s' unknown port '%s'", w->name, w->ext);
+			nope:
+				free(w->ext);
+				w->ext = nil;
+				continue;
+			}
+			if(w->type == nil || w->type->t != TYPBITS && w->type->t != TYPBITV || w->type->sz->t != ASTCINT){
+				cfgerror(w, "'%s' strange type '%T'", w->name, w->type);
+				goto nope;
+			}
+			if(w->type->sz->i > b->i + 1){
+				cfgerror(w, "'%s' port too large (%d > %d)", w->name, w->type->sz->i, b->i + 1);
+				goto nope;
+			}
+		}
+}
+
+static void
 aijupostmatch(CDesign *d)
 {
 	Mapped *ma;
@@ -330,6 +412,7 @@ aijupostmatch(CDesign *d)
 over:
 	clkrstn(d);
 	ps7match(d);
+	checkports(d);
 }
 
 static void
@@ -461,9 +544,52 @@ aijupostout(CDesign *d, Biobuf *bp)
 	Bprint(bp, "endmodule\n");
 }
 
+static int
+aijuout(CDesign *d, Biobuf *bp, char *name)
+{
+	int i;
+	CWire *w;
+	BPort *b;
+
+	if(strcmp(name, "xdc") != 0)
+		return -1;
+	Bprint(bp, 
+		"set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]\n"
+		"set_property BITSTREAM.CONFIG.UNUSEDPIN PULLUP [current_design]\n"
+		"create_clock -name FCLK -period 10.000 [get_pins {_PS7/FCLKCLK[0]}]\n");
+	for(i = 0; i < WIREHASH; i++)
+		for(w = d->wires[i]; w != nil; w = w->next){
+			if(w->ext == nil)
+				continue;
+			for(b = bports; b < bports + nelem(bports); b++)
+				if(strcmp(w->ext, b->name) == 0)
+					break;
+			assert(b != bports + nelem(bports) && w->type != nil &&
+				(w->type->t == TYPBITS || w->type->t == TYPBITV) &&
+				w->type->sz->t == ASTCINT &&
+				w->type->sz->i <= b->i + 1);
+			for(; b->i > 0; b++)
+				;
+			if(w->type->sz->i == 1){
+				Bprint(bp, "set_property IOSTANDARD LVCMOS33 [get_ports {%s}]\n"
+					"set_property PACKAGE_PIN %s [get_ports {%s}]\n",
+					w->name, b->pin, w->name);
+				continue;
+			}
+			do
+				Bprint(bp, "set_property IOSTANDARD LVCMOS33 [get_ports {%s[%d]}]\n"
+					"set_property PACKAGE_PIN %s [get_ports {%s[%d]}]\n",
+					w->name, b->i, b->pin, w->name, b->i);
+			while(b >= bports && (--b)->i != 0);
+		}
+	
+	return 0;
+}
+
 CTab aijutab = {
 	.auxparse = aijuauxparse,
 	.portinst = aijuportinst,
 	.postmatch = aijupostmatch,
 	.postout = aijupostout,
+	.out = aijuout,
 };

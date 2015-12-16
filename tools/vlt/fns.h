@@ -23,7 +23,7 @@ int markstr(char *);
 int strmark(char *);
 uint hash(char *);
 ASTNode *makenumb(Const *, int, Const *);
-int cfgparse(char *);
+int cfgparse(char *, char *);
 void cfgerror(Line *, char *, ...);
 int expect(int);
 void findmod(CModule *);

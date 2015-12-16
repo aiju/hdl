@@ -115,7 +115,7 @@ static void
 usage(void)
 {
 	fprint(2, "usage: %s [ -l ] files\n", argv0);
-	fprint(2, "       %s [ -l ] -c cfg-file\n", argv0);
+	fprint(2, "       %s [ -l ] [ -O output ] -c cfg-file\n", argv0);
 	exits("usage");
 }
 
@@ -123,6 +123,7 @@ void
 main(int argc, char **argv)
 {
 	int cfgmode;
+	char *out;
 
 	lexinit();
 	astinit();
@@ -130,10 +131,14 @@ main(int argc, char **argv)
 	fmtinstall('B', mpfmt);
 	
 	cfgmode = 0;
+	out = nil;
 	
 	ARGBEGIN{
 	case 'c':
 		cfgmode++;
+		break;
+	case 'O':
+		out = strdup(EARGF(usage()));
 		break;
 	case 'l':
 		lint++;
@@ -145,7 +150,7 @@ main(int argc, char **argv)
 	if(cfgmode){
 		if(argc != 1)
 			usage();
-		if(cfgparse(*argv) < 0)
+		if(cfgparse(*argv, out) < 0)
 			exits("errors");
 		exits(nil);
 	}
