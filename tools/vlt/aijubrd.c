@@ -575,8 +575,7 @@ aijuout(CDesign *d, Biobuf *bp, char *name)
 					break;
 			assert(b != bports + nelem(bports) && w->type != nil &&
 				(w->type->t == TYPBITS || w->type->t == TYPBITV) &&
-				w->type->hi->t == ASTCINT &&
-				w->type->lo->t == ASTCINT);
+				w->type->sz->t == ASTCINT);
 			for(; b->i > w->extlo; b++)
 				;
 			if(w->type->sz->i == 1){
@@ -585,7 +584,10 @@ aijuout(CDesign *d, Biobuf *bp, char *name)
 					w->name, b->pin, w->name);
 				continue;
 			}
-			j = w->type->lo->i;
+			if(w->type->t == TYPBITS)
+				j = 0;
+			else
+				j = w->type->lo->i;
 			do{
 				Bprint(bp, "set_property IOSTANDARD LVCMOS33 [get_ports {%s[%d]}]\n"
 					"set_property PACKAGE_PIN %s [get_ports {%s[%d]}]\n",

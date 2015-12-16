@@ -548,9 +548,11 @@ matchports(CModule *m)
 			p->dir = s->dir & 3;
 			if(pm->ext != nil){
 				sub = wildsub(pm->ext, fields, nelem(fields));
-				if(w->ext == nil)
+				if(w->ext == nil){
 					w->ext = sub;
-				else{
+					w->exthi = pm->exthi;
+					w->extlo = pm->extlo;
+				}else{
 					if(strcmp(w->ext, sub) != 0)
 						cfgerror(pm, "'%s' conflicting port names '%s' != '%s'", w->name, w->ext, sub);
 					free(sub);
