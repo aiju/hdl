@@ -237,6 +237,7 @@ addpm(char *pn, char *wn, char *ext, CPortMask ***pp)
 	p->name = strdup(pn);
 	p->targ = strdup(wn);
 	p->ext = ext != nil ? strdup(ext) : nil;
+	p->exthi = -1;
 	**pp = p;
 	*pp = &p->next;
 }
@@ -247,20 +248,16 @@ clkrstn(CDesign *d)
 	CWire *w;
 	
 	w = getwire(d, "_fclkclk");
-	w->Line = nilline;
 	w->ext = strdup("fclkclk");
 	
 	w = getwire(d, "_fclkresetn");
-	w->Line = nilline;
 	w->ext = strdup("fclkresetn");
 	
 	w = getwire(d, "clk");
-	w->Line = nilline;
 	w->type = bittype;
 	w->val = node(ASTIDX, 0, node(ASTSYM, getsym(&dummytab, 0, "_fclkclk")), node(ASTCINT, 0));
 
 	w = getwire(d, "rstn");
-	w->Line = nilline;
 	w->type = bittype;
 	w->val = node(ASTIDX, 0, node(ASTSYM, getsym(&dummytab, 0, "_fclkresetn")), node(ASTCINT, 0));
 }
