@@ -936,11 +936,16 @@ typecheck(ASTNode *n, Type *ctxt)
 		else if(n->sym->type == nil){
 			lerror(n, "'%s' declared without a type", n->sym->name);
 			n->type = bittype;
-		}else
+		}else{
+			if(n->sym->t == SYMLPARAM)
+				typecheck(n->sym->n, ctxt);
 			n->type = n->sym->type;
+		}
 		n->isconst = n->sym->t == SYMPARAM || n->sym->t == SYMLPARAM || n->sym->t == SYMGENVAR;
 		break;
 	case ASTCONST:
+		if(ctxt != nil && ctxt->sz != nil && ctxt->sz->t == ASTCINT && isconsttrunc(&n->cons, ctxt->sz->i))
+			lerror(n, "'%C' constant truncated to %d bits", &n->cons, ctxt->sz->i);
 		if(n->cons.sz == 0)
 			n->type = type(TYPUNSZ, n->cons.sign);
 		else

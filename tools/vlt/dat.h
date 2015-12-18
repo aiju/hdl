@@ -35,7 +35,8 @@ extern Type *inttype, *realtype, *timetype, *bittype, *sbittype, *unsztype, *eve
 
 struct Const {
 	mpint *n, *x;
-	uchar sz, sign;
+	int sz;
+	uchar sign, base;
 };
 
 struct ASTNode {
@@ -211,6 +212,7 @@ enum {
 #pragma varargck type "A" int
 #pragma varargck type "O" int
 #pragma varargck type "T" Type*
+#pragma varargck type "C" Const*
 #pragma varargck type "n" ASTNode*
 #pragma varargck type "σ" int
 extern Line *curline, nilline;

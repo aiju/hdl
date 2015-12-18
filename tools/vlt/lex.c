@@ -853,6 +853,9 @@ makenumb(Const *s, int b, Const *n)
 		}
 	c.sz = sz;
 	c.sign = b & 1;
+	c.base = b & ~1;
+	if(c.base == 0)
+		c.base = 10;
 	return node(ASTCONST, c);
 }
 

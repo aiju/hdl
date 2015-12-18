@@ -21,6 +21,7 @@ constop(int, Const, Const)
 {
 	Const c;
 	
+	abort();
 	return c;
 }
 
@@ -141,4 +142,85 @@ cfold(ASTNode *n, Type *t)
 {
 	typecheck(n, t);
 	return constfold(n);
+}
+
+static int
+binput(Fmt *f, Const *c)
+{
+	mpint *n, *x;
+	int rc, i, j, k;
+	mpdigit p, q;
+
+	n = mpcopy(c->n);
+	x = mpcopy(c->x);
+	j = mpsignif(n);
+	k = mpsignif(x);
+	i = j > k ? j : k;
+	if(x->sign == -1){
+		mptrunc(n, ++i, n);
+		mptrunc(n, i, n);
+	}else if(k >= j)
+		i++;
+	if(n->sign == -1)
+		return fmtstrcpy(f, "(invalid)");
+	if(i == 0)
+		i = 1;
+	i %= sizeof(mpdigit) * 8;
+	j = n->top > x->top ? n->top : x->top;
+	rc = fmtstrcpy(f, "'b");
+	while(--j >= 0){
+		p = j >= n->top ? 0 : n->p[j];
+		q = j >= x->top ? 0 : x->p[j];
+		while(--i >= 0){
+			k = (mpdigit)1<<i;
+			rc += fmtstrcpy(f, (q & k) != 0 ?
+				((p & k) != 0 ? "z" : "x") :
+				((p & k) != 0 ? "1" : "0"));
+		}
+		i = sizeof(mpdigit) * 8;
+	}
+	mpfree(n);
+	mpfree(x);
+	return rc;
+}
+
+static int
+constfmt(Fmt *f)
+{
+	Const *c;
+	int rc;
+	
+	c = va_arg(f->args, Const *);
+	rc = 0;
+	if(c->sz != 0)
+		rc += fmtprint(f, "%d", c->sz);
+	if(mpcmp(c->x, mpzero) != 0)
+		return rc + binput(f, c);
+	if(c->base == 0 || c->base == 10)
+		return rc + fmtprint(f, c->sz != 0 ? "'d%.10B" : "%.10B", c->n);
+	if(c->base == 16)
+		return rc + fmtprint(f, "'h%.16B", c->n);
+	return rc + fmtprint(f, "'b%.2B", c->n);
+}
+
+int
+isconsttrunc(Const *c, int n)
+{
+	mpint *m, *p;
+	int rc;
+	
+	m = mpnew(0);
+	p = mpnew(0);
+	mpbic(c->n, c->x, m);
+	rc = (mptrunc(m, n, p), mpcmp(m, p) != 0) &&
+		(mpxtend(m, n, p), mpcmp(m, p) != 0);
+	mpfree(m);
+	mpfree(p);
+	return rc;
+}
+
+void
+foldinit(void)
+{
+	fmtinstall('C', constfmt);
 }

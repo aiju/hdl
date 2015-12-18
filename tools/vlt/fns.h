@@ -31,3 +31,5 @@ void matchports(CModule *);
 CWire *getwire(CDesign *, char *);
 int clog2(uint);
 void cfginit(void);
+int isconsttrunc(Const *, int);
+void foldinit(void);

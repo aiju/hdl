@@ -128,6 +128,7 @@ main(int argc, char **argv)
 	lexinit();
 	astinit();
 	cfginit();
+	foldinit();
 	fmtinstall('B', mpfmt);
 	
 	cfgmode = 0;
