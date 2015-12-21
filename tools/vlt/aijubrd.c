@@ -596,10 +596,43 @@ aijuout(CDesign *d, Biobuf *bp, char *name)
 	return 0;
 }
 
+
+static Symbol *
+aijufindmod(CModule *m)
+{
+	Symbol *s;
+	SymTab *st;
+	extern void newport(SymTab *st, char *n, int dir, Type *);
+	
+	if(strcmp(m->name, "debug") != 0)
+		return nil;
+	
+	st = emalloc(sizeof(SymTab));
+	st->up = &global;
+	st->lastport = &st->ports;
+	newport(st, "_regreq", PORTIN, bittype);
+	newport(st, "_regwr", PORTIN, bittype);
+	newport(st, "_regack", PORTOUT, bittype);
+	newport(st, "_regerr", PORTOUT, bittype);
+	newport(st, "_regaddr", PORTIN, type(TYPBITS, 0, node(ASTCINT, 16)));
+	newport(st, "_regrdata", PORTOUT, type(TYPBITS, 0, node(ASTCINT, 32)));
+	newport(st, "_regwdata", PORTIN, type(TYPBITS, 0, node(ASTCINT, 32)));
+	
+	s = getsym(&global, 0, m->name);
+	s->t = SYMMODULE;
+	s->n = node(ASTMODULE, nil, nil);
+	s->Line = cfgline;
+	s->n->sc.st = st;
+	
+	m->flags |= MAKEPORTS;
+	return s;
+}
+
 CTab aijutab = {
 	.auxparse = aijuauxparse,
 	.portinst = aijuportinst,
 	.postmatch = aijupostmatch,
 	.postout = aijupostout,
 	.out = aijuout,
+	.findmod = aijufindmod,
 };

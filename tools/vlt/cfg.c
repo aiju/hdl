@@ -30,8 +30,8 @@ static Biobuf *bp, *ob;
 char str[512];
 static int peeked;
 static int cfgerrors;
-static Line cfgline;
-static CDesign *design;
+Line cfgline;
+CDesign *design;
 
 typedef struct EEnv EEnv;
 struct EEnv {
@@ -109,7 +109,7 @@ cfglex(void)
 	return c;
 }
 
-static int
+int
 lex(void)
 {
 	int r;
@@ -122,7 +122,7 @@ lex(void)
 	return cfglex();
 }
 
-static int
+int
 peek(void)
 {
 	if(peeked < 0)
@@ -207,22 +207,23 @@ doports(CModule *m)
 	
 	pp = &m->portms;
 	while(c = lex(), c != '}'){
-		if(c != LSTRING){
-		err:
-			cfgerror(nil, "syntax error in port");
-			continue;
-		}
 		p = emalloc(sizeof(CPortMask));
-		p->name = strdup(str);
 		p->Line = cfgline;
-		c = lex();
+		if(c == LSTRING){
+			p->name = strdup(str);
+			c = lex();
+		}
 		if(c == '='){
-			if(expect(LSTRING))
-				continue;
+			c = lex();
+			if(c == ':'){
+				p->flags |= MATCHRIGHT;
+				c = lex();
+			}
+			if(c != LSTRING)
+				goto err;
 			p->targ = strdup(str);
 			c = lex();
-		}else
-			p->targ = p->name;
+		}
 		if(c == '<'){
 			if(extparse(p)) continue;
 			c = lex();
@@ -231,13 +232,15 @@ doports(CModule *m)
 			cfgtab->auxparse(m, p);
 			c = lex();
 		}
-		if(c != ';') goto err;
+		if(c != ';'){
+		err:
+			cfgerror(nil, "syntax error in port");
+			continue;
+		}
 		*pp = p;
 		pp = &p->next;
 	}
 	p = emalloc(sizeof(CPortMask));
-	p->name = strdup("*");
-	p->targ = strdup("*");
 	p->Line = cfgline;
 	*pp = p;
 }
@@ -328,8 +331,6 @@ domod(CDesign *d, CModule ***mp)
 		return;
 	}else{
 		m->portms = p = emalloc(sizeof(CPortMask));
-		p->name = strdup("*");
-		p->targ = strdup("*");
 		p->Line = cfgline;
 	}
 	**mp = m;
@@ -394,7 +395,7 @@ toplevel(void)
 				cfgerror(nil, "multiple designs in one file");
 			design = dodesign();
 			continue;
-		}else
+		}else if(cfgtab->direct == nil || cfgtab->direct(str) < 0)
 			cfgerror(nil, "unknown directive '%s'", str);
 	}
 }
@@ -408,7 +409,12 @@ findmod(CModule *m)
 	int sub, i;
 	Symbol *s;
 
-	s = getsym(&global, 0, m->name);
+	if(cfgtab->findmod != nil)
+		s = cfgtab->findmod(m);
+	else
+		s = nil;
+	if(s == nil)
+		s = getsym(&global, 0, m->name);
 	for(f = files; f != nil && s->t == SYMNONE; f = f->next){
 		e = buf + sizeof(buf);
 		q = buf;
@@ -446,12 +452,14 @@ findmod(CModule *m)
 	}
 }
 
-static Reprog *
+Reprog *
 wildcomp(char *mask)
 {
 	char *b, *p, *q;
 	Reprog *rc;
 	
+	if(mask == nil)
+		return regcomp(".*");
 	q = b = emalloc(strlen(mask) * 4 + 3);
 	*q++ = '^';
 	for(p = mask; *p != 0; p++)
@@ -475,6 +483,11 @@ wildsub(char *s, Resub *rs, int nrs)
 	char *p, *q;
 	char *b;
 	
+	if(s == nil){
+		p = emalloc(rs[0].ep - rs[0].sp + 1);
+		memcpy(p, rs[0].sp, rs[0].ep - rs[0].sp);
+		return p;
+	}
 	l = 0;
 	i = 1;
 	for(p = s; *p != 0; p++)
@@ -511,17 +524,66 @@ getwire(CDesign *d, char *s)
 }
 
 void
+makeport(CModule *m, CPortMask *pm, Symbol *s, CWire *w, Resub *fields, int nf, CPort ***pp)
+{
+	char *sub;
+	CPort *p;
+
+	p = emalloc(sizeof(CPort));
+	p->Line = pm->Line;
+	p->port = s;
+	p->wire = w;
+	if(w->type == nil){
+		w->type = s->type;
+		w->Line = pm->Line;
+	}
+	p->dir = s->dir & 3;
+	if(pm->ext != nil){
+		sub = wildsub(pm->ext, fields, nf);
+		if(w->ext == nil){
+			w->ext = sub;
+			w->exthi = pm->exthi;
+			w->extlo = pm->extlo;
+		}else{
+			if(strcmp(w->ext, sub) != 0)
+				cfgerror(pm, "'%s' conflicting port names '%s' != '%s'", w->name, w->ext, sub);
+			free(sub);
+		}
+	}
+	if(cfgtab->portinst != nil)
+		cfgtab->portinst(m, p, pm);
+	**pp = p;
+	*pp = &p->next;
+}
+
+Symbol *
+newport(SymTab *st, char *n, int dir, Type *t)
+{
+	Symbol *s;
+	
+	s = getsym(st, 0, n);
+	s->t = SYMPORT;
+	s->dir = dir;
+	s->type = t;
+	s->Line = cfgline;
+	*st->lastport = s;
+	st->lastport = &s->portnext;
+	return s;
+}
+
+void
 matchports(CModule *m)
 {
 	CPortMask *pm;
-	CPort *p, **pp;
-	CWire *w;
-	SymTab *st;
+	CPort **pp;
 	Symbol *s;
-	char *sub;
+	SymTab *st;
 	Resub fields[MAXFIELDS];
 	Reprog *re;
+	int i;
+	CWire *w;
 	int match;
+	char *sub;
 
 	if(m->node == nil)
 		return;
@@ -531,44 +593,57 @@ matchports(CModule *m)
 	pp = &m->ports;
 	for(pm = m->portms; pm != nil; pm = pm->next){
 		match = 0;
-		re = wildcomp(pm->name);
-		for(s = st->ports; s != nil; s = s->portnext){
-			fields[0].sp = fields[0].ep = nil;
-			if(strmark(s->name) != 0 || !regexec(re, s->name, fields, nelem(fields)))
-				continue;
-			markstr(s->name);
-			p = emalloc(sizeof(CPort));
-			p->Line = pm->Line;
-			p->port = s;
-			sub = wildsub(pm->targ, fields, nelem(fields));
-			p->wire = w = getwire(m->d, sub);
-			free(sub);
-			if(p->type == nil){
-				w->type = s->type;
-				w->Line = pm->Line;
+		if((pm->flags & MATCHRIGHT) == 0){
+			re = wildcomp(pm->name);
+			for(s = st->ports; s != nil; s = s->portnext){
+				fields[0].sp = fields[0].ep = nil;
+				if(strmark(s->name) != 0 || !regexec(re, s->name, fields, nelem(fields)))
+					continue;
+				markstr(s->name);
+				sub = wildsub(pm->targ, fields, nelem(fields));
+				w = getwire(m->d, sub);
+				makeport(m, pm, s, w, fields, nelem(fields), &pp);
+				free(sub);
+				match++;
 			}
-			p->dir = s->dir & 3;
-			if(pm->ext != nil){
-				sub = wildsub(pm->ext, fields, nelem(fields));
-				if(w->ext == nil){
-					w->ext = sub;
-					w->exthi = pm->exthi;
-					w->extlo = pm->extlo;
-				}else{
-					if(strcmp(w->ext, sub) != 0)
-						cfgerror(pm, "'%s' conflicting port names '%s' != '%s'", w->name, w->ext, sub);
+			if(match == 0 && pm->name != nil && strcmp(pm->name, "*") != 0)
+				if((m->flags & MAKEPORTS) != 0 && strchr(pm->name, '*') == 0 && (w = getwire(m->d, pm->name), w->type != nil)){
+					fields[0].sp = pm->name;
+					fields[0].ep = pm->name + strlen(pm->name);
+					markstr(pm->name);
+					s = newport(st, pm->name, PORTIN, w->type);
+					makeport(m, pm, s, w, fields, 1, &pp);
+				}else
+					cfgerror(pm, "'%s' not found", pm->name);
+		}else{
+			re = wildcomp(pm->targ);
+			for(i = 0; i < WIREHASH; i++)
+				for(w = m->d->wires[i]; w != nil; w = w->next){
+					fields[0].sp = fields[0].ep = nil;
+					if(!regexec(re, w->name, fields, nelem(fields)))
+						continue;
+					sub = wildsub(pm->name, fields, nelem(fields));
+					if(strmark(sub) != 0)
+						goto next;
+					for(s = st->ports; s != nil; s = s->portnext)
+						if(strcmp(s->name, sub) == 0)
+							break;
+					if(s == nil){
+						if((m->flags & MAKEPORTS) == 0)
+							goto next;
+						s = newport(st, sub, PORTIN, w->type);
+					}
+					markstr(s->name);
+					makeport(m, pm, s, w, fields, nelem(fields), &pp);
+					match++;
+				next:
 					free(sub);
 				}
-			}
-			if(cfgtab->portinst != nil)
-				cfgtab->portinst(m, p, pm);
-			*pp = p;
-			pp = &p->next;
-			match++;
+			if(match == 0 && pm->targ != nil && strcmp(pm->targ, "*") != 0)
+				cfgerror(pm, "'%s' not found", pm->targ);
 		}
 		free(re);
-		if(match == 0 && strcmp(pm->name, "*") != 0)
-			cfgerror(pm, "'%s' not found", pm->name);
+
 	}
 }
 

@@ -215,7 +215,7 @@ enum {
 #pragma varargck type "C" Const*
 #pragma varargck type "n" ASTNode*
 #pragma varargck type "σ" int
-extern Line *curline, nilline;
+extern Line *curline, cfgline, nilline;
 int lint;
 
 typedef struct CFile CFile;
@@ -245,6 +245,9 @@ struct CPortMask {
 	CExt;
 	void *aux;
 	CPortMask *next;
+	enum {
+		MATCHRIGHT = 1,
+	} flags;
 };
 
 struct CPort {
@@ -279,6 +282,9 @@ struct CModule {
 	ASTNode *node;
 	CDesign *d;
 	char *attrs;
+	enum {
+		MAKEPORTS = 1,
+	} flags;
 };
 
 struct CTab {
@@ -287,6 +293,8 @@ struct CTab {
 	void (*postmatch)(CDesign *);
 	void (*postout)(CDesign *, Biobuf *);
 	int (*out)(CDesign *, Biobuf *, char *);
+	int (*direct)(char *);
+	Symbol *(*findmod)(CModule *);
 };
 
 enum {

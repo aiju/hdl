@@ -33,3 +33,5 @@ int clog2(uint);
 void cfginit(void);
 int isconsttrunc(Const *, int);
 void foldinit(void);
+int lex(void);
+int peek(void);
