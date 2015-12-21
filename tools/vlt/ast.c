@@ -524,7 +524,7 @@ width(ASTNode *a, ASTNode *b)
 	return cfold(node(ASTBIN, OPADD, node(ASTBIN, OPSUB, a, b, nil), node(ASTCINT, 1), nil), unsztype);
 }
 
-static ASTNode *
+ASTNode *
 add(ASTNode *a, ASTNode *b)
 {
 	int v, ai, bi;

@@ -450,17 +450,11 @@ printaddrs(Biobuf *bp, Mapped *m, char *ind)
 }
 
 static void
-aijupostout(CDesign *d, Biobuf *bp)
+makeintercon(Biobuf *bp)
 {
-	CModule *m;
 	Mapped *ma;
 	int i;
-	
-	for(m = d->mods; m != nil; m = m->next)
-		if(strcmp(m->name, "_intercon") == 0)
-			break;
-	if(m == nil)
-		return;
+
 	Bprint(bp,
 		"\nmodule _intercon(\n"
 		"\tinput wire clk,\n"
@@ -604,12 +598,15 @@ aijufindmod(CModule *m)
 	SymTab *st;
 	extern void newport(SymTab *st, char *n, int dir, Type *);
 	
-	if(strcmp(m->name, "debug") != 0)
+	if(strcmp(m->name, "_debug") != 0)
 		return nil;
 	
+	free(m->name);
+	m->name = smprint("_debug%p", m);
 	st = emalloc(sizeof(SymTab));
 	st->up = &global;
 	st->lastport = &st->ports;
+	newport(st, "clk", PORTIN, bittype);
 	newport(st, "_regreq", PORTIN, bittype);
 	newport(st, "_regwr", PORTIN, bittype);
 	newport(st, "_regack", PORTOUT, bittype);
@@ -626,6 +623,52 @@ aijufindmod(CModule *m)
 	
 	m->flags |= MAKEPORTS;
 	return s;
+}
+
+static void
+makedebug(CModule *m, Biobuf *bp)
+{
+	Symbol *p;
+	ASTNode *sz;
+
+	Bprint(bp, "\nmodule %s(\n", m->name);
+	sz = nil;
+	for(p = m->node->sc.st->ports; p != nil; p = p->portnext){
+		Bprint(bp, "\t%s wire %t%s%s\n", (p->dir & 3) == PORTOUT ? "output" : "input", p->type, p->name, p->portnext == nil ? "" : ",");
+		sz = add(sz, p->type->sz);
+	}
+	Bprint(bp, ");\n");
+	Bprint(bp, "\thjdebug #(.N(%n)) debug0(\n"
+		"\t\t.clk(clk),\n"
+		"\t\t.regreq(_regreq),\n"
+		"\t\t.regwr(_regwr),\n"
+		"\t\t.regack(_regack),\n"
+		"\t\t.regerr(_regerr),\n"
+		"\t\t.regaddr(_regaddr),\n"
+		"\t\t.regrdata(_regrdata),\n"
+		"\t\t.regwdata(_regwdata),\n"
+		"\t\t.in({\n", sz);
+	for(p = m->node->sc.st->ports; p != nil; p = p->portnext)
+		if(strcmp(p->name, "_regwdata") == 0)
+			break;
+	for(p = p->portnext; p != nil; p = p->portnext)
+		Bprint(bp, "\t\t\t%s%s\n", p->name, p->portnext == nil ? "" : ",");
+	Bprint(bp, "\t\t})\n\t);\n\nendmodule\n");
+}
+
+static void
+aijupostout(CDesign *d, Biobuf *bp)
+{
+	CModule *m;
+	
+	for(m = d->mods; m != nil; m = m->next)
+		if(strcmp(m->name, "_intercon") == 0){
+			makeintercon(bp);
+			break;
+		}
+	for(m = d->mods; m != nil; m = m->next)
+		if(strncmp(m->name, "_debug", 6) == 0 && (m->flags & MAKEPORTS) != 0)
+			makedebug(m, bp);
 }
 
 CTab aijutab = {

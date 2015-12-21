@@ -661,10 +661,7 @@ wireput(Biobuf *ob, CWire *w, int f)
 		cfgerror(w, "type nil");
 	else if(t->t != TYPBITS && t->t != TYPBITV)
 		cfgerror(w, "wrong type %T", t);
-	else if(t->sz->t != ASTCINT)
-		cfgerror(w, "unsupported %A", t->sz->t);
-	else if(t->sz->i != 1)
-		Bprint(ob, "[%d:0] ", t->sz->i - 1);
+	else Bprint(ob, "%t ", t);
 	if(f == 0)
 		if(w->val != nil)
 			Bprint(ob, "%s = %n;\n", w->name, w->val);
@@ -748,11 +745,28 @@ outmod(CDesign *d)
 	Bprint(ob, "endmodule\n");
 }
 
+static int
+typefmt(Fmt *f)
+{
+	Type *t;
+	
+	t = va_arg(f->args, Type *);
+	if(t == nil || t->t != TYPBITS && t->t != TYPBITV)
+		return fmtprint(f, "%T", t);
+	if(t->sz->t == ASTCINT){
+		if(t->sz->i == 1)
+			return 0;
+		return fmtprint(f, "[%d:0] ", t->sz->i - 1);
+	}
+	return fmtprint(f, "[%n:0]", cfold(node(ASTBIN, OPSUB, t->sz, node(ASTCINT, 1), nil), unsztype));
+}
+
 void
 cfginit(void)
 {
 	fmtinstall('n', expr1fmt);
 	fmtinstall('N', exprfmt);
+	fmtinstall('t', typefmt);
 }
 
 int

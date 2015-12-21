@@ -212,6 +212,7 @@ enum {
 #pragma varargck type "A" int
 #pragma varargck type "O" int
 #pragma varargck type "T" Type*
+#pragma varargck type "t" Type*
 #pragma varargck type "C" Const*
 #pragma varargck type "n" ASTNode*
 #pragma varargck type "σ" int
