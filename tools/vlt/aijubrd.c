@@ -544,15 +544,14 @@ makeintercon(Biobuf *bp)
 	Bprint(bp, "endmodule\n");
 }
 
-static int
-aijuout(CDesign *d, Biobuf *bp, char *name)
+
+void
+xdcout(CDesign *d, Biobuf *bp)
 {
 	int i, j;
 	CWire *w;
 	BPort *b;
 
-	if(strcmp(name, "xdc") != 0)
-		return -1;
 	Bprint(bp, 
 		"set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]\n"
 		"set_property BITSTREAM.CONFIG.UNUSEDPIN PULLUP [current_design]\n"
@@ -586,8 +585,6 @@ aijuout(CDesign *d, Biobuf *bp, char *name)
 				j++;
 			}while(b >= bports && (b--)->i != w->exthi);
 		}
-	
-	return 0;
 }
 
 
@@ -669,6 +666,44 @@ aijupostout(CDesign *d, Biobuf *bp)
 	for(m = d->mods; m != nil; m = m->next)
 		if(strncmp(m->name, "_debug", 6) == 0 && (m->flags & MAKEPORTS) != 0)
 			makedebug(m, bp);
+}
+
+static void
+debugout(CDesign *d, Biobuf *bp)
+{
+	Symbol *p;
+	CModule *m;
+	Mapped *ma;
+
+	for(m = d->mods; m != nil; m = m->next)
+		if(strncmp(m->name, "_debug", 6) == 0 && (m->flags & MAKEPORTS) != 0){
+			for(ma = maps; ma != nil; ma = ma->next)
+				if(ma->mod == m)
+					break;
+			if(ma == nil)
+				continue;
+			Bprint(bp, "hjdebug %#x <<END\n", ma->base);
+			for(p = m->node->sc.st->ports; p != nil; p = p->portnext)
+				if(strcmp(p->name, "_regwdata") == 0)
+					break;
+			for(p = p->portnext; p != nil; p = p->portnext)
+				Bprint(bp, "%s %n\n", p->name, p->type->sz);
+			Bprint(bp, "END\n");
+		}
+}
+
+static int
+aijuout(CDesign *d, Biobuf *bp, char *name)
+{
+	if(strcmp(name, "xdc") == 0){
+		xdcout(d, bp);
+		return 0;
+	}
+	if(strcmp(name, "debug") == 0){
+		debugout(d, bp);
+		return 0;
+	}
+	return -1;
 }
 
 CTab aijutab = {
