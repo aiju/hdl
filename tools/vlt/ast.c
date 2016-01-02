@@ -163,21 +163,6 @@ getsym(SymTab *st, int hier, char *n)
 	return makesym(st, n);
 }
 
-Symbol *
-undeclfix(Symbol *t)
-{
-	Symbol *s;
-	SymTab *st;
-	int h;
-	
-	h = hash(t->name) % SYMHASH;
-	for(st = t->st; st != nil; st = st->up)
-		for(s = st->sym[h]; s != nil; s = s->next)
-			if(s->t != SYMNONE && strcmp(s->name, t->name) == 0)
-				return s;
-	return t;
-}
-
 static int
 astfmt(Fmt *f)
 {
@@ -701,7 +686,7 @@ asteq(ASTNode *a, ASTNode *b)
 	}
 }
 
-static int
+int
 checksym(ASTNode *n)
 {
 	static uchar okexpr[] = {
@@ -711,14 +696,10 @@ checksym(ASTNode *n)
 	switch(n->t){
 	case ASTSYM:
 		if(n->sym->t == SYMNONE){
-			n->sym = undeclfix(n->sym);
-			if(n->sym->t == SYMNONE){
-				if(n->sym->whine++ < 10)
-					lerror(n, "'%s' undeclared", n->sym->name);
-				return 1;
-			}
-		}
-		if(!okexpr[n->sym->t]){
+			if(n->sym->whine++ < 10)
+				lerror(n, "'%s' undeclared", n->sym->name);
+			return 1;
+		}else if(!okexpr[n->sym->t]){
 			lerror(n, "'%s' of type '%σ' invalid in expression", n->sym->name, n->sym->t);
 			return 1;
 		}
