@@ -126,7 +126,7 @@ static void
 aijuauxparse(CModule *, CPortMask *pm)
 {
 	char *p;
-	int base, range;
+	int base, range, c;
 	Mapped *m;
 
 	if(strcmp(str, "map") != 0){
@@ -143,18 +143,22 @@ aijuauxparse(CModule *, CPortMask *pm)
 		if(*p != 0)
 			goto syntax;
 	}
-	if(expect(',') || expect(LSTRING))
-		return;
-	range = strtol(str, &p, 10);
-	if(*p == 'K')
-		range <<= 10;
-	else if(*p == 'M')
-		range <<= 20;
-	else if(*p == 'G')
-		range <<= 30;
-	else if(*p != 0)
-		goto syntax;
-	if(expect(')'))
+	if(c = lex(), c == ','){
+		if(expect(LSTRING))
+			return;
+		range = strtol(str, &p, 10);
+		if(*p == 'K')
+			range <<= 10;
+		else if(*p == 'M')
+			range <<= 20;
+		else if(*p == 'G')
+			range <<= 30;
+		else if(*p != 0)
+			goto syntax;
+		c = lex();
+	}else
+		range = -1;
+	if(c != ')')
 		return;
 	m = emalloc(sizeof(Mapped));
 	m->base = base;
@@ -186,8 +190,6 @@ aijuportinst(CModule *mp, CPort *p, CPortMask *pm)
 	m->Line = pm->Line;
 	*mapslast = m;
 	mapslast = &m->next;
-	if(m->base != -1)
-		mapsalloc(m);
 }
 
 static CPort *
@@ -357,9 +359,6 @@ aijupostmatch(CDesign *d)
 		bits32 = type(TYPBITS, 0, node(ASTCINT, 32));
 	if(maps == nil)
 		goto over;
-	for(ma = maps; ma != nil; ma = ma->next)
-		if(ma->base < 0)
-			mapsalloc(ma);
 	m = emalloc(sizeof(CModule));
 	m->d = d;
 	m->Line = nilline;
@@ -392,7 +391,21 @@ aijupostmatch(CDesign *d)
 		addnetpo(ma->wr, bittype, PORTOUT, &pp);
 		addnetpo(ma->err, bittype, PORTIN, &pp);
 		addnetpo(ma->wstrb, bittype, PORTOUT, &pp);
+		
+		if(ma->range < 0)
+			if(ma->addr != nil){
+				if(ma->addr->port == nil || ma->addr->port->type == nil || ma->addr->port->type->sz == nil || ma->addr->port->type->sz->t != ASTCINT)
+					sysfatal("'%s' something is wrong", ma->addr->wire->name);
+				ma->range = 1<<ma->addr->port->type->sz->i;
+			}else
+				ma->range = 4;
 	}
+	for(ma = maps; ma != nil; ma = ma->next)
+		if(ma->base >= 0)
+			mapsalloc(ma);
+	for(ma = maps; ma != nil; ma = ma->next)
+		if(ma->base < 0)
+			mapsalloc(ma);	
 	for(mp = &d->mods; *mp != nil; mp = &(*mp)->next)
 		;
 	*mp = m;
@@ -609,7 +622,7 @@ aijufindmod(CModule *m)
 	newport(st, "_regwr", PORTIN, bittype);
 	newport(st, "_regack", PORTOUT, bittype);
 	newport(st, "_regerr", PORTOUT, bittype);
-	newport(st, "_regaddr", PORTIN, type(TYPBITS, 0, node(ASTCINT, 16)));
+	newport(st, "_regaddr", PORTIN, type(TYPBITS, 0, node(ASTCINT, 12)));
 	newport(st, "_regrdata", PORTOUT, type(TYPBITS, 0, node(ASTCINT, 32)));
 	newport(st, "_regwdata", PORTIN, type(TYPBITS, 0, node(ASTCINT, 32)));
 	
@@ -693,6 +706,15 @@ debugout(CDesign *d, Biobuf *bp)
 		}
 }
 
+static void
+mapout(CDesign *, Biobuf *bp)
+{
+	Mapped *ma;
+
+	for(ma = maps; ma != nil; ma = ma->anext)
+		Bprint(bp, "%-12s %#.8x %#.8x\n", ma->name, ma->base, ma->range);
+}
+
 static int
 aijuout(CDesign *d, Biobuf *bp, char *name)
 {
@@ -702,6 +724,10 @@ aijuout(CDesign *d, Biobuf *bp, char *name)
 	}
 	if(strcmp(name, "debug") == 0){
 		debugout(d, bp);
+		return 0;
+	}
+	if(strcmp(name, "map") == 0){
+		mapout(d, bp);
 		return 0;
 	}
 	return -1;
