@@ -848,8 +848,16 @@ typecheck(ASTNode *n, Type *ctxt)
 		typecheck(n->n2, nil);
 		break;
 	case ASTBIN:
-		typecheck(n->n1, ctxt);
-		typecheck(n->n2, ctxt);
+		switch(n->op){
+		case OPEQ: case OPNEQ: case OPLT: case OPLE:
+		case OPGT: case OPGE: case OPEQS: case OPNEQS:
+			typecheck(n->n1, nil);
+			typecheck(n->n2, nil);
+			break;		
+		default:
+			typecheck(n->n1, ctxt);
+			typecheck(n->n2, ctxt);
+		}
 		n->isconst = n->n1->isconst && n->n2->isconst;
 		insist(n->n1->type != nil && n->n2->type != nil);
 		t1 = n->n1->type->t;
