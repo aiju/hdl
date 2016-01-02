@@ -1,4 +1,4 @@
-module sync(
+module sync #(parameter INIT = 1'b0) (
 	input wire clk,
 	input wire din,
 	output wire dout
@@ -16,8 +16,8 @@ module sync(
 	
 	assign dout = d1;
 	initial begin
-		d0 = 0;
-		d1 = 0;
+		d0 = INIT;
+		d1 = INIT;
 	end
 
 endmodule
