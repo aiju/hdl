@@ -5,7 +5,7 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 	
 	input wire regreq,
 	input wire regwr,
-	input wire [15:0] regaddr,
+	input wire [11:0] regaddr,
 	input wire [31:0] regwdata,
 	output reg regack,
 	output reg regerr,
@@ -16,8 +16,10 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 
 	reg [N-1:0] mem[0:SIZ-1];
 	reg [15:0] wptr, rptr, tpos, rctr;
-	reg running = 1'b0, avail = 1'b0, full, start, start0, step, trans;
+	reg running = 1'b0, avail = 1'b0, full, start, abort, start0, step, trans;
+	reg step0 = 1'b0, step1 = 1'b0;
 	reg [N-1:0] memrdata, memrdata0, rdshreg, in0;
+	wire trigger;
 	genvar i;
 	
 	wire memwe = running && (!full || !trigger) && (!trans || start0 || in0 != in);
@@ -60,6 +62,10 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 			end else
 				rctr <= rctr + 32;
 		end
+		if(abort) begin
+			running <= 1'b0;
+			avail <= 1'b0;
+		end
 		if(start) begin
 			running <= 1'b1;
 			avail <= 1'b0;
@@ -71,24 +77,29 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 	end
 	
 	localparam NL = (2*N+4)/5;
-	wire [NL-1:0] daisy;
+	wire [NL:0] daisy;
 	wire [NL-1:0] lout;
 	wire [2*N-1:0] tinp = {memrdata0, memrdata};
-	wire trigger = &lout;
+	assign trigger = &lout;
+	reg srbusy = 1'b0;
 	
-	for(i = 0; i < (N+4)/5; i = i + 1) begin :lvl0
+	for(i = 0; i < NL; i = i + 1) begin :lvl0
 		CFGLUT5 L(
 			.CLK(clk),
 			.CE(srbusy),
 			.CDI(daisy[i+1]),
 			.CDO(daisy[i]),
-			.IN(tinp[5 * i +: 5]),
-			.OUT(lout[i])
+			.I0(tinp[5 * i]),
+			.I1(tinp[5 * i + 1]),
+			.I2(tinp[5 * i + 2]),
+			.I3(tinp[5 * i + 3]),
+			.I4(tinp[5 * i + 4]),
+			.O6(lout[i])
 		);
 	end
 	
 	reg startsr;
-	reg srbusy = 1'b0, srpend = 1'b0;
+	reg srpend = 1'b0;
 	reg [31:0] sr;
 	reg [4:0] ctr = 0;
 	always @(posedge clk) begin
@@ -110,11 +121,11 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 			end
 		end
 	end
-	assign daisy[NL-1] = sr[31];
-	reg step0 = 1'b0, step1 = 1'b0;
+	assign daisy[NL] = sr[31];
 	
 	always @(posedge clk) begin
 		start <= 1'b0;
+		abort <= 1'b0;
 		startsr <= 1'b0;
 		step <= 1'b0;
 		step0 <= step;
@@ -128,7 +139,8 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 				case(regaddr & ~3)
 				0: begin
 					start <= regwdata[0];
-					trans <= regwdata[1];
+					abort <= regwdata[1];
+					trans <= regwdata[8];
 					tpos <= regwdata[31:16];
 				end
 				12: begin
@@ -140,8 +152,8 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 				endcase
 			else
 				case(regaddr & ~3)
-				0: regrdata <= {31'b0, avail};
-				4: regrdata <= N;
+				0: regrdata <= {tpos, 7'b0, trans, 4'b0, running, avail, 2'b0};
+				4: regrdata <= SIZ;
 				8: begin
 					regack <= 1'b0;
 					step <= 1'b1;

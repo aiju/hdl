@@ -14,6 +14,13 @@ enum {
 };
 
 enum {
+	CTLSTART = 1<<0,
+	CTLABORT = 1<<1,
+	CTLAVAIL = 1<<2,
+	CTLTRANS = 1<<8,
+};
+
+enum {
 	VAL0,
 	VAL1,
 	VALX,
@@ -21,8 +28,10 @@ enum {
 
 struct Field {
 	char *n;
+	char *i;
 	int w;
 	Field *prev, *next;
+	mpint *old, *new;
 	/* little endian, one uchar per bit for simplicity */
 	uchar *v0;
 	uchar *v1;
@@ -49,15 +58,27 @@ readin(Biobuf *bp)
 	char *l, *p;
 	char *lf[2];
 	Field *f;
+	char id[10] = "!";
+	int rc;
 	
 	for(; l = Brdstr(bp, '\n', 1), l != nil; free(l)){
-		if(tokenize(l, lf, 2) != 2){
+		rc = tokenize(l, lf, 2);
+		if(rc == 0)
+			continue;
+		if(rc != 2){
 		error:
-			fprint(2, "syntax error in input");
+			fprint(2, "syntax error in input\n");
 			continue;
 		}
 		f = emalloc(sizeof(Field));
 		f->n = strdup(lf[0]);
+		f->i = strdup(id);
+		for(p = id; *p == '~'; p++)
+			*p = '!';
+		if(*p == 0)
+			*p = '!';
+		else
+			(*p)++;
 		f->w = strtol(lf[1], &p, 0);
 		f->v0 = emalloc(f->w);
 		memset(f->v0, VALX, f->w);
@@ -65,6 +86,8 @@ readin(Biobuf *bp)
 		memset(f->v1, VALX, f->w);
 		if(*p != 0)
 			goto error;
+		f->old = mpnew(0);
+		f->new = mpnew(0);
 		f->prev = fields.prev;
 		f->next = &fields;
 		f->prev->next = f;
@@ -205,7 +228,7 @@ parse(void)
 }
 
 static void
-trigword(uchar p[5])
+trigword(ulong *rp, uchar p[5])
 {
 	u32int v;
 	int i, j;
@@ -218,11 +241,11 @@ trigword(uchar p[5])
 			if((j>>i & 1) != p[i])
 				v &= ~(1<<j);
 	}
-	print("%.8ux\n", v);
+	rp[DEBUGTRIG] = v;
 }
 
 static void
-trigger(char *cond)
+trigger(ulong *rp, char *cond)
 {
 	uchar p[5];
 	int i, j;
@@ -231,7 +254,7 @@ trigger(char *cond)
 	bufp = cond;
 	if(parse() < 0)
 		sysfatal("parse: %r");
-	for(f = fields.next; f != &fields; f = f->next){
+/*	for(f = fields.next; f != &fields; f = f->next){
 		print("%s ", f->n);
 		for(i = f->w; --i >= 0; )
 			if(f->v1[i] != VALX)
@@ -239,13 +262,13 @@ trigger(char *cond)
 			else
 				print("%c", "01X"[f->v0[i]]);
 		print("\n");
-	}
+	}*/
 	j = 0;
 	for(f = fields.prev; f != &fields; f = f->prev)
 		for(i = 0; i < f->w; i++){
 			p[j++] = f->v0[i];
 			if(j == 5){
-				trigword(p);
+				trigword(rp, p);
 				j = 0;
 			}
 		}
@@ -253,26 +276,71 @@ trigger(char *cond)
 		for(i = 0; i < f->w; i++){
 			p[j++] = f->v1[i];
 			if(j == 5){
-				trigword(p);
+				trigword(rp, p);
 				j = 0;
 			}
 		}
 	if(j != 0){
 		for(; j < 5; j++)
 			p[j++] = VALX;
-		trigword(p);
+		trigword(rp, p);
 	}
 }
 
 static void
-arm(ulong *v, int trans)
+copy(ulong *rp)
 {
+	int i, k, l, nb, n;
+	Biobuf *bp;
+	ulong sh;
+	Field *f;
+	mpint *r;
 	
-}
-
-static void
-copy(ulong *v)
-{
+	n = rp[DEBUGN];
+	bp = Bfdopen(1, OWRITE);
+	if(bp == nil)
+		sysfatal("Bfdopen: %r");
+	
+	Bprint(bp, "scope module top $end\n");
+	for(f = fields.next; f != &fields; f = f->next)
+		Bprint(bp, "$var wire %d %s %s $end\n", f->w, f->i, f->n);
+	Bprint(bp, "$enddefinitions $end\n");
+	r = mpnew(0);
+	
+	for(i = 0; i < n; i++){
+		sh = 0;
+		k = 0;
+		for(f = fields.prev; f != &fields; f = f->prev){
+			mpassign(f->new, mpzero);
+			for(l = 0; l < f->w; ){
+				if(k == 0){
+					sh = rp[DEBUGDATA];
+					k = 32;
+				}
+				nb = l - f->w;
+				if(nb > 32 - k) nb = 32 - k;
+				uitomp(sh & (1<<nb)-1, r);
+				mpleft(r, l, r);
+				mpor(f->new, r, f->new);
+				l += nb;
+				k -= nb;
+			}
+		}
+		
+		if(i == 0)
+			Bprint(bp, "$dumpvars\n");
+		else
+			Bprint(bp, "#%d\n", i);
+		for(f = fields.prev; f != &fields; f = f->prev)
+			if(i == 0 || mpcmp(f->old, f->new) != 0){
+				Bprint(bp, "b%.2B %s\n", f->new, f->i);
+				mpassign(f->old, f->new);
+			}
+		if(i == 0)
+			Bprint(bp, "$end\n");
+	}
+	
+	mpfree(r);
 }
 
 static void
@@ -286,18 +354,26 @@ void
 main(int argc, char **argv)
 {
 	Biobuf *bp;
-	int trans, download, addr;
-	ulong *v;
+	int trans, download, addr, tpoint;
+	char *p;
+	ulong *rp;
 	
+	fmtinstall('B', mpfmt);
 	trans = 0;
 	download = 0;
 	addr = -1;
+	tpoint = 0;
 	ARGBEGIN {
 	case 'p':
-		addr = strtol(EARGF(usage()), nil, 0);
+		addr = strtol(EARGF(usage()), &p, 0);
+		if(*p != 0) usage();
 		break;
 	case 't':
 		trans++;
+		break;
+	case 'T':
+		tpoint = strtol(EARGF(usage()), &p, 0);
+		if(*p != 0) usage();
 		break;
 	case 'd':
 		download++;
@@ -313,12 +389,18 @@ main(int argc, char **argv)
 	if(bp == nil)
 		sysfatal("Bfdopen: %r");
 	readin(bp);
-	v = nil;
-	if(!download){
-		if(argc != 0)
-			trigger(argv[0]);
-		arm(v, trans);
-	}
-	copy(v);
 	Bterm(bp);
+	rp = segattach(0, "axi", nil, 100*1048576);
+	if(rp == (void*)-1)
+		sysfatal("segattach: %r");
+	rp += addr / 4;
+	if(!download){
+		rp[DEBUGCTL] |= CTLABORT;
+		if(argc != 0)
+			trigger(rp, argv[0]);
+		rp[DEBUGCTL] = tpoint << 16 | (trans ? CTLTRANS : 0) | CTLSTART;
+	}
+	while((rp[DEBUGCTL] & CTLAVAIL) == 0)
+		sleep(250);
+	copy(rp);
 }
