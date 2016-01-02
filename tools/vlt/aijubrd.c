@@ -682,13 +682,13 @@ debugout(CDesign *d, Biobuf *bp)
 					break;
 			if(ma == nil)
 				continue;
-			Bprint(bp, "hjdebug %#x <<END\n", ma->base);
+			Bprint(bp, "fn debug {\necho '\n");
 			for(p = m->node->sc.st->ports; p != nil; p = p->portnext)
 				if(strcmp(p->name, "_regwdata") == 0)
 					break;
 			for(p = p->portnext; p != nil; p = p->portnext)
 				Bprint(bp, "%s %n\n", p->name, p->type->sz);
-			Bprint(bp, "END\n");
+			Bprint(bp, "' | hjdebug -p %#x $*\n}\n", ma->base);
 		}
 }
 
