@@ -101,6 +101,7 @@ mapsalloc(Mapped *n)
 			if(m->base - lhi >= n->range)
 				break;
 			lhi = m->base + m->range;
+			lhi = -(-lhi & -n->range);
 		}
 		if(m == nil && ((1<<ADDRBITS) - lhi) < n->range)
 			cfgerror(m, "out of address space");
