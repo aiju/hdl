@@ -1,0 +1,19 @@
+</$objtype/mkfile
+
+TARG=\
+	hjdebug\
+
+DIRS=\
+	vlt\
+
+BIN=/$objtype/bin
+
+</sys/src/cmd/mkmany
+
+install:V: dirinstall
+
+dirinstall:V:
+	for(i in $DIRS){
+		cd $i
+		mk install
+	}
