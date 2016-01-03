@@ -418,7 +418,7 @@ taskport: tfinput
 reg: | LREG;
 
 blockitem:
-	attrs LREG stype blockvars
+	attrs LREG stype { curtype = $3; } blockvars ';'
 	| attrs vardecl ';'
 	| attrs paramdecl ';'
 	| attrs localparamdecl ';'
@@ -433,7 +433,7 @@ blocknoitemstats: { $$ = nil; }
 	| blocknoitemstats blockitem { lerror(nil, "declaration in unnamed block"); $$ = $1; }
 	;
 blockvars: blockvar | blockvars ',' blockvar;
-blockvar: LSYMB | blockvar range;
+blockvar: arrayvar { decl($1.sym, SYMREG, nil, $1.t, curattrs); };
 
 stat:
 	attrs lval '=' optdelaye expr ';' { $$ = node(ASTASS, $2, $5, $4, $1); }

@@ -939,7 +939,7 @@ typecheck(ASTNode *n, Type *ctxt)
 		n->type = type(TYPBITS, 0, r);
 		return;
 	case ASTSYM:
-		if(checksym(n))
+		if(n->sym->t == SYMNONE)
 			n->type = bittype;
 		else if(n->sym->type == nil){
 			lerror(n, "'%s' declared without a type", n->sym->name);
@@ -1047,7 +1047,6 @@ typecheck(ASTNode *n, Type *ctxt)
 	case ASTCINT:
 		break;
 	case ASTTCALL:
-		typecheck(n->n1, nil);
 		if(n->n1->t != ASTSYM)
 			lerror(n, "%A in task call", n->n1->t);
 		else if(n->n1->sym->name[0] == '$'){
