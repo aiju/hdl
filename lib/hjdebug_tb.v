@@ -11,9 +11,16 @@ module hjdebug_tb;
 	wire regerr;
 	wire [31:0] regrdata;
 	
-	wire [7:0] in;
+	parameter N = 8;
+	parameter SIZ = 16;
+	parameter DIV = 2;
 	
-	hjdebug #(.N(8), .SIZ(16)) hjdebug0(clk, regreq, regwr, regaddr, regwdata, regack, regerr, regrdata, in);
+	reg [N-1:0] in = 0;
+	reg [DIV-1:0] div = 0;
+	always @(posedge clk)
+		{in, div} <= {in, div} + 1;
+	
+	hjdebug #(.N(N), .SIZ(SIZ)) hjdebug0(clk, regreq, regwr, regaddr, regwdata, regack, regerr, regrdata, in);
 	
 	always #0.5 clk = !clk;
 	
@@ -44,34 +51,99 @@ module hjdebug_tb;
 	end
 	endtask
 	
-	initial begin : main
-		reg [31:0] v, i;
-
-		@(posedge clk);
-		regwrite(12, -1);
-		regwrite(12, -1);
-		regwrite(12, -1);
-		regwrite(12, -1);
-		regwrite(0, {16'd8, 14'd0, 1'b0, 1'b1});
-		v = 1;
-		while(v[0] == 1)
-			regread(0, v);
-		for(i = 0; i < 16; i = i + 1) begin
-			regread(8, v);
-			$display("%d %h", i, v);
+	task trig5(input wire [4:0] a);
+		integer i, j;
+		reg [31:0] sr;
+	begin
+		sr = -1;
+		for(i = 0; i < 5; i = i + 1)
+			for(j = 0; j < 32; j = j + 1)
+				if(j[i] === !a[i])
+					sr[j] = 1'b0;
+		regwrite(12, sr);
+	end
+	endtask
+	
+	task trigv(input wire [N-1:0] a);
+		integer i, j;
+		reg [4:0] r;
+	begin
+		j = 0;
+		for(i = 0; i < N; i = i + 1) begin
+			r[j] = a[i];
+			j = j + 1;
+			if(j == 5) begin
+				trig5(r);
+				j = 0;
+			end
+		end
+		for(i = 0; i < N; i = i + 1) begin
+			r[j] = 1'bx;
+			j = j + 1;
+			if(j == 5) begin
+				trig5(r);
+				j = 0;
+			end
+		end
+		if(j != 0) begin
+			for(j = j; j < 5; j = j + 1)
+				r[j] = 1'bx;
+			trig5(r);
 		end
 	end
+	endtask
 	
-	initial #10000 $finish;
+	reg [N-1:0] pat[0:SIZ-1];
+	reg fail;
+	
+	task filltest(input [N-1:0] tval, input [15:0] tpoint, input trans);
+		integer i;
+	begin
+		for(i = 0; i < SIZ; i = i + 1)
+			pat[i] = tval + (i - tpoint >>> (trans ? 0 : DIV));
+	end
+	endtask
+	
+	
+	task trial(input [N-1:0] tval, input [15:0] tpoint, input trans);
+		integer i;
+		reg [31:0] v;
+	begin
+		regwrite(0, 1<<1);
+		trigv(tval);
+		regwrite(0, {tpoint, 7'd0, trans, 7'b0, 1'b1});
+		v = 1;
+		while(v[2] == 0)
+			regread(0, v);
+		filltest(tval, tpoint, trans);
+		for(i = 0; i < SIZ; i = i + 1) begin
+			regread(8, v);
+			if(v[N-1:0] !== pat[i]) begin
+				fail = 1'b1;
+				$display("FAIL (trigger %0d @ %0d, trans %0d): %h !== %h", tval, tpoint, trans, v[N-1:0], pat[i]);
+			end
+		end
+	end
+	endtask
+	
+	initial begin
+		@(posedge clk);
+		fail = 1'b0;
+		trial(5, 0, 0);
+		trial(5, SIZ/2, 0);
+		trial(5, SIZ-1, 0);
+		trial(5, 0, 1);
+		trial(5, SIZ/2, 1);
+		trial(5, SIZ-1, 1);
+		if(!fail)
+			$display("PASS");
+		$finish;
+	end
+	
 	initial begin
 		$dumpfile("dump.vcd");
 		$dumpvars;
 	end
-	
-	reg [31:0] v = 0;
-	always @(posedge clk)
-		v = v + 1;
-	assign in = v[10:2];
 
 endmodule
 
@@ -81,7 +153,7 @@ module CFGLUT5 #(parameter INIT = 32'd0) (
 	input wire CLK,
 	input wire CE,
 	input wire CDI,
-	output reg CDO,
+	output wire CDO,
 	input wire I0,
 	input wire I1,
 	input wire I2,
@@ -95,10 +167,11 @@ module CFGLUT5 #(parameter INIT = 32'd0) (
 
 	assign O6 = sr[{I4, I3, I2, I1, I0}];
 	assign O5 = sr[{I3, I2, I1, I0}];
+	assign CDO = sr[31];
 	
 	always @(posedge CLK)
 		if(CE)
-			{CDO, sr} <= {sr, CDI};
+			sr <= {sr[30:0], CDI};
 
 endmodule
 
