@@ -5,6 +5,7 @@
 #include <mp.h>
 
 typedef struct Field Field;
+int debug = 0;
 
 enum {
 	DEBUGCTL,
@@ -241,6 +242,8 @@ trigword(ulong *rp, uchar p[5])
 			if((j>>i & 1) != p[i])
 				v &= ~(1<<j);
 	}
+	if(debug)
+		fprint(2, "%ux\n", v);
 	rp[DEBUGTRIG] = v;
 }
 
@@ -254,15 +257,16 @@ trigger(ulong *rp, char *cond)
 	bufp = cond;
 	if(parse() < 0)
 		sysfatal("parse: %r");
-/*	for(f = fields.next; f != &fields; f = f->next){
-		print("%s ", f->n);
-		for(i = f->w; --i >= 0; )
-			if(f->v1[i] != VALX)
-				print("%c", "FR"[f->v0[i]]);
-			else
-				print("%c", "01X"[f->v0[i]]);
-		print("\n");
-	}*/
+	if(debug)
+		for(f = fields.next; f != &fields; f = f->next){
+			fprint(2, "%s ", f->n);
+			for(i = f->w; --i >= 0; )
+				if(f->v1[i] != VALX)
+					fprint(2, "%c", "FR"[f->v0[i]]);
+				else
+					fprint(2, "%c", "01X"[f->v0[i]]);
+			fprint(2, "\n");
+		}
 	j = 0;
 	for(f = fields.prev; f != &fields; f = f->prev)
 		for(i = 0; i < f->w; i++){
@@ -290,7 +294,7 @@ trigger(ulong *rp, char *cond)
 static void
 copy(ulong *rp)
 {
-	int i, k, l, nb, n;
+	int i, k, l, nb, n, ts;
 	Biobuf *bp;
 	ulong sh;
 	Field *f;
@@ -311,42 +315,46 @@ copy(ulong *rp)
 		sh = 0;
 		k = 0;
 		for(f = fields.prev; f != &fields; f = f->prev){
-			mpassign(f->new, mpzero);
+			mpassign(mpzero, f->new);
 			for(l = 0; l < f->w; ){
 				if(k == 0){
 					sh = rp[DEBUGDATA];
 					k = 32;
 				}
-				nb = l - f->w;
-				if(nb > 32 - k) nb = 32 - k;
+				nb = f->w - l;
+				if(nb > k) nb = k;
 				uitomp(sh & (1<<nb)-1, r);
 				mpleft(r, l, r);
 				mpor(f->new, r, f->new);
 				l += nb;
 				k -= nb;
+				sh >>= nb;
 			}
 		}
-		
-		if(i == 0)
+		ts = 0;
+		if(i == 0){
 			Bprint(bp, "$dumpvars\n");
-		else
-			Bprint(bp, "#%d\n", i);
-		for(f = fields.prev; f != &fields; f = f->prev)
+			ts++;
+		}
+		for(f = fields.next; f != &fields; f = f->next)
 			if(i == 0 || mpcmp(f->old, f->new) != 0){
+				if(ts++ == 0)
+					Bprint(bp, "#%d\n", i);
 				Bprint(bp, "b%.2B %s\n", f->new, f->i);
-				mpassign(f->old, f->new);
+				mpassign(f->new, f->old);
 			}
 		if(i == 0)
 			Bprint(bp, "$end\n");
 	}
-	
+	Bprint(bp, "#%d\n", i);
+	Bterm(bp);
 	mpfree(r);
 }
 
 static void
 usage(void)
 {
-	fprint(2, "usage: %s -p addr [-t] [trigger]\n       %s -p addr [-t] -d \n", argv0, argv0);
+	fprint(2, "usage: %s -p addr [-t] [-T tpoint] [trigger]\n       %s -p addr [-t] [-T tpoint] -d \n", argv0, argv0);
 	exits("usage");
 }
 

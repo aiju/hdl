@@ -83,8 +83,8 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 	assign trigger = &lout;
 	reg srbusy = 1'b0;
 	
-	for(i = 0; i < NL; i = i + 1) begin :lvl0
-		CFGLUT5 L(
+	for(i = 0; i < NL; i = i + 1) begin :trig
+		CFGLUT5 #(.INIT(-1)) L(
 			.CLK(clk),
 			.CE(srbusy),
 			.CDI(daisy[i+1]),
@@ -99,34 +99,13 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 	end
 	
 	reg startsr;
-	reg srpend = 1'b0;
 	reg [31:0] sr;
 	reg [4:0] ctr = 0;
-	always @(posedge clk) begin
-		if(srbusy) begin
-			sr <= {sr[30:0], 1'b0};
-			if(ctr == 31) begin
-				srbusy <= srpend;
-				sr <= regwdata;
-				srpend <= 1'b0;
-			end
-			ctr <= ctr + 1;
-		end
-		if(startsr) begin
-			if(srbusy)
-				srpend <= 1'b1;
-			else begin
-				sr <= regwdata;
-				srbusy <= 1'b1;
-			end
-		end
-	end
 	assign daisy[NL] = sr[31];
 	
 	always @(posedge clk) begin
 		start <= 1'b0;
 		abort <= 1'b0;
-		startsr <= 1'b0;
 		step <= 1'b0;
 		step0 <= step;
 		step1 <= step0;
@@ -145,8 +124,7 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 				end
 				12: begin
 					startsr <= 1'b1;
-					if(srbusy)
-						regack <= 1'b0;
+					regack <= 1'b0;
 				end
 				default: regerr <= 1'b1;
 				endcase
@@ -164,7 +142,19 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 		if(step1) begin
 			regrdata <= rdshreg;
 			regack <= 1'b1;
-		end	
+		end
+		if(srbusy) begin
+			sr <= {sr[30:0], 1'b0};
+			if(ctr == 31)
+				srbusy <= 1'b0;
+			ctr <= ctr + 1;
+		end
+		if((!srbusy || ctr == 31) && startsr) begin
+			sr <= regwdata;
+			srbusy <= 1'b1;
+			regack <= 1'b1;
+			startsr <= 1'b0;
+		end
 	end
 
 endmodule
