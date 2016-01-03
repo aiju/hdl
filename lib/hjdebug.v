@@ -80,8 +80,8 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 	wire [NL:0] daisy;
 	wire [NL-1:0] lout;
 	wire [2*N-1:0] tinp = {memrdata0, memrdata};
-	assign trigger = &lout;
 	reg srbusy = 1'b0;
+	assign trigger = !srbusy && &lout;
 	
 	for(i = 0; i < NL; i = i + 1) begin :trig
 		CFGLUT5 #(.INIT(-1)) L(
