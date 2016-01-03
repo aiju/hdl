@@ -643,12 +643,17 @@ makedebug(CModule *m, Biobuf *bp)
 	ASTNode *sz;
 
 	Bprint(bp, "\nmodule %s(\n", m->name);
-	sz = nil;
-	for(p = m->node->sc.st->ports; p != nil; p = p->portnext){
+	for(p = m->node->sc.st->ports; p != nil; p = p->portnext)
 		Bprint(bp, "\t%s wire %t%s%s\n", (p->dir & 3) == PORTOUT ? "output" : "input", p->type, p->name, p->portnext == nil ? "" : ",");
-		sz = add(sz, p->type->sz);
-	}
 	Bprint(bp, ");\n");
+
+	sz = nil;
+	for(p = m->node->sc.st->ports; p != nil; p = p->portnext)
+		if(strcmp(p->name, "_regwdata") == 0)
+			break;
+	for(p = p->portnext; p != nil; p = p->portnext)
+		sz = add(sz, p->type->sz);
+
 	Bprint(bp, "\thjdebug #(.N(%n)) debug0(\n"
 		"\t\t.clk(clk),\n"
 		"\t\t.regreq(_regreq),\n"
