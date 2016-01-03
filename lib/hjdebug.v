@@ -18,25 +18,26 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 	reg [15:0] wptr, rptr, tpos, rctr;
 	reg running = 1'b0, avail = 1'b0, full, start, abort, start0, step, trans;
 	reg step0 = 1'b0, step1 = 1'b0;
-	reg [N-1:0] memrdata, memrdata0, rdshreg, in0;
+	reg [N-1:0] memrdata, memrdata0, rdshreg, in0, in1, lastwr;
 	wire trigger;
 	genvar i;
 	
-	wire memwe = running && (!full || !trigger) && (!trans || start0 || in0 != in);
+	wire memwe = running && (!full || !trigger) && (!trans || start0 || in1 != in0);
 	always @(posedge clk) begin
 		if(memwe || step)
 			memrdata <= mem[rptr];
 		if(memwe) begin
-			mem[wptr] <= in;
-			if(rptr == wptr)
-				memrdata <= in;
+			mem[wptr] <= in0;
+			lastwr <= in0;
 		end
 	end
+	wire [N-1:0] memrdata_ = tpos == SIZ-1 ? lastwr : memrdata;
 
 	always @(posedge clk) begin
-		memrdata0 <= memrdata;
+		memrdata0 <= memrdata_;
 		start0 <= start;
 		in0 <= in;
+		in1 <= in0;
 		if(running) begin
 			if(full && trigger) begin
 				running <= 1'b0;
@@ -79,7 +80,7 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 	localparam NL = (2*N+4)/5;
 	wire [NL:0] daisy;
 	wire [NL-1:0] lout;
-	wire [2*N-1:0] tinp = {memrdata0, memrdata};
+	wire [2*N-1:0] tinp = {memrdata0, memrdata_};
 	reg srbusy = 1'b0;
 	assign trigger = !srbusy && &lout;
 	

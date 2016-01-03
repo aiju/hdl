@@ -51,7 +51,7 @@ module hjdebug_tb;
 	end
 	endtask
 	
-	task trig5(input wire [4:0] a);
+	task trig5(input [4:0] a);
 		integer i, j;
 		reg [31:0] sr;
 	begin
@@ -64,7 +64,7 @@ module hjdebug_tb;
 	end
 	endtask
 	
-	task trigv(input wire [N-1:0] a);
+	task trigv(input [N-1:0] a);
 		integer i, j;
 		reg [4:0] r;
 	begin
@@ -120,7 +120,7 @@ module hjdebug_tb;
 			regread(8, v);
 			if(v[N-1:0] !== pat[i]) begin
 				fail = 1'b1;
-				$display("FAIL (trigger %0d @ %0d, trans %0d): %h !== %h", tval, tpoint, trans, v[N-1:0], pat[i]);
+				$display("FAIL (trigger %2d @ %2d, trans %0d): %2d: %h !== %h", tval, tpoint, trans, i, v[N-1:0], pat[i]);
 			end
 		end
 	end
