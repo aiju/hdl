@@ -210,7 +210,7 @@ typefmt(Fmt *f)
 	case TYPREAL: return fmtstrcpy(f, "real");
 	case TYPMEM: return fmtstrcpy(f, "memory");
 	case TYPEVENT: return fmtstrcpy(f, "event");
-	case TYPUNSZ: return fmtstrcpy(f, "unnamed");
+	case TYPUNSZ: return fmtstrcpy(f, "unsized");
 	default: return fmtprint(f, "??? (%d)", t->t);
 	}
 }
@@ -232,8 +232,6 @@ node(int t, ...)
 		break;
 	case ASTCINT:
 		n->i = va_arg(va, int);
-		n->type = type(TYPUNSZ, va_arg(va, int));
-		n->isconst = 1;
 		break;
 	case ASTCREAL:
 		n->d = va_arg(va, double);
@@ -367,6 +365,7 @@ repl(ASTNode *n, ASTNode *r)
 	r->Line = n->Line;
 	r->attrs = n->attrs;
 	r->type = n->type;
+	r->isconst = n->isconst;
 	return r;
 }
 
@@ -944,14 +943,12 @@ typecheck(ASTNode *n, Type *ctxt)
 		else if(n->sym->type == nil){
 			lerror(n, "'%s' declared without a type", n->sym->name);
 			n->type = bittype;
-		}else{
-			if(n->sym->t == SYMLPARAM)
-				typecheck(n->sym->n, ctxt);
+		}else
 			n->type = n->sym->type;
-		}
 		n->isconst = n->sym->t == SYMPARAM || n->sym->t == SYMLPARAM || n->sym->t == SYMGENVAR;
 		break;
 	case ASTCONST:
+		/* BUG: doesn't work with localparam */
 		if(ctxt != nil && ctxt->sz != nil && ctxt->sz->t == ASTCINT && isconsttrunc(&n->cons, ctxt->sz->i))
 			lerror(n, "'%C' constant truncated to %d bits", &n->cons, ctxt->sz->i);
 		if(n->cons.sz == 0)
@@ -960,6 +957,12 @@ typecheck(ASTNode *n, Type *ctxt)
 			n->type = type(TYPBITS, n->cons.sign, node(ASTCINT, n->cons.sz));
 		n->isconst = 1;
 		break;
+	case ASTCINT:
+		if(ctxt != nil && ctxt->sz != nil && ctxt->sz->t == ASTCINT && n->i >= 1<<ctxt->sz->i)
+			lerror(n, "'%#x' constant truncated to %d bits", n->i, ctxt->sz->i);
+		n->type = unsztype;
+		n->isconst = 1;
+		break;	
 	case ASTIDX:
 		typecheck(n->n1, nil);
 		typecheck(n->n2, nil);
@@ -1043,8 +1046,6 @@ typecheck(ASTNode *n, Type *ctxt)
 		typecheck(n->n1, nil);
 		intcheck(n->n1, 1, "%T in delay");
 		typecheck(n->n2, nil);
-		break;
-	case ASTCINT:
 		break;
 	case ASTTCALL:
 		if(n->n1->t != ASTSYM)
