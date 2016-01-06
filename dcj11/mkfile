@@ -1,0 +1,7 @@
+all:V: top.v top.xdc
+
+top.v:DV: dcj11.vlt
+	vlt -lc $prereq >$target
+
+top.xdc:DV: dcj11.vlt
+	vlt -lc -O xdc $prereq >$target

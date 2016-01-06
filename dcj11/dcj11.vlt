@@ -1,0 +1,33 @@
+board aijuboard;
+
+files {
+	*.v
+	../lib/*.v
+}
+
+design top {
+	j11int {
+		j11f <gp[15:0]>;
+		j11clk <gp[16]>;
+		j11dmr <gp[17]>;
+		j11cont <gp[18]>;
+		j11dv <gp[19]>;
+		j11miss <gp[20]>;
+		j11ale <gp[21]>;
+		j11strb <gp[22]>;
+		j11sctl <gp[23]>;
+		j11map <gp[24]>;
+		j11abortout <gp[25]>;
+		j11dsel <gp[29:26]>;
+	}
+	
+	j11bus { reg* = busreg* map(auto); }
+	j11mem;
+	
+	_debug {
+		=: j11*;
+		=: bus*;
+		_reg* = debug* map(auto);
+	}
+}
+
