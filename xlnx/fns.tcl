@@ -52,3 +52,13 @@ proc bitstream {} {
 	checktarget
 	write_bitstream -force -bin_file -file $target/out.bit
 }
+
+proc notb {args} {
+	set y {}
+	foreach x [glob {*}$args] {
+		if { ! [regexp {_tb\.v$} $x ] } {
+			lappend y $x
+		}
+	}
+	return $y
+}
