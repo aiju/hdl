@@ -1,7 +1,13 @@
-all:V: top.v top.xdc
+all:V: top.v top.xdc 5.run
 
 top.v:DV: dcj11.vlt
 	vlt -lc $prereq >$target
 
 top.xdc:DV: dcj11.vlt
 	vlt -lc -O xdc $prereq >$target
+
+5.run: run.5
+	5l -o $target $prereq
+
+run.5: run.c
+	5c -FTVw -o $target $prereq

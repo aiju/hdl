@@ -21,12 +21,19 @@ design top {
 		j11dsel <gp[29:26]>;
 	}
 	
-	j11bus { reg* = busreg* map(auto); }
+	j11bus {
+		reg* = busreg* map(auto);
+		leds <led>;
+	}
 	j11mem;
+	uart11 {
+		uarthost* map(auto);
+	}
 	
 	_debug {
 		=: j11*;
 		=: bus*;
+		=: uart*;
 		_reg* = debug* map(auto);
 	}
 }

@@ -99,7 +99,7 @@ module j11int(
 	
 	assign j11f = fdrive ? fout : 16'bz;
 	wire [15:0] hi = {6'b0, j11parity, j11event, j11fpe, j11init, j11halt, j11pwrf, j11irq};
-	reg [15:0] hi0;
+	reg [15:0] hi0 = 16'b0;
 	
 	always @(posedge clk) begin
 		state <= state_;
