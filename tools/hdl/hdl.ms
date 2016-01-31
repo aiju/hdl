@@ -1,0 +1,229 @@
+.NH
+Types and Variables
+.NH 2
+Simple types
+.TS
+r1W12 l.
+\fItype\fR ←	\fBbit\fR [\fBsigned\fR] {\fB[ \fIcomma-expr \fB]\fR}
+∨	\fBclock\fR
+∨	\fBinteger\fR
+∨	\fBreal\fR
+∨	\fBstring\fR
+∨	\fBenum { \fR{\fIenum-val \fB,\fR } [\fIenum-val \fR[\fB , \fR] ] \fB}
+∨	\fBstruct { \fR{\fImember-def\fR} \fB}\fR
+∨	\fIdefined-type\fR
+
+\fItype-def\fR ←	\fBtypedef \fItype \fIsymbol
+
+\fIenum-val\fR ←	\fIsymbol\fR [ \fB= \fIexpr\fR ]
+.TE
+.LP
+The \fBbit\fR type defines signed and unsigned bitvectors.
+They are 4-valued in simulation, with each bit having the possible values of \f(CW0\fR, \f(CW1\fR, \f(CWx\fR and \f(CWz\fR.
+.br
+The \fBclock\fR type defines a single bit signal used as a clock.
+When not used as a clock it is treated identical to an unsigned 1 bit wide \fBbit\fR type.
+.br
+The \fBinteger\fR type defines signed arbitrary size integers.
+It is not permitted for an implementation to restrict the range.
+.br
+The \fBreal\fR type defines IEEE 754 "double precision" floating point numbers.
+.br
+The \fBstring\fR type defines strings of arbitrary length in UTF-8.
+.br
+\fBinteger\fR, \fBreal\fR or \fBstring\fR are for simulation and compile-time use only.
+.br
+\fBenum\fR declares an enumeration type.
+.NH 2
+Struct types
+.TS
+r1W12 l.
+\fIstruct-def\fR ←	\fBstruct\fR \fIsymbol \fR[\fB(\fIargs\fB)\fR] \fR[\fB{ \fR{\fImember-def\fR} \fB}\fR]
+\fImember-def\fR ←	[\fBinput\fR∨\fBoutput\fR] \fIvar-def\fB \fR[\fIpack-def\fR]\fB;\fR
+∨	\fIpack-def\fB;\fR
+∨	\fIstruct \fR[ \fB(\fIargs\fB) \fR] \fB;\fR
+\fIpack-def\fR ←	\fB@@ \fIsymbol \fR[ \fB[ \fR(\fIcomma-expr\fB:\fIcomma-exprw\fR) \fB] \fR]
+.TE
+A \fBstruct\fR defines a type composed of multiple non-overlapping subfields.
+Each field has a type (which can be either simple or composite) and supports the usual variable options, which may or may not be meaningful depending on the context in which the struct is used.
+For instance \fIinput\fR and \fIoutput\fR are only meaningful for a struct declared as a port and all options can be overriden when the struct is instantiated.
+.PP
+A \fIpack-def\fR allows more explicitly control over the packing of fields in a struct.
+Assigning a \fIpack-def\fR to one or more fields declares that thes fields shall be mapped to the \fIsymbol\fR given in the \fIpack-def\fR, with the sequence \f(CW$0\fR replaced by the name of the struct variable and \f(CW$1\fR replaced by the name of the field.
+If a range is given that specific range is used, otherwise fields assigned to the same symbol are mapped in increasing order.
+A lone \fIpack-def\fR with no preceding field declaration applies to all following fields.
+The default \fIpack-def\fR is \f(CW$0_$1\fR.
+.PP
+A lone reference to a struct type causes that type to be \fIembedded\fR.
+All fields of the embedded type can be accessed directly and the embedded struct as a whole can be accessed using the type as a field.
+A \fIstruct\fR can be implicitly converted into any of its embedded types.
+.PP
+A struct can have arguments which use the same syntax as function arguments.
+Two instances with different arguments are considered of different type.
+.NH 2
+Variables
+.TS
+r1W12 l.
+\fIvar-def\fR ←	[\fBwire\fR∨\fBreg\fR] \fItype\fR [\fB< \fR[\fIclock\fR] \fB>\fR] \fIvar\fR { \fB, \fIvar \fR} [ \fB, \fR]
+\fIvar\fR ←	\fIsymbol\fR [ \fB= \fIexpr \fR]
+.TE
+.LP
+Variables declared as \fBreg\fR shall be implemented as registers.
+Note that assignments to the current value of a register are explicitly permitted, however the implementation may reject any code that would be impossible to implement.
+.LP
+Variables declared as \fBwire\fR shall have no storage associated with them.
+It is illegal to assign to the primed version of a wire.
+.LP
+It is up to the implementation to decide whether variables declared as neither \fBwire\fR nor \fBreg\fR have any storage associated with them.
+Note that it is possible to define variables which would be legal as neither.
+.LP
+All variables must either have an associated clock defined or be declared to be \fIasynchronous\fR.
+If no clock is specified and there is only one clock visible in the scope, that clock is implicitly assumed for all variables.
+To mark a variable as \fIasynchronous\fR an empty clock declaration \fB<>\fR is used.
+.bp
+.NH
+Expressions
+.PP
+.TS
+r1W12 l.
+\fIfield-ref\fR ←	\fIsymbol\fR
+∨	\fIfield-ref \fB. \fIsymbol\fR
+\fIlval\fR ←	\fIfield-ref\fR
+∨	\fIlval\fB'\fR
+∨	\fIlval\fB[\fIcomma-expr\fB]\fR
+∨	\fIlval\fB[\fIcomma-expr\fB:\fIcomma-expr\fB\fR]
+∨	\fIlval\fB[\fIcomma-expr\fB+:\fIcomma-expr\fB\fR]
+∨	\fIlval\fB[\fIcomma-expr\fB-:\fIcomma-expr\fB\fR]
+∨	\fIlval \fB, \fIlval\fR
+
+\fIprimary\fR ←	\fIlval\fR
+∨	\fInumber\fR
+∨	\fB( \fIcomma-expr \fB)\fR
+
+\fIcomma-expr\fR ←	\fIexpr\fR ∨ \fIcomma-expr \fB, \fIexpr\fR
+
+\fIexpr\fR ←	\fIprimary\fR
+∨	\fIexpr binary-op expr\fR
+∨	\fIunary-op expr\fR
+.TE
+.2C
+.TS
+allbox ;
+lFCW l.
+#	Delay
+@	Prior value
+_
+**	Exponentiation
+_
+*	Multiplication
+/	Division
+%	Modulo
+_
++	Addition
+-	Subtraction
+_
+<<	Left shift
+>>	Logical right shift
+>>>	Arithmetic right shift
+_
+&	Bitwise and
+_
+^	Bitwise xor
+_
+|	Bitwise or
+_
+<	Less than
+<=	Less or equal than
+>	Greater than
+>=	Greater or equal than
+_
+==	Equal to
+!=	Not equal to
+===	Exactly equal to
+!==	Not exactly equal to
+_
+&&	Logical and
+_
+||	Logical or
+_
+?:	Ternary operator
+_
+\fIn\fR(\fIm\fR)	Replication
+_
+,	Concatenation
+.TE
+.TS
+allbox;
+lFCW l.
++	Unary plus
+-	Unary minus
+~	Bitwise not
+&	Reduction and
+|	Reduction or
+^	Reduction xor
+!	Logical not
+.TE
+.1C
+.bp
+.NH
+Statements
+.TS
+r1W12 l.
+\fIstat1\fR ←	ε
+∨	\fIlval \fB= \fIcomma-expr \fR
+∨	\fIlval \fIassign-op\fB= \fIcomma-expr \fR
+∨	\fIlval \fB++\fR
+∨	\fIrval \fB--\fR
+
+\fIstat\fR ←	\fIstat1\fB;\fR
+∨	\fBif(\fIcomma-expr\fB) \fIstat
+∨	\fBwhile(\fIcomma-expr\fB) \fIstat
+∨	\fBdo \fIstat \fBwhile(\fIcomma-expr\fB);
+∨	\fBfor(\fIstat1\fB; \fR[\fIcomma-expr\fR]\fB; \fIstat1\fB) \fIstat
+∨	\fR[ \fIsymbol \fR] \fB{ \fR{\fIstat\fR} \fB}
+∨	\fBbreak \fR[\fIblock\fR]\fB;\fR
+∨	\fBcontinue \fR[\fIblock\fR]\fB;\fR
+∨	\fIvar-def\fB;\fR
+.TE
+.NH
+Finite state machines (FSM)
+.TS
+r1W12 l.
+\fIfsm\fR ←	\fBfsm \fIsymbol \fR[\fB< \fIexpr \fR[\fB, \fIexpr\fR] \fB>\fR] \fB{ \fR{\fBstat\fR} \fB}\fR
+
+\fIstat\fR ←	\fBgoto \fR[\fIstate\fR]\fB;\fR
+∨	\fR[\fIstate\fR]\fB:\fR
+∨	\fBdefault:\fR
+.TE
+.PP
+An \fBfsm\fR statement defines a signal \fIsymbol\fR as an \fBenum\fR.
+Each \fIstate\fR declared in the body defines one of the possible values.
+A lone \fB:\fR declares another state, incrementing a number at the end of the last state, or appending \f(CW0\fR if there is no number.
+The \fBdefault\fR keyword declares no state.
+.PP
+During each cycle of execution the statements from first the \fBdefault\fR case and then the current state are executed.
+If a \fBgoto\fR statement is executed, execution is halted and the next state is set to the label given.
+If no label is given, the current one is assumed.
+.PP
+It is legal to reference the \fIsymbol\fR variable.
+Assigning to \fIsymbol\fB'\fR will set the next state without halting execution.
+Assigning to \fIsymbol\fR is illegal.
+.NH
+Modules
+.TS
+r1W12 l.
+\fImodule-def\fR ←	\fBmodule \fImodule \fB( \fR{\fIport\fB,\fR} [\fIport\fR] \fB) { \fR{ \fIdef \fR} \fB}
+
+\fIdef\fR ←	\fIstat\fR
+∨	\fIfsm\fR
+.TE
+.PP
+During one cycle of execution all the definitions of a module are executed repeatedly until the results converge.
+Finally, all assignments to primed variables are copied over to become the main variables.
+.PP
+It is illegal
+[TODO: Make sense.]
+.IP \(bu
+for two signals to have multiple drivers.
+.IP \(bu
+for signals to be cyclically dependent on each other.
