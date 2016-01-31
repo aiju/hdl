@@ -86,25 +86,24 @@ Expressions
 .PP
 .TS
 r1W12 l.
-\fIfield-ref\fR ←	\fIsymbol\fR
-∨	\fIfield-ref \fB. \fIsymbol\fR
-\fIlval\fR ←	\fIfield-ref\fR
+\fIlval\fR ←	\fIsymbol\fR { \fB. \fIsymbol \fR}
 ∨	\fIlval\fB'\fR
 ∨	\fIlval\fB[\fIcomma-expr\fB]\fR
 ∨	\fIlval\fB[\fIcomma-expr\fB:\fIcomma-expr\fB\fR]
 ∨	\fIlval\fB[\fIcomma-expr\fB+:\fIcomma-expr\fB\fR]
 ∨	\fIlval\fB[\fIcomma-expr\fB-:\fIcomma-expr\fB\fR]
-∨	\fIlval \fB, \fIlval\fR
+
+\fIcomma-lval\fR ←	\fIlval\fR { \fB, \fIlval \fR}
 
 \fIprimary\fR ←	\fIlval\fR
 ∨	\fInumber\fR
 ∨	\fB( \fIcomma-expr \fB)\fR
 
-\fIcomma-expr\fR ←	\fIexpr\fR ∨ \fIcomma-expr \fB, \fIexpr\fR
-
 \fIexpr\fR ←	\fIprimary\fR
 ∨	\fIexpr binary-op expr\fR
 ∨	\fIunary-op expr\fR
+
+\fIcomma-expr\fR ←	\fIexpr\fR { \fB, \fIexpr \fR}
 .TE
 .2C
 .TS
@@ -208,6 +207,7 @@ If no label is given, the current one is assumed.
 It is legal to reference the \fIsymbol\fR variable.
 Assigning to \fIsymbol\fB'\fR will set the next state without halting execution.
 Assigning to \fIsymbol\fR is illegal.
+.bp
 .NH
 Modules
 .TS
@@ -216,14 +216,22 @@ r1W12 l.
 
 \fIdef\fR ←	\fIstat\fR
 ∨	\fIfsm\fR
+∨	\fBinitial( \fR{ \fItrigger \fB, \fR} [ \fItrigger \fR] \fB) \fIstat
+
+\fItrigger\fR ←	\fBdefault\fR ∨ \fIexpr\fR
 .TE
-.PP
+.LP
 During one cycle of execution all the definitions of a module are executed repeatedly until the results converge.
 Finally, all assignments to primed variables are copied over to become the main variables.
-.PP
+.LP
 It is illegal
 [TODO: Make sense.]
 .IP \(bu
 for two signals to have multiple drivers.
 .IP \(bu
 for signals to be cyclically dependent on each other.
+.LP
+\fBInitial\fR statements allow the values of registers to be overridden.
+They can be triggered by both synchronous and asynchronous signals, as well as the \fBdefault\fR keyword which indicates that the block should be executed on startup.
+In an \fBinitial\fR statement values should be assigned to unprimed variables.
+Initial blocks are run before all other blocks and in case of synchronous signals they use the value from the \fIlast\fR cycle.
