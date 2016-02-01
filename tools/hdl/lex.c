@@ -158,6 +158,7 @@ loop:
 			for(; kw->name != nil && *kw->name == *buf; kw++)
 				if(strcmp(kw->name, buf) == 0)
 					return kw->tok;
+		yylval.sym = getsym(scope, 1, buf);
 		return LSYMB;
 	}
 	if(kw = oplook[c], kw != nil){

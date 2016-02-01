@@ -5,6 +5,9 @@ OFILES=\
 	main.$O \
 	lex.$O \
 	y.tab.$O \
+	ast.$O \
+	sym.$O \
+	fsm.$O \
 
 BIN=/$objtype/bin
 
