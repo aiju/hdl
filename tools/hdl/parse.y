@@ -156,8 +156,8 @@ stat1: { $$ = nil; }
 	| lval LOOREQ cexpr { $$ = node(ASTASS, OPOR, $1, $3); }
 	| lval LOXOREQ cexpr { $$ = node(ASTASS, OPXOR, $1, $3); }
 	| lval LOEXPEQ cexpr { $$ = node(ASTASS, OPEXP, $1, $3); }
-	| lval LOINC { $$ = node(ASTINC, $1); }
-	| lval LODEC { $$ = node(ASTDEC, $1); }
+	| lval LOINC { $$ = node(ASTASS, OPADD, $1, node(ASTCINT, 1)); }
+	| lval LODEC { $$ = node(ASTASS, OPSUB, $1, node(ASTCINT, 1)); }
 
 triggers: trigger | triggers ',' trigger { $$ = nodecat($1, $3); }
 trigger:

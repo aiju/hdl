@@ -141,12 +141,15 @@ loop:
 		lexungetc(c);
 		return '/';
 	}
-	if(isdigit(c)){
-		for(p = buf, *p++ = c; c = lexgetc(), isdigit(c); )
+	if(isdigit(c) || c == '\''){
+		for(p = buf, *p++ = c; c = lexgetc(), isalnum(c) || c == '\''; )
 			if(c != '_' && p < buf + sizeof buf - 1)
 				*p++ = c;
 		*p = 0;
 		lexungetc(c);
+		if(strcmp(buf, "'") == 0)
+			return '\'';
+		consparse(&yylval.cons, buf);
 		return LNUMB;
 	}
 	if(isalpha(c) || c == '_' || c == '$'){

@@ -74,7 +74,6 @@ enum {
 	ASTCINT,
 	ASTCONST,
 	ASTCONTINUE,
-	ASTDEC,
 	ASTDECL,
 	ASTDEFAULT,
 	ASTDOWHILE,
@@ -83,7 +82,6 @@ enum {
 	ASTGOTO,
 	ASTIDX,
 	ASTIF,
-	ASTINC,
 	ASTINITIAL,
 	ASTMEMB,
 	ASTMODULE,
@@ -156,3 +154,5 @@ extern SymTab *scope;
 #pragma varargck type "A" int
 #pragma varargck type "I" int
 #pragma varargck type "T" Type *
+#pragma varargck type "n" ASTNode *
+#pragma varargck type "C" Const *

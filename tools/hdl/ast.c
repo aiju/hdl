@@ -21,8 +21,6 @@ static char *astname[] = {
 	[ASTFSM] "ASTFSM",
 	[ASTINITIAL] "ASTINITIAL",
 	[ASTASS] "ASTASS",
-	[ASTINC] "ASTINC",
-	[ASTDEC] "ASTDEC",
 	[ASTPRIME] "ASTPRIME",
 	[ASTIDX] "ASTIDX",
 	[ASTSYMB] "ASTSYMB",
@@ -49,40 +47,40 @@ enum {
 };
 
 static OpData opdata[] = {
-	[OPNOP] {"nop", OPDUNARY | OPDSPECIAL, 14},
-	[OPADD] {"+", 0, 11},
-	[OPSUB] {"-", 0, 11},
-	[OPMUL] {"*", 0, 12},
-	[OPDIV] {"/", 0, 12},
-	[OPMOD] {"%", 0, 12},
-	[OPLSL] {"<<", 0, 10},
-	[OPLSR] {">>", 0, 10},
-	[OPASR] {">>>", 0, 10},
-	[OPAND] {"&", 0, 9},
-	[OPOR] {"|", 0, 7},
-	[OPXOR] {"^", 0, 8},
-	[OPEXP] {"**", OPDRIGHT, 13},
-	[OPEQ] {"==", 0, 5},
-	[OPEQS] {"===", 0, 5},
-	[OPNE] {"!=", 0, 5},
-	[OPNES] {"!==", 0, 5},
-	[OPLT] {"<", 0, 6},
-	[OPLE] {"<=", 0, 6},
-	[OPGT] {">", 0, 6},
-	[OPGE] {">=", 0, 6},
-	[OPLOR] {"||", 0, 3},
-	[OPLAND] {"&&", 0, 4},
-	[OPAT] {"@", 0, 14},
-	[OPDELAY] {"#", 0, 14},
+	[OPNOP] {"nop", OPDUNARY | OPDSPECIAL, 15},
+	[OPADD] {"+", 0, 12},
+	[OPSUB] {"-", 0, 12},
+	[OPMUL] {"*", 0, 13},
+	[OPDIV] {"/", 0, 13},
+	[OPMOD] {"%", 0, 13},
+	[OPLSL] {"<<", 0, 11},
+	[OPLSR] {">>", 0, 11},
+	[OPASR] {">>>", 0, 11},
+	[OPAND] {"&", 0, 10},
+	[OPOR] {"|", 0, 8},
+	[OPXOR] {"^", 0, 9},
+	[OPEXP] {"**", OPDRIGHT, 14},
+	[OPEQ] {"==", 0, 6},
+	[OPEQS] {"===", 0, 6},
+	[OPNE] {"!=", 0, 6},
+	[OPNES] {"!==", 0, 6},
+	[OPLT] {"<", 0, 7},
+	[OPLE] {"<=", 0, 7},
+	[OPGT] {">", 0, 7},
+	[OPGE] {">=", 0, 7},
+	[OPLOR] {"||", 0, 4},
+	[OPLAND] {"&&", 0, 5},
+	[OPAT] {"@", 0, 15},
+	[OPDELAY] {"#", 0, 15},
 	[OPREPL] {"repl", OPDSPECIAL, 2},
 	[OPCAT] {",", 0, 1},
-	[OPUPLUS] {"+", OPDUNARY, 14},
-	[OPUMINUS] {"-", OPDUNARY, 14},
-	[OPNOT] {"~", OPDUNARY, 14},
-	[OPLNOT] {"!", OPDUNARY, 14},
-	[OPUAND] {"&", OPDUNARY, 14},
-	[OPUOR] {"|", OPDUNARY, 14},
-	[OPUXOR] {"^", OPDUNARY, 14},
+	[OPUPLUS] {"+", OPDUNARY, 15},
+	[OPUMINUS] {"-", OPDUNARY, 15},
+	[OPNOT] {"~", OPDUNARY, 15},
+	[OPLNOT] {"!", OPDUNARY, 15},
+	[OPUAND] {"&", OPDUNARY, 15},
+	[OPUOR] {"|", OPDUNARY, 15},
+	[OPUXOR] {"^", OPDUNARY, 15},
 };
 
 static int
@@ -143,8 +141,6 @@ node(int t, ...)
 	case ASTGOTO:
 		n->sym = va_arg(va, Symbol *);
 		break;
-	case ASTINC:
-	case ASTDEC:
 	case ASTPRIME:
 		n->n1 = va_arg(va, ASTNode *);
 		break;
@@ -313,6 +309,16 @@ eastprint(Fmt *f, ASTNode *n, int env)
 	switch(n->t){
 	case ASTSYMB:
 		return fmtstrcpy(f, n->sym->name);
+	case ASTMEMB:
+		return fmtprint(f, "%n.%s", n->n1, n->sym->name);
+	case ASTCINT:
+		return fmtprint(f, "%d", n->i);
+	case ASTCONST:
+		return fmtprint(f, "%C", &n->cons);
+	case ASTPRIME:
+		rc += eastprint(f, n->n1, env);
+		rc += fmtrune(f, '\'');
+		return rc;
 	case ASTOP:
 		d = getopdata(n->op);
 		if(d == nil) return rc;
@@ -343,6 +349,17 @@ eastprint(Fmt *f, ASTNode *n, int env)
 		if(env > d->prec)
 			rc += fmtrune(f, ')');
 		break;
+	case ASTTERN:
+		if(env > 3)
+			rc += fmtrune(f, '(');
+		rc += eastprint(f, n->n1, 4);
+		rc += fmtstrcpy(f, " ? ");
+		rc += eastprint(f, n->n2, 4);
+		rc += fmtstrcpy(f, " : ");
+		rc += eastprint(f, n->n3, 3);
+		if(env > 3)
+			rc += fmtrune(f, ')');
+		break;
 	default:
 		error(n, "eastprint: unknown %A", n->t);
 	}
@@ -350,14 +367,21 @@ eastprint(Fmt *f, ASTNode *n, int env)
 }
 
 static int
+exprfmt(Fmt *f)
+{
+	return eastprint(f, va_arg(f->args, ASTNode *), 0);
+}
+
+static int
 iastprint(Fmt *f, ASTNode *n, int indent)
 {
 	int rc;
 	ASTNode *m;
+	char *s;
 
 	rc = 0;
 	if(n == nil){
-		return fmtprint(f, "<nil>\n");
+		return fmtprint(f, "%I/* nil */;\n", indent);
 	}
 	switch(n->t){
 	case ASTMODULE:
@@ -375,11 +399,76 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		if((n->sym->opt & OPTWIRE) != 0) rc += fmtprint(f, "wire ");
 		if((n->sym->opt & OPTREG) != 0) rc += fmtprint(f, "reg ");
 		rc += fmtprint(f, "%T %s", n->sym->type, n->sym->name);
-		if(n->n1 != nil){
-			rc += fmtstrcpy(f, " = ");
-			eastprint(f, n->n1, 0);
-		}
+		if(n->n1 != nil)
+			rc += fmtprint(f, " = %n", n->n1);
 		rc += fmtstrcpy(f, ";\n");
+		break;
+	case ASTBLOCK:
+		rc += fmtprint(f, "%I%s{\n", indent, n->sym != nil ? n->sym->name : "");
+		for(m = n->n1; m != nil; m = m->next)
+			rc += iastprint(f, m, indent + 1);
+		rc += fmtprint(f, "%I}\n", indent);
+		break;
+	case ASTASS:
+		rc += fmtprint(f, "%I%n %s= %n%s", indent, n->n1, n->op == OPNOP ? "" : opdata[n->op].name, n->n2, indent >= 0 ? ";\n" : "");
+		break;
+	case ASTIF:
+		rc += fmtprint(f, "%Iif(%n)\n", indent, n->n1);
+		rc += iastprint(f, n->n2, indent + 1);
+		if(n->n3 != nil){
+			rc += fmtprint(f, "%Ielse\n", indent);
+			rc += iastprint(f, n->n3, indent + 1);
+		}
+		break;
+	case ASTWHILE:
+		rc += fmtprint(f, "%Iwhile(%n)\n", indent, n->n1);
+		rc += iastprint(f, n->n2, indent + 1);
+		break;
+	case ASTDOWHILE:
+		rc += fmtprint(f, "%Ido\n", indent);
+		rc += iastprint(f, n->n2, indent + 1);
+		rc += fmtprint(f, "%Iwhile(%n);\n", indent, n->n1);
+		break;
+	case ASTFOR:
+		rc += fmtprint(f, "%Ifor(", indent);
+		rc += iastprint(f, n->n1, -1);
+		rc += fmtprint(f, "; %n; ", n->n2);
+		rc += iastprint(f, n->n3, -1);
+		rc += fmtprint(f, ")\n");
+		rc += iastprint(f, n->n4, indent + 1);
+		break;
+	case ASTBREAK:
+		s = "break";
+		goto breakcont;
+	case ASTCONTINUE:
+		s = "continue";
+		goto breakcont;
+	case ASTGOTO:
+		s = "goto";
+	breakcont:
+		if(n->sym != nil)
+			rc += fmtprint(f, "%I%s %s;\n", indent, s, n->sym->name);
+		else
+			rc += fmtprint(f, "%I%s;\n", indent, s);
+		break;
+	case ASTDEFAULT:
+		rc += fmtprint(f, "%Idefault:\n", indent - 1);
+		break;
+	case ASTSTATE:
+		rc += fmtprint(f, "%I%s:\n", indent - 1, n->sym->name);
+		break;
+	case ASTINITIAL:
+		rc += fmtprint(f, "%Iinitial(", indent);
+		for(m = n->n1; m != nil; m = m->next)
+			rc += fmtprint(f, m->next == nil ? "%n" : "%n, ", m);
+		rc += fmtprint(f, ")\n");
+		rc += iastprint(f, n->n2, indent + 1);
+		break;
+	case ASTFSM:
+		rc += fmtprint(f, "%Ifsm %s {\n", indent, n->sym->name);
+		for(m = n->n1; m != nil; m = m->next)
+			rc += iastprint(f, m, indent + 1);
+		rc += fmtprint(f, "%I}\n", indent);
 		break;
 	default:
 		error(n, "iastprint: unknown %A", n->t);
@@ -418,4 +507,5 @@ astinit(void)
 	fmtinstall('A', astfmt);
 	fmtinstall('I', tabfmt);
 	fmtinstall('T', typefmt);
+	fmtinstall('n', exprfmt);
 }

@@ -18,3 +18,4 @@ Type *enumend(void);
 void enumdecl(Symbol *, ASTNode *);
 void checksym(Symbol *);
 void astprint(ASTNode *);
+void consparse(Const *, char *);
