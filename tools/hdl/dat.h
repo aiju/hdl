@@ -16,13 +16,30 @@ struct Line {
 	int lineno;
 };
 
+struct Type {
+	int t;
+	Symbol *vals;
+	Type *elem;
+};
+
+enum {
+	TYPINVAL,
+	TYPBIT,
+	TYPCLOCK,
+	TYPINT,
+	TYPREAL,
+	TYPSTRING,
+	TYPVECTOR,
+	TYPENUM,
+};
+
 struct Symbol {
 	char *name;
-	int t;
+	int t, opt;
 	ASTNode *n;
 	Type *type;
 	SymTab *st;
-	Symbol *next;
+	Symbol *next, *enumnext;
 	Line;
 };
 
@@ -43,16 +60,18 @@ struct ASTNode {
 			SymTab *st;
 		};
 		Const cons;
+		int i;
 	};
 	ASTNode *next, **last;
+	Line;
 };
 
 enum {
 	ASTINVAL,
 	ASTASS,
-	ASTBIN,
 	ASTBLOCK,
 	ASTBREAK,
+	ASTCINT,
 	ASTCONST,
 	ASTCONTINUE,
 	ASTDEC,
@@ -68,11 +87,11 @@ enum {
 	ASTINITIAL,
 	ASTMEMB,
 	ASTMODULE,
+	ASTOP,
 	ASTPRIME,
 	ASTSTATE,
 	ASTSYMB,
 	ASTTERN,
-	ASTUN,
 	ASTWHILE,
 };
 
@@ -117,12 +136,23 @@ enum {
 	SYMNONE,
 	SYMBLOCK,
 	SYMVAR,
+	SYMCONST,
 	SYMMODULE,
 	SYMSTATE,
 	SYMFSM,
+};
+
+enum {
+	OPTWIRE = 1,
+	OPTREG = 2,
+	OPTIN = 4,
+	OPTOUT = 8,
+	OPTTYPEDEF = 16,
 };
 
 extern Line nilline, *curline;
 extern SymTab *scope;
 
 #pragma varargck type "A" int
+#pragma varargck type "I" int
+#pragma varargck type "T" Type *

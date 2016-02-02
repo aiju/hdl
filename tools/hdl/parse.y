@@ -7,6 +7,7 @@
 #include "fns.h"
 
 	static Type *curtype;
+	static int curopt;
 
 %}
 
@@ -14,6 +15,7 @@
 	Symbol *sym;
 	ASTNode *n;
 	Const cons;
+	struct { Type *t; int i; } ti;
 }
 
 %token LMODULE LINPUT LOUTPUT LBIT LIF LELSE LCLOCK LWHILE LDO LFOR LBREAK LINTEGER
@@ -29,6 +31,7 @@
 
 %type <n> stat stat1 lval expr cexpr optcexpr globdef module stats vars var triggers trigger membs
 %type <n> primary
+%type <ti> type typews typew opttypews typevector
 
 %left ','
 %left '('
@@ -44,7 +47,7 @@
 %left LOLSL LOLSR LOASR
 %left '+' '-'
 %left '*' '/' '%'
-%left LOEXP
+%right LOEXP
 %left '#' '@'
 %left unaryprec
 
@@ -53,7 +56,7 @@
 %%
 
 program:
-	| program globdef
+	| program globdef { astprint($2); }
 
 globdef: module
 	| type ';' { $$ = nil; }
@@ -65,36 +68,40 @@ args: | args1 | args1 ','
 args1: arg | args1 ',' arg
 
 arg:
-	type LSYMB
+	type { curtype = $1.t; curopt = $1.i; } LSYMB
 	| LSYMB
 	
 type: typevector
-	| opttypews LENUM '{' enumvals '}'
+	| opttypews LENUM '{' { enumstart($1.t); } enumvals '}' { $$.t = enumend(); $$.i = $1.i; }
 	| opttypews LSTRUCT '{' memberdefs '}'
 	| opttypews LSTRUCT LSYMB optargs '{' memberdefs '}'
 
-opttypews: | typews;
-typews: typew | typews typew
-typevector: typews | typevector '[' cexpr ':' cexpr ']'
+typevector:
+	typews
+	| typevector '[' cexpr ']' { $$.t = type(TYPVECTOR, $1.t, $3); $$.i = $1.i; }
+
+opttypews: { $$.t = nil; $$.i = 0; } | typews;
+typews: typew
+	| typews typew { typeor($1.t, $1.i, $2.t, $2.i, &$$.t, &$$.i); };
 
 typew:
-	LBIT
-	| LCLOCK
-	| LINTEGER
-	| LREAL
-	| LSTRING
-	| LWIRE
-	| LREG
-	| LINPUT
-	| LOUTPUT
-	| LTYPEDEF
+	LBIT { $$.t = type(TYPBIT); $$.i = 0; }
+	| LCLOCK { $$.t = type(TYPCLOCK); $$.i = 0; }
+	| LINTEGER { $$.t = type(TYPINT); $$.i = 0; }
+	| LREAL { $$.t = type(TYPREAL); $$.i = 0; }
+	| LSTRING { $$.t = type(TYPSTRING); $$.i = 0; }
+	| LWIRE { $$.t = nil; $$.i = OPTWIRE; }
+	| LREG { $$.t = nil; $$.i = OPTREG; }
+	| LINPUT { $$.t = nil; $$.i = OPTIN; }
+	| LOUTPUT { $$.t = nil; $$.i = OPTOUT; }
+	| LTYPEDEF { $$.t = nil; $$.i = OPTTYPEDEF; }
 
 enumvals: | enumvals1 | enumvals1 ','
 enumvals1: enumval | enumvals1 ',' enumval
 
 enumval:
-	LSYMB
-	| LSYMB '=' expr
+	LSYMB { enumdecl($1, nil); }
+	| LSYMB '=' expr { enumdecl($1, $3); }
 
 memberdefs:
 	memberdef
@@ -127,7 +134,7 @@ stat:
 	| ':' { $$ = fsmstate(nil); }
 	| LSYMB ':' { $$ = fsmstate($1); }
 	| LDEFAULT ':' { $$ = node(ASTDEFAULT, nil); }
-	| type vars ';' { $$ = $2; }
+	| type { curtype = $1.t; curopt = $1.i; } vars ';' { $$ = $3; }
 	| '{' { $<n>$ = newscope(ASTBLOCK, nil); } stats { scopeup(); } '}' { $$ = $<n>2; $$->n1 = $3; }
 	| LSYMB '{' { $<n>$ = newscope(ASTBLOCK, $1); } stats { scopeup(); } '}' { $$ = $<n>3; $$->n1 = $stats; }
 	| LFSM LSYMB '{' { $<n>$ = newscope(ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $$ = $<n>4; $$->n1 = $stats; }
@@ -162,8 +169,8 @@ vars:
 	| vars ',' var { $$ = nodecat($1, $3); }
 
 var:
-	LSYMB { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, nil, curtype), nil); }
-	| LSYMB '=' cexpr { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, nil, curtype), $3); }
+	LSYMB { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, curopt, nil, curtype), nil); }
+	| LSYMB '=' cexpr { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, curopt, nil, curtype), $3); }
 
 lval:
 	membs
@@ -174,48 +181,48 @@ lval:
 	| lval '[' cexpr LOMICOL cexpr ']' { $$ = node(ASTIDX, 3, $1, $3, $5); }
 
 membs:
-	LSYMB { $$ = node(ASTSYMB, $1); }
+	LSYMB { $$ = node(ASTSYMB, $1); checksym($1); }
 	| membs '.' LSYMB { $$ = node(ASTMEMB, $1, $3); }
 
 expr:
 	primary
-	| expr '+' expr { $$ = node(ASTBIN, OPADD, $1, $3); }
-	| expr '-' expr { $$ = node(ASTBIN, OPSUB, $1, $3); }
-	| expr '*' expr { $$ = node(ASTBIN, OPMUL, $1, $3); }
-	| expr '/' expr { $$ = node(ASTBIN, OPDIV, $1, $3); }
-	| expr '%' expr { $$ = node(ASTBIN, OPMOD, $1, $3); }
-	| expr LOEXP expr { $$ = node(ASTBIN, OPEXP, $1, $3); }
-	| expr LOLSL expr { $$ = node(ASTBIN, OPLSL, $1, $3); }
-	| expr LOLSR expr { $$ = node(ASTBIN, OPLSR, $1, $3); }
-	| expr LOASR expr { $$ = node(ASTBIN, OPASR, $1, $3); }
-	| expr LOEQ expr { $$ = node(ASTBIN, OPEQ, $1, $3); }
-	| expr LOEQS expr { $$ = node(ASTBIN, OPEQS, $1, $3); }
-	| expr LONE expr { $$ = node(ASTBIN, OPNE, $1, $3); }
-	| expr LONES expr { $$ = node(ASTBIN, OPNES, $1, $3); }
-	| expr '<' expr { $$ = node(ASTBIN, OPLT, $1, $3); }
-	| expr LOLE expr { $$ = node(ASTBIN, OPLE, $1, $3); }
-	| expr '>' expr { $$ = node(ASTBIN, OPGT, $1, $3); }
-	| expr LOGE expr { $$ = node(ASTBIN, OPGE, $1, $3); }
-	| expr '&' expr { $$ = node(ASTBIN, OPAND, $1, $3); }
-	| expr '|' expr { $$ = node(ASTBIN, OPOR, $1, $3); }
-	| expr '^' expr { $$ = node(ASTBIN, OPXOR, $1, $3); }
-	| expr LOLOR expr { $$ = node(ASTBIN, OPLOR, $1, $3); }
-	| expr LOLAND expr { $$ = node(ASTBIN, OPLAND, $1, $3); }
-	| expr '#' expr { $$ = node(ASTBIN, OPDELAY, $1, $3); }
-	| expr '@' expr { $$ = node(ASTBIN, OPAT, $1, $3); }
+	| expr '+' expr { $$ = node(ASTOP, OPADD, $1, $3); }
+	| expr '-' expr { $$ = node(ASTOP, OPSUB, $1, $3); }
+	| expr '*' expr { $$ = node(ASTOP, OPMUL, $1, $3); }
+	| expr '/' expr { $$ = node(ASTOP, OPDIV, $1, $3); }
+	| expr '%' expr { $$ = node(ASTOP, OPMOD, $1, $3); }
+	| expr LOEXP expr { $$ = node(ASTOP, OPEXP, $1, $3); }
+	| expr LOLSL expr { $$ = node(ASTOP, OPLSL, $1, $3); }
+	| expr LOLSR expr { $$ = node(ASTOP, OPLSR, $1, $3); }
+	| expr LOASR expr { $$ = node(ASTOP, OPASR, $1, $3); }
+	| expr LOEQ expr { $$ = node(ASTOP, OPEQ, $1, $3); }
+	| expr LOEQS expr { $$ = node(ASTOP, OPEQS, $1, $3); }
+	| expr LONE expr { $$ = node(ASTOP, OPNE, $1, $3); }
+	| expr LONES expr { $$ = node(ASTOP, OPNES, $1, $3); }
+	| expr '<' expr { $$ = node(ASTOP, OPLT, $1, $3); }
+	| expr LOLE expr { $$ = node(ASTOP, OPLE, $1, $3); }
+	| expr '>' expr { $$ = node(ASTOP, OPGT, $1, $3); }
+	| expr LOGE expr { $$ = node(ASTOP, OPGE, $1, $3); }
+	| expr '&' expr { $$ = node(ASTOP, OPAND, $1, $3); }
+	| expr '|' expr { $$ = node(ASTOP, OPOR, $1, $3); }
+	| expr '^' expr { $$ = node(ASTOP, OPXOR, $1, $3); }
+	| expr LOLOR expr { $$ = node(ASTOP, OPLOR, $1, $3); }
+	| expr LOLAND expr { $$ = node(ASTOP, OPLAND, $1, $3); }
+	| expr '#' expr { $$ = node(ASTOP, OPDELAY, $1, $3); }
+	| expr '@' expr { $$ = node(ASTOP, OPAT, $1, $3); }
 	| expr '?' expr ':' expr { $$ = node(ASTTERN, $1, $3, $5); }
-	| expr '(' cexpr ')' { $$ = node(ASTBIN, OPREPL, $1, $3); }
-	| '+' primary %prec unaryprec { $$ = node(ASTUN, OPUPLUS, $2); }
-	| '-' primary %prec unaryprec { $$ = node(ASTUN, OPUMINUS, $2); }
-	| '~' primary %prec unaryprec { $$ = node(ASTUN, OPNOT, $2); }
-	| '&' primary %prec unaryprec { $$ = node(ASTUN, OPUAND, $2); }
-	| '|' primary %prec unaryprec { $$ = node(ASTUN, OPUOR, $2); }
-	| '^' primary %prec unaryprec { $$ = node(ASTUN, OPUXOR, $2); }
-	| '!' primary %prec unaryprec { $$ = node(ASTUN, OPLNOT, $2); }
+	| expr '(' cexpr ')' { $$ = node(ASTOP, OPREPL, $1, $3); }
+	| '+' primary %prec unaryprec { $$ = node(ASTOP, OPUPLUS, $2, nil); }
+	| '-' primary %prec unaryprec { $$ = node(ASTOP, OPUMINUS, $2, nil); }
+	| '~' primary %prec unaryprec { $$ = node(ASTOP, OPNOT, $2, nil); }
+	| '&' primary %prec unaryprec { $$ = node(ASTOP, OPUAND, $2, nil); }
+	| '|' primary %prec unaryprec { $$ = node(ASTOP, OPUOR, $2, nil); }
+	| '^' primary %prec unaryprec { $$ = node(ASTOP, OPUXOR, $2, nil); }
+	| '!' primary %prec unaryprec { $$ = node(ASTOP, OPLNOT, $2, nil); }
 
 cexpr:
 	expr
-	| cexpr ',' expr { $$ = node(ASTBIN, OPCAT, $1, $3); }
+	| cexpr ',' expr { $$ = node(ASTOP, OPCAT, $1, $3); }
 
 optcexpr:
 	{ $$ = nil; }

@@ -47,7 +47,7 @@ fsmstate(Symbol *s)
 	
 	st = curfsm->st;
 	n = node(ASTSTATE);
-	lastlab = n->sym = decl(st, s, SYMSTATE, n, nil);
+	lastlab = n->sym = decl(st, s, SYMSTATE, 0, n, nil);
 	return n;
 }
 

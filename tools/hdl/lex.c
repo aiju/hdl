@@ -51,6 +51,7 @@ static Keyword optable[] = {
 	"%=", LOMODEQ,
 	"&&", LOLAND,
 	"&=", LOANDEQ,
+	"**", LOEXP,
 	"**=", LOEXPEQ,
 	"*=", LOMULEQ,
 	"++", LOINC,

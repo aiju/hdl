@@ -77,7 +77,7 @@ newscope(int t, Symbol *s)
 		case ASTFSM: symt = SYMFSM; break;
 		default: sysfatal("newscope: %A", t); symt = 0;
 		}
-		s = decl(scope, s, symt, n, nil);
+		s = decl(scope, s, symt, 0, n, nil);
 		s->st = scope;
 		n->sym = s;
 	}
@@ -94,15 +94,25 @@ scopeup(void)
 }
 
 Symbol *
-decl(SymTab *st, Symbol *s, int t, ASTNode *n, Type *type)
+decl(SymTab *st, Symbol *s, int t, int opt, ASTNode *n, Type *ty)
 {
 	if(s->st != st)
 		s = makesym(st, s->name);
 	if(s->t != SYMNONE)
 		error(nil, "'%s' redeclared", s->name);
+	if(ty == nil)
+		ty = type(TYPBIT); 
 	s->t = t;
+	s->opt = opt;
 	s->n = n;
 	s->Line = *curline;
-	s->type = type;
+	s->type = ty;
 	return s;
+}
+
+void
+checksym(Symbol *s)
+{
+	if(s->t == SYMNONE)
+		error(nil, "'%s' undeclared", s->name);
 }
