@@ -197,8 +197,12 @@ typeor(Type *t1, int i1, Type *t2, int i2, Type **tp, int *ip)
 	ia &= ia - 1;
 	ib = io & (OPTIN | OPTOUT | OPTTYPEDEF);
 	ib &= ib - 1;
-	*ip = io;
 	*tp = t1 == nil ? t2 : t1;
+	if((*tp) != nil && (io & OPTSIGNED) != 0){
+		(*tp)->sign = 1;
+		io &= ~OPTSIGNED;
+	}
+	*ip = io;
 	if(t1 != nil && t2 != nil || (i1 & i2) != 0 || ia != 0 || ib != 0)
 		error(nil, "invalid type");
 }
@@ -215,8 +219,11 @@ type(int ty, ...)
 	va_start(va, ty);
 	switch(ty){
 	case TYPENUM:
+		t->elem = va_arg(va, Type *);
+		break;
 	case TYPVECTOR:
 		t->elem = va_arg(va, Type *);
+		t->sz = va_arg(va, ASTNode *);
 		break;
 	case TYPBIT:
 	case TYPCLOCK:
@@ -235,17 +242,29 @@ int
 typefmt(Fmt *f)
 {
 	Type *t;
+	int rc;
+	int indent;
+	Symbol *s;
 	
 	t = va_arg(f->args, Type *);
+	indent = f->prec;
 	if(t == nil) return fmtprint(f, "<nil>");
 	switch(t->t){
-	case TYPBIT: return fmtprint(f, "bit");
+	case TYPBIT: return fmtprint(f, "bit%s", t->sign ? " signed" : "");
 	case TYPCLOCK: return fmtprint(f, "clock");
 	case TYPINT: return fmtprint(f, "integer");
 	case TYPREAL: return fmtprint(f, "real");
 	case TYPSTRING: return fmtprint(f, "string");
-	case TYPVECTOR: return fmtprint(f, "%T []", t->elem);
-	case TYPENUM: return fmtprint(f, "enum { ... }");
+	case TYPVECTOR: return fmtprint(f, "%T [%n]", t->elem, t->sz);
+	case TYPENUM:
+		if((f->flags & FmtSharp) == 0)
+			return fmtprint(f, "enum { ... }");
+		rc = 0;
+		rc += fmtprint(f, "enum {\n");
+		for(s = t->vals; s != nil; s = s->enumnext)
+			rc += fmtprint(f, "%I%s = %n,\n", indent + 1, s->name, s->val);
+		rc += fmtprint(f, "%I}", indent);
+		return rc;
 	default: return fmtprint(f, "??? (%d)", t->t);
 	}
 }
@@ -393,12 +412,13 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		break;
 	case ASTDECL:
 		rc += fmtprint(f, "%I", indent);
+		if(n->sym->t == SYMTYPE) rc += fmtprint(f, "typedef ");
 		if((n->sym->opt & OPTIN) != 0) rc += fmtprint(f, "input ");
 		if((n->sym->opt & OPTOUT) != 0) rc += fmtprint(f, "output ");
-		if((n->sym->opt & OPTTYPEDEF) != 0) rc += fmtprint(f, "typedef ");
 		if((n->sym->opt & OPTWIRE) != 0) rc += fmtprint(f, "wire ");
 		if((n->sym->opt & OPTREG) != 0) rc += fmtprint(f, "reg ");
-		rc += fmtprint(f, "%T %s", n->sym->type, n->sym->name);
+		if((n->sym->opt & OPTSIGNED) != 0) rc += fmtprint(f, "signed ");
+		rc += fmtprint(f, "%#.*T %s", indent, n->sym->type, n->sym->name);
 		if(n->n1 != nil)
 			rc += fmtprint(f, " = %n", n->n1);
 		rc += fmtstrcpy(f, ";\n");

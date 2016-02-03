@@ -10,8 +10,6 @@ r1W12 l.
 ∨	\fBreal\fR
 ∨	\fBstring\fR
 ∨	\fBenum { \fR{\fIenum-val \fB,\fR } [\fIenum-val \fR[\fB , \fR] ] \fB}
-∨	\fBstruct { \fR{\fImember-def\fR} \fB}\fR
-∨	\fIdefined-type\fR
 
 \fItype-def\fR ←	\fBtypedef \fItype \fIsymbol
 
@@ -38,11 +36,12 @@ The \fBstring\fR type defines strings of arbitrary length in UTF-8.
 Struct types
 .TS
 r1W12 l.
+\fItype\fR ←	\fBstruct { \fR{\fImember-def\fR} \fB}\fR
 \fIstruct-def\fR ←	\fBstruct\fR \fIsymbol \fR[\fB(\fIargs\fB)\fR] \fR[\fB{ \fR{\fImember-def\fR} \fB}\fR]
 \fImember-def\fR ←	[\fBinput\fR∨\fBoutput\fR] \fIvar-def\fB \fR[\fIpack-def\fR]\fB;\fR
 ∨	\fIpack-def\fB;\fR
 ∨	\fIstruct \fR[ \fB(\fIargs\fB) \fR] \fB;\fR
-\fIpack-def\fR ←	\fB@@ \fIsymbol \fR[ \fB[ \fR(\fIcomma-expr\fB:\fIcomma-exprw\fR) \fB] \fR]
+\fIpack-def\fR ←	\fB@@ \fIsymbol \fR[ \fB[ \fR(\fIcomma-expr\fB:\fIcomma-expr\fR) \fB] \fR]
 .TE
 A \fBstruct\fR defines a type composed of multiple non-overlapping subfields.
 Each field has a type (which can be either simple or composite) and supports the usual variable options, which may or may not be meaningful depending on the context in which the struct is used.
@@ -105,21 +104,21 @@ r1W12 l.
 
 \fIcomma-expr\fR ←	\fIexpr\fR { \fB, \fIexpr \fR}
 .TE
-.2C
+.bp
 .TS
 allbox ;
-lFCW l.
-#	Delay
-@	Prior value
+lFCW l l.
+#	Delay	R
+@	Prior value	R
 _
-**	Exponentiation
+**	Exponentiation	R
 _
-*	Multiplication
-/	Division
-%	Modulo
+*	Multiplication	R
+/	Division	R
+%	Modulo	R
 _
-+	Addition
--	Subtraction
++	Addition	R
+-	Subtraction	R
 _
 <<	Left shift
 >>	Logical right shift
@@ -127,17 +126,17 @@ _
 _
 &	Bitwise and
 _
-^	Bitwise xor
+^	Bitwise xor	
 _
 |	Bitwise or
 _
-<	Less than
-<=	Less or equal than
->	Greater than
->=	Greater or equal than
+<	Less than	RS
+<=	Less or equal than	RS
+>	Greater than	RS
+>=	Greater or equal than	RS
 _
-==	Equal to
-!=	Not equal to
+==	Equal to	RS
+!=	Not equal to	RS
 ===	Exactly equal to
 !==	Not exactly equal to
 _
@@ -145,24 +144,28 @@ _
 _
 ||	Logical or
 _
-?:	Ternary operator
+?:	Ternary operator	R
 _
 \fIn\fR(\fIm\fR)	Replication
 _
-,	Concatenation
+,	Concatenation	S
 .TE
 .TS
 allbox;
-lFCW l.
-+	Unary plus
--	Unary minus
+lFCW l l.
++	Unary plus	R
+-	Unary minus	R
 ~	Bitwise not
 &	Reduction and
 |	Reduction or
 ^	Reduction xor
 !	Logical not
 .TE
-.1C
+For bitvectors all operations from the operator table are supported.
+.br
+Real numbers support only the operations marked \fBR\fR.
+.br
+Strings support only the operations marked \fBS\fR.
 .bp
 .NH
 Statements
@@ -235,3 +238,11 @@ for signals to be cyclically dependent on each other.
 They can be triggered by both synchronous and asynchronous signals, as well as the \fBdefault\fR keyword which indicates that the block should be executed on startup.
 In an \fBinitial\fR statement values should be assigned to unprimed variables.
 Initial blocks are run before all other blocks and in case of synchronous signals they use the value from the \fIlast\fR cycle.
+.NH
+Future ideas
+.IP
+\(bu
+Doing element-wise arithmetic on arrays
+.IP
+\(bu
+Fixed-point arithmetic

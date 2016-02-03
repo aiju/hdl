@@ -20,18 +20,19 @@
 
 %token LMODULE LINPUT LOUTPUT LBIT LIF LELSE LCLOCK LWHILE LDO LFOR LBREAK LINTEGER
 %token LCONTINUE LGOTO LFSM LDEFAULT LREAL LSTRING LENUM LSTRUCT LWIRE LREG LTYPEDEF
-%token LINITIAL
+%token LINITIAL LSIGNED
 
 %token LOINC LODEC LOEXP LOLSL LOLSR LOASR LOEQ LOEQS LONE LONES LOLE LOGE LOLOR LOLAND LOPACK
 %token LOADDEQ LOSUBEQ LOMULEQ LODIVEQ LOMODEQ LOLSLEQ LOLSREQ LOASREQ LOANDEQ LOOREQ LOXOREQ LOEXPEQ
 %token LOPLCOL LOMICOL
 
-%token <sym> LSYMB
+%token <sym> LSYMB LTYPE
 %token <cons> LNUMB
 
 %type <n> stat stat1 lval expr cexpr optcexpr globdef module stats vars var triggers trigger membs
 %type <n> primary
-%type <ti> type typews typew opttypews typevector
+%type <ti> type type0 type1 typew opttypews typevector
+%type <sym> symb
 
 %left ','
 %left '('
@@ -61,28 +62,33 @@ program:
 globdef: module
 	| type ';' { $$ = nil; }
 
-module: LMODULE LSYMB '(' { $<n>$ = newscope(ASTMODULE, $2); } args ')' '{' stats '}' { $$ = $<n>4; $$->n1 = $stats; }
+module: LMODULE symb '(' { $<n>$ = newscope(ASTMODULE, $2); } args ')' '{' stats '}' { $$ = $<n>4; $$->n1 = $stats; }
 
 optargs: | '(' args ')';
 args: | args1 | args1 ','
 args1: arg | args1 ',' arg
 
 arg:
-	type { curtype = $1.t; curopt = $1.i; } LSYMB
-	| LSYMB
+	type { curtype = $1.t; curopt = $1.i; } symb
+	| symb
 	
 type: typevector
 	| opttypews LENUM '{' { enumstart($1.t); } enumvals '}' { $$.t = enumend(); $$.i = $1.i; }
 	| opttypews LSTRUCT '{' memberdefs '}'
-	| opttypews LSTRUCT LSYMB optargs '{' memberdefs '}'
+	| opttypews LSTRUCT symb optargs '{' memberdefs '}'
 
 typevector:
-	typews
+	type1 { if($1.t == nil) $1.t = type(TYPBIT); typeor($1.t, $1.i, nil, 0, &$$.t, &$$.i); }
 	| typevector '[' cexpr ']' { $$.t = type(TYPVECTOR, $1.t, $3); $$.i = $1.i; }
 
-opttypews: { $$.t = nil; $$.i = 0; } | typews;
-typews: typew
-	| typews typew { typeor($1.t, $1.i, $2.t, $2.i, &$$.t, &$$.i); };
+opttypews: { $$.t = nil; $$.i = 0; } | type1
+
+type0: typew | type0 typew { typeor($1.t, $1.i, $2.t, $2.i, &$$.t, &$$.i); }
+
+type1: type0
+	| type0 LTYPE { typeor($1.t, $1.i, $2->type, 0, &$$.t, &$$.i); }
+	| type0 LTYPE type0 { typeor($1.t, $1.i, $2->type, 0, &$$.t, &$$.i); typeor($$.t, $$.i, $3.t, $3.i, &$$.t, &$$.i); }
+	| LTYPE { $$.t = $1->type; }
 
 typew:
 	LBIT { $$.t = type(TYPBIT); $$.i = 0; }
@@ -95,13 +101,14 @@ typew:
 	| LINPUT { $$.t = nil; $$.i = OPTIN; }
 	| LOUTPUT { $$.t = nil; $$.i = OPTOUT; }
 	| LTYPEDEF { $$.t = nil; $$.i = OPTTYPEDEF; }
+	| LSIGNED { $$.t = nil; $$.i = OPTSIGNED; }
 
 enumvals: | enumvals1 | enumvals1 ','
 enumvals1: enumval | enumvals1 ',' enumval
 
 enumval:
-	LSYMB { enumdecl($1, nil); }
-	| LSYMB '=' expr { enumdecl($1, $3); }
+	symb { enumdecl($1, nil); }
+	| symb '=' expr { enumdecl($1, $3); }
 
 memberdefs:
 	memberdef
@@ -114,8 +121,8 @@ memberdef:
 
 optpackdef: | packdef
 packdef:
-	LOPACK LSYMB
-	| LOPACK LSYMB '[' cexpr ':' cexpr ']'
+	LOPACK symb
+	| LOPACK symb '[' cexpr ':' cexpr ']'
 
 stats: { $$ = nil; } | stats stat { $$ = nodecat($1, $2); }
 
@@ -126,18 +133,18 @@ stat:
 	| LDO stat LWHILE '(' cexpr ')' ';' { $$ = node(ASTDOWHILE, $5, $2); }
 	| LFOR '(' stat1 ';' optcexpr ';' stat1 ')' stat { $$ = node(ASTFOR, $3, $5, $7, $9); }
 	| LBREAK ';' { $$ = node(ASTBREAK, nil); }
-	| LBREAK LSYMB ';' { $$ = node(ASTBREAK, $2); }
+	| LBREAK symb ';' { $$ = node(ASTBREAK, $2); }
 	| LCONTINUE ';' { $$ = node(ASTCONTINUE, nil); }
-	| LCONTINUE LSYMB ';' { $$ = node(ASTCONTINUE, $2); }
+	| LCONTINUE symb ';' { $$ = node(ASTCONTINUE, $2); }
 	| LGOTO ';' { $$ = node(ASTGOTO, nil); }
-	| LGOTO LSYMB ';' { $$ = node(ASTGOTO, $2); }
+	| LGOTO symb ';' { $$ = node(ASTGOTO, $2); }
 	| ':' { $$ = fsmstate(nil); }
-	| LSYMB ':' { $$ = fsmstate($1); }
+	| symb ':' { $$ = fsmstate($1); }
 	| LDEFAULT ':' { $$ = node(ASTDEFAULT, nil); }
 	| type { curtype = $1.t; curopt = $1.i; } vars ';' { $$ = $3; }
 	| '{' { $<n>$ = newscope(ASTBLOCK, nil); } stats { scopeup(); } '}' { $$ = $<n>2; $$->n1 = $3; }
 	| LSYMB '{' { $<n>$ = newscope(ASTBLOCK, $1); } stats { scopeup(); } '}' { $$ = $<n>3; $$->n1 = $stats; }
-	| LFSM LSYMB '{' { $<n>$ = newscope(ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $$ = $<n>4; $$->n1 = $stats; }
+	| LFSM symb '{' { $<n>$ = newscope(ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $$ = $<n>4; $$->n1 = $stats; }
 	| LINITIAL '(' triggers ecomma ')' stat { $$ = node(ASTINITIAL, $3, $6); }
 	| stat1 ';'
 	| globdef
@@ -169,8 +176,8 @@ vars:
 	| vars ',' var { $$ = nodecat($1, $3); }
 
 var:
-	LSYMB { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, curopt, nil, curtype), nil); }
-	| LSYMB '=' cexpr { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, curopt, nil, curtype), $3); }
+	symb { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, curopt, nil, curtype), nil); }
+	| symb '=' cexpr { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, curopt, nil, curtype), $3); }
 
 lval:
 	membs
@@ -233,6 +240,7 @@ primary:
 	| lval
 	| '(' cexpr ')' { $$ = $2; }
 
+symb: LSYMB | LTYPE
 ecomma: | ','
 
 %%

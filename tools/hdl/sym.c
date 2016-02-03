@@ -100,11 +100,15 @@ decl(SymTab *st, Symbol *s, int t, int opt, ASTNode *n, Type *ty)
 		s = makesym(st, s->name);
 	if(s->t != SYMNONE)
 		error(nil, "'%s' redeclared", s->name);
-	if(ty == nil)
-		ty = type(TYPBIT); 
+	if((opt & OPTTYPEDEF) != 0){
+		t = SYMTYPE;
+		opt &= ~OPTTYPEDEF;
+	}
+	if(t == SYMVAR && ty == nil)
+		error(nil, "'%s' nil type", s->name);
 	s->t = t;
 	s->opt = opt;
-	s->n = n;
+	s->val = n;
 	s->Line = *curline;
 	s->type = ty;
 	return s;

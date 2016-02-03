@@ -20,6 +20,8 @@ struct Type {
 	int t;
 	Symbol *vals;
 	Type *elem;
+	ASTNode *sz;
+	int sign;
 };
 
 enum {
@@ -36,7 +38,7 @@ enum {
 struct Symbol {
 	char *name;
 	int t, opt;
-	ASTNode *n;
+	ASTNode *val;
 	Type *type;
 	SymTab *st;
 	Symbol *next, *enumnext;
@@ -138,6 +140,7 @@ enum {
 	SYMMODULE,
 	SYMSTATE,
 	SYMFSM,
+	SYMTYPE,
 };
 
 enum {
@@ -146,6 +149,7 @@ enum {
 	OPTIN = 4,
 	OPTOUT = 8,
 	OPTTYPEDEF = 16,
+	OPTSIGNED = 32,
 };
 
 extern Line nilline, *curline;

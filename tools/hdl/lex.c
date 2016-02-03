@@ -39,6 +39,7 @@ static Keyword kwtable[] = {
 	"module", LMODULE,
 	"output", LOUTPUT,
 	"reg", LREG,
+	"signed", LSIGNED,
 	"struct", LSTRUCT,
 	"typedef", LTYPEDEF,
 	"while", LWHILE,
@@ -163,7 +164,7 @@ loop:
 				if(strcmp(kw->name, buf) == 0)
 					return kw->tok;
 		yylval.sym = getsym(scope, 1, buf);
-		return LSYMB;
+		return yylval.sym->t == SYMTYPE ? LTYPE : LSYMB;
 	}
 	if(kw = oplook[c], kw != nil){
 		buf[0] = c;
