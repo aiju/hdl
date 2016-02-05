@@ -57,7 +57,7 @@
 %%
 
 program:
-	| program globdef { astprint($2); }
+	| program globdef { typecheck($2); astprint($2); }
 
 globdef: module
 	| type ';' { $$ = nil; }
@@ -78,7 +78,7 @@ type: typevector
 	| opttypews LSTRUCT symb optargs '{' memberdefs '}'
 
 typevector:
-	type1 { if($1.t == nil) $1.t = type(TYPBIT); typeor($1.t, $1.i, nil, 0, &$$.t, &$$.i); }
+	type1 { typefinal($1.t, $1.i, &$$.t, &$$.i); }
 	| typevector '[' cexpr ']' { $$.t = type(TYPVECTOR, $1.t, $3); $$.i = $1.i; }
 
 opttypews: { $$.t = nil; $$.i = 0; } | type1
@@ -91,8 +91,8 @@ type1: type0
 	| LTYPE { $$.t = $1->type; }
 
 typew:
-	LBIT { $$.t = type(TYPBIT); $$.i = 0; }
-	| LCLOCK { $$.t = type(TYPCLOCK); $$.i = 0; }
+	LBIT { $$.t = 0; $$.i = OPTBIT; }
+	| LCLOCK { $$.t = 0; $$.i = OPTCLOCK; }
 	| LINTEGER { $$.t = type(TYPINT); $$.i = 0; }
 	| LREAL { $$.t = type(TYPREAL); $$.i = 0; }
 	| LSTRING { $$.t = type(TYPSTRING); $$.i = 0; }

@@ -2,6 +2,8 @@
 Types and Variables
 .NH 2
 Simple types
+.LP
+[TODO: Update grammar to match code]
 .TS
 r1W12 l.
 \fItype\fR ←	\fBbit\fR [\fBsigned\fR] {\fB[ \fIcomma-expr \fB]\fR}
@@ -140,15 +142,15 @@ _
 ===	Exactly equal to
 !==	Not exactly equal to
 _
-&&	Logical and
+&&	Logical and	b
 _
-||	Logical or
+||	Logical or	b
 _
 ?:	Ternary operator	R
 _
-\fIn\fR(\fIm\fR)	Replication
+\fIn\fR(\fIm\fR)	Replication	Si
 _
-,	Concatenation	S
+,	Concatenation	Si
 .TE
 .TS
 allbox;
@@ -159,13 +161,17 @@ lFCW l l.
 &	Reduction and
 |	Reduction or
 ^	Reduction xor
-!	Logical not
+!	Logical not	b
 .TE
 For bitvectors all operations from the operator table are supported.
 .br
 Real numbers support only the operations marked \fBR\fR.
 .br
 Strings support only the operations marked \fBS\fR.
+.br
+The operations marked \fBb\fR support only the type \fBbit\fR.
+.br
+The operations marked \fBi\fR do not support the type \fBinteger\fR or any other unsized type.
 .bp
 .NH
 Statements

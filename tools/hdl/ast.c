@@ -44,43 +44,51 @@ enum {
 	OPDUNARY = 1,
 	OPDSPECIAL = 2,
 	OPDRIGHT = 4,
+	OPDREAL = 8,
+	OPDSTRING = 16,
+	OPDBITONLY = 32,
+	OPDBITOUT = 64,
+	OPDWMAX = 128,
+	OPDWADD = 256,
+	OPDWINF = 512,
 };
 
 static OpData opdata[] = {
-	[OPNOP] {"nop", OPDUNARY | OPDSPECIAL, 15},
-	[OPADD] {"+", 0, 12},
-	[OPSUB] {"-", 0, 12},
-	[OPMUL] {"*", 0, 13},
-	[OPDIV] {"/", 0, 13},
-	[OPMOD] {"%", 0, 13},
-	[OPLSL] {"<<", 0, 11},
-	[OPLSR] {">>", 0, 11},
-	[OPASR] {">>>", 0, 11},
-	[OPAND] {"&", 0, 10},
-	[OPOR] {"|", 0, 8},
-	[OPXOR] {"^", 0, 9},
-	[OPEXP] {"**", OPDRIGHT, 14},
-	[OPEQ] {"==", 0, 6},
-	[OPEQS] {"===", 0, 6},
-	[OPNE] {"!=", 0, 6},
-	[OPNES] {"!==", 0, 6},
-	[OPLT] {"<", 0, 7},
-	[OPLE] {"<=", 0, 7},
-	[OPGT] {">", 0, 7},
-	[OPGE] {">=", 0, 7},
-	[OPLOR] {"||", 0, 4},
-	[OPLAND] {"&&", 0, 5},
-	[OPAT] {"@", 0, 15},
-	[OPDELAY] {"#", 0, 15},
-	[OPREPL] {"repl", OPDSPECIAL, 2},
-	[OPCAT] {",", 0, 1},
-	[OPUPLUS] {"+", OPDUNARY, 15},
-	[OPUMINUS] {"-", OPDUNARY, 15},
+	[OPNOP] {"nop", OPDUNARY|OPDSPECIAL, 15},
+	[OPADD] {"+", OPDREAL|OPDWINF, 12},
+	[OPSUB] {"-", OPDREAL|OPDWINF, 12},
+	[OPMUL] {"*", OPDREAL|OPDWINF, 13},
+	[OPDIV] {"/", OPDREAL|OPDWINF, 13},
+	[OPMOD] {"%", OPDREAL|OPDWINF, 13},
+	[OPLSL] {"<<", OPDWINF, 11},
+	[OPLSR] {">>", OPDWINF, 11},
+	[OPASR] {">>>", OPDWINF, 11},
+	[OPAND] {"&", OPDWMAX, 10},
+	[OPOR] {"|", OPDWMAX, 8},
+	[OPXOR] {"^", OPDWMAX, 9},
+	[OPEXP] {"**", OPDRIGHT|OPDWINF, 14},
+	[OPEQ] {"==", OPDREAL|OPDBITOUT, 6},
+	[OPEQS] {"===", 0|OPDBITOUT, 6},
+	[OPNE] {"!=", OPDREAL|OPDBITOUT, 6},
+	[OPNES] {"!==", 0|OPDBITOUT, 6},
+	[OPLT] {"<", OPDREAL|OPDBITOUT, 7},
+	[OPLE] {"<=", OPDREAL|OPDBITOUT, 7},
+	[OPGT] {">", OPDREAL|OPDBITOUT, 7},
+	[OPGE] {">=", OPDREAL|OPDBITOUT, 7},
+	[OPLOR] {"||", OPDBITONLY|OPDBITOUT, 4},
+	[OPLAND] {"&&", OPDBITONLY|OPDBITOUT, 5},
+	[OPAT] {"@", OPDSPECIAL, 15},
+	[OPDELAY] {"#", OPDSPECIAL, 15},
+	[OPREPL] {"repl", OPDSPECIAL|OPDSTRING, 2},
+	[OPCAT] {",", OPDSTRING|OPDWADD, 1},
+	[OPUPLUS] {"+", OPDUNARY|OPDWINF, 15},
+	[OPUMINUS] {"-", OPDUNARY|OPDWINF, 15},
 	[OPNOT] {"~", OPDUNARY, 15},
-	[OPLNOT] {"!", OPDUNARY, 15},
-	[OPUAND] {"&", OPDUNARY, 15},
-	[OPUOR] {"|", OPDUNARY, 15},
-	[OPUXOR] {"^", OPDUNARY, 15},
+	[OPLNOT] {"!", OPDUNARY|OPDBITONLY, 15},
+	[OPUAND] {"&", OPDUNARY|OPDBITOUT, 15},
+	[OPUOR] {"|", OPDUNARY|OPDBITOUT, 15},
+	[OPUXOR] {"^", OPDUNARY|OPDBITOUT, 15},
+	[OPMAX] {"max", OPDWMAX, 3},
 };
 
 static int
@@ -187,6 +195,26 @@ nodecat(ASTNode *a, ASTNode *b)
 	return a;
 }
 
+ASTNode *
+nodemax(ASTNode *a, ASTNode *b)
+{
+	if(a == nil) return b;
+	if(b == nil) return a;
+	if(a == b) return a;
+	if(a->t == ASTCINT && b->t == ASTCINT)
+		return node(ASTCINT, a->i >= b->i ? a->i : b->i);
+	return node(ASTOP, OPMAX, a, b);
+}
+
+ASTNode *
+nodewidth(ASTNode *a, ASTNode *b)
+{
+	if(a == nil || b == nil) return nil;
+	if(a->t == ASTCINT && b->t == ASTCINT && a->i - b->i + 1 >= 0)
+		return node(ASTCINT, a->i - b->i + 1);
+	return node(ASTOP, OPADD, node(ASTOP, OPSUB, a, b), node(ASTCINT, 1));
+}
+
 void
 typeor(Type *t1, int i1, Type *t2, int i2, Type **tp, int *ip)
 {
@@ -198,19 +226,26 @@ typeor(Type *t1, int i1, Type *t2, int i2, Type **tp, int *ip)
 	ib = io & (OPTIN | OPTOUT | OPTTYPEDEF);
 	ib &= ib - 1;
 	*tp = t1 == nil ? t2 : t1;
-	if((*tp) != nil && (io & OPTSIGNED) != 0){
-		(*tp)->sign = 1;
-		io &= ~OPTSIGNED;
-	}
 	*ip = io;
 	if(t1 != nil && t2 != nil || (i1 & i2) != 0 || ia != 0 || ib != 0)
 		error(nil, "invalid type");
 }
 
+void
+typefinal(Type *t, int i, Type **tp, int *ip)
+{
+	if(t != nil && (i & (OPTSIGNED | OPTBIT | OPTCLOCK)) != 0)
+		error(nil, "invalid type");
+	if(t == nil)
+		t = type(TYPBIT, (i & OPTSIGNED) != 0);
+	*tp = t;
+	*ip = i & ~(OPTSIGNED | OPTBIT);
+}
+
 Type *
 type(int ty, ...)
 {
-	Type *t;
+	Type *t, *e;
 	va_list va;
 	
 	t = emalloc(sizeof(Type));
@@ -222,11 +257,25 @@ type(int ty, ...)
 		t->elem = va_arg(va, Type *);
 		break;
 	case TYPVECTOR:
-		t->elem = va_arg(va, Type *);
+		e = va_arg(va, Type *);
 		t->sz = va_arg(va, ASTNode *);
+		if(e->t == TYPBIT){
+			t->t = TYPBITV;
+			t->sign = e->sign;
+			break;
+		}
+		t->elem = e;
 		break;
 	case TYPBIT:
-	case TYPCLOCK:
+		t->sz = node(ASTCINT, 1);
+		t->sign = va_arg(va, int);
+		assert(t->sign == 0 || t->sign == 1);
+		break;
+	case TYPBITV:
+		t->sz = va_arg(va, ASTNode *);
+		t->sign = va_arg(va, int);
+		assert(t->sign == 0 || t->sign == 1);
+		break;		
 	case TYPINT:
 	case TYPREAL:
 	case TYPSTRING:
@@ -251,7 +300,7 @@ typefmt(Fmt *f)
 	if(t == nil) return fmtprint(f, "<nil>");
 	switch(t->t){
 	case TYPBIT: return fmtprint(f, "bit%s", t->sign ? " signed" : "");
-	case TYPCLOCK: return fmtprint(f, "clock");
+	case TYPBITV: return fmtprint(f, "bit%s [%n]", t->sign ? " signed" : "", t->sz);
 	case TYPINT: return fmtprint(f, "integer");
 	case TYPREAL: return fmtprint(f, "real");
 	case TYPSTRING: return fmtprint(f, "string");
@@ -529,3 +578,240 @@ astinit(void)
 	fmtinstall('T', typefmt);
 	fmtinstall('n', exprfmt);
 }
+
+static void
+condcheck(ASTNode *n)
+{
+	if(n->type == nil)
+		return;
+	if(n->type->t != TYPBIT)
+		error(n, "%T invalid as condition", n->type);
+}
+
+ASTNode *
+implicitcast(ASTNode *n, Type *t)
+{
+	if(n == nil || n->type == nil || t == nil)
+		return n;
+	switch(t->t){
+	case TYPBITV:
+	case TYPINT:
+	case TYPBIT:
+	case TYPREAL:
+		if(n->type->t == TYPBITV || n->type->t == TYPBIT || n->type->t == TYPREAL || n->type->t == TYPINT)
+			return n;
+		break;
+	case TYPSTRING:
+		if(n->type->t == TYPSTRING)
+			return n;
+		break;
+	default:
+		error(n, "implicitcast: unknown %T", t);
+		return n;
+	}
+	error(n, "can't cast '%T' to '%T'", n->type, t);
+	return n;
+}
+
+Type *
+typemax(Type *a, Type *b)
+{
+	if(a == nil) return b;
+	if(b == nil) return a;
+	if(a == b) return a;
+	if(a->t == TYPSTRING || b->t == TYPSTRING)
+		return type(TYPSTRING);
+	if(a->t == TYPREAL || b->t == TYPREAL)
+		return type(TYPREAL);
+	if(a->t == TYPINT && b->t == TYPINT)
+		return type(TYPINT);
+	if((a->t == TYPINT || a->t == TYPBITV && a->sz == nil) ||
+		(b->t == TYPINT || b->t == TYPBITV && b->sz == nil))
+		return type(TYPBITV, nil, a->sign || b->sign);
+	if(a->t != TYPBIT && a->t != TYPBITV || b->t != TYPBIT && b->t != TYPBITV){
+		error(nil, "typemax: (%T,%T) not implemented", a, b);
+		return nil;
+	}
+	return type(TYPBITV, nodemax(a->sz, b->sz), a->sign || b->sign);
+}
+
+#define insist(x) if(x){}else{error(n, "x"); return;}
+void
+typecheck(ASTNode *n)
+{
+	ASTNode *m;
+	OpData *d;
+	int t1, t2;
+	int sgn;
+
+	if(n == nil)
+		return;
+	
+	switch(n->t){
+	case ASTMODULE:
+	case ASTBLOCK:
+		for(m = n->n1; m != nil; m = m->next)
+			typecheck(m);
+		break;
+	case ASTIF:
+		typecheck(n->n1);
+		condcheck(n->n1);
+		typecheck(n->n2);
+		typecheck(n->n3);
+		break;
+	case ASTWHILE:
+	case ASTDOWHILE:
+		typecheck(n->n1);
+		condcheck(n->n1);
+		typecheck(n->n2);
+		break;
+	case ASTFOR:
+		typecheck(n->n1);
+		typecheck(n->n2);
+		condcheck(n->n2);
+		typecheck(n->n3);
+		typecheck(n->n4);
+		break;
+	case ASTASS:
+		typecheck(n->n1);
+		insist(n->n1 != nil);
+		typecheck(n->n2);
+		insist(n->op == OPNOP);
+		n->n2 = implicitcast(n->n2, n->n1->type);
+		break;
+	case ASTCINT:
+		n->type = type(TYPINT);
+		break;
+	case ASTCONST:
+		if(n->cons.sz == 0)
+			if(mpcmp(n->cons.x, mpzero) == 0)
+				n->type = type(TYPINT);
+			else
+				n->type = type(TYPBITV, nil, n->cons.sign);
+		else
+			n->type = type(TYPBITV, node(ASTCINT, n->cons.sz), n->cons.sign);
+		break;
+	case ASTDECL:
+		break;
+	case ASTSYMB:
+		insist(n->sym != nil);
+		n->type = n->sym->type;
+		break;
+	case ASTPRIME:
+		typecheck(n->n1);
+		insist(n->n1 != nil);
+		n->type = n->n1->type;
+		break;
+	case ASTOP:
+		d = getopdata(n->op);
+		typecheck(n->n1);
+		typecheck(n->n2);
+		insist(d != nil);
+		t1 = n->n1 != nil && n->n1->type != nil ? n->n1->type->t : -1;
+		t2 = n->n2 != nil && n->n2->type != nil ? n->n2->type->t : -1;
+		if((d->flags & OPDBITONLY) != 0){
+			if(t1 >= 0 && t1 != TYPBIT) goto t1fail;
+			if(t2 >= 0 && t2 != TYPBIT) goto t2fail;
+			n->type = type(TYPBIT);
+			return;
+		}
+		if((d->flags & OPDSPECIAL) != 0){
+			switch(n->op){
+			default:
+				error(n, "typecheck: unknown %s", d->name);
+			}
+			return;
+		}
+		if((t1 == TYPSTRING || t2 == TYPSTRING) && (d->flags & OPDSTRING) != 0){
+			if(t1 >= 0 && t1 != TYPSTRING) goto t1fail;
+			if(t2 >= 0 && t2 != TYPSTRING) goto t2fail;
+			n->type = (d->flags & OPDBITOUT) != 0 ? type(TYPBIT) : type(TYPSTRING);
+			return;
+		}
+		if((t1 == TYPREAL || t2 == TYPREAL) && (d->flags & OPDREAL) != 0){
+			n->n1 = implicitcast(n->n1, type(TYPREAL));
+			n->n2 = implicitcast(n->n2, type(TYPREAL));
+			n->type = (d->flags & OPDBITOUT) != 0 ? type(TYPBIT) : type(TYPREAL);
+			return;
+		}
+		sgn = t1 >= 0 && n->n1->type->sign || t2 >= 0 && n->n2->type->sign;
+		if(t1 >= 0 && t1 != TYPINT && t1 != TYPBIT && t1 != TYPBITV) goto t1fail;
+		if(t2 >= 0 && t2 != TYPINT && t2 != TYPBIT && t2 != TYPBITV) goto t2fail;
+		if((d->flags & OPDBITOUT) != 0)
+			n->type = type(TYPBIT);
+		else if((d->flags & OPDWINF) != 0){
+			if(t1 == TYPINT && t2 == TYPINT)
+				n->type = type(TYPINT);
+			else
+				n->type = type(TYPBITV, nil, sgn);		
+		}else if((d->flags & OPDWMAX) != 0)
+			n->type = typemax(n->n1->type, n->n2->type);
+		else if((d->flags & OPDUNARY) != 0)
+			n->type = n->n1->type;
+		else
+			error(n->n1, "don't know how to determine output type of %s", d->name);
+		break;
+	t1fail:
+		error(n->n1, "%T invalid in operation %s", n->n1->type, d->name);
+		n->type = nil;
+		break;
+	t2fail:
+		error(n->n2, "%T invalid in operation %s", n->n2->type, d->name);
+		n->type = nil;
+		break;
+	case ASTTERN:
+		typecheck(n->n1);
+		condcheck(n->n1);
+		typecheck(n->n2);
+		typecheck(n->n3);
+		n->type = typemax(n->n2->type, n->n3->type);
+		n->n2 = implicitcast(n->n2, n->type);
+		n->n3 = implicitcast(n->n3, n->type);
+		break;
+	case ASTIDX:
+		typecheck(n->n1);
+		typecheck(n->n2);
+		typecheck(n->n3);
+		if(n->n1 == nil || n->n1->type == nil){
+			n->type = nil;
+			return;
+		}
+		insist(n->op >= 0 && n->op <= 3);
+		switch(n->type->t){
+		case TYPSTRING:
+			if(n->op == 0)
+				n->type = type(TYPINT);
+			else
+				n->type = type(TYPSTRING);
+			break;
+		case TYPBITV:
+			switch(n->op){
+			case 0: n->type = type(TYPBIT, n->n1->type->sign); break;
+			case 1: n->type = type(TYPBITV, nodewidth(n->n2, n->n3), n->n1->type->sign); break;
+			case 2: case 3: n->type = type(TYPBITV, n->n3, n->n1->type->sign); break;
+			}
+			break;
+		case TYPVECTOR:
+			switch(n->op){
+			case 0: n->type = n->type->elem;
+			case 1: n->type = type(TYPVECTOR, n->type->elem, nodewidth(n->n2, n->n3)); break;
+			case 2: case 3: n->type = type(TYPBITV, n->type->elem, n->n3); break;
+			}
+			break;
+		default: error(n->n1, "%T invalid in indexing", n->n1->t);
+		}
+		break;
+	case ASTBREAK:
+	case ASTCONTINUE:
+	case ASTDEFAULT:
+	case ASTFSM:
+	case ASTGOTO:
+	case ASTINITIAL:
+	case ASTMEMB:
+	case ASTSTATE:
+	default:
+		error(n, "typecheck: unknown %A", n->t);
+	}
+}
+
+

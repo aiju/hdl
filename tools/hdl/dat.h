@@ -27,7 +27,7 @@ struct Type {
 enum {
 	TYPINVAL,
 	TYPBIT,
-	TYPCLOCK,
+	TYPBITV,
 	TYPINT,
 	TYPREAL,
 	TYPSTRING,
@@ -64,6 +64,7 @@ struct ASTNode {
 		Const cons;
 		int i;
 	};
+	Type *type;
 	ASTNode *next, **last;
 	Line;
 };
@@ -130,6 +131,7 @@ enum {
 	OPUAND,
 	OPUOR,
 	OPUXOR,
+	OPMAX,
 };
 
 enum {
@@ -150,6 +152,8 @@ enum {
 	OPTOUT = 8,
 	OPTTYPEDEF = 16,
 	OPTSIGNED = 32,
+	OPTBIT = 64,
+	OPTCLOCK = 128,
 };
 
 extern Line nilline, *curline;

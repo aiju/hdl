@@ -19,3 +19,5 @@ void enumdecl(Symbol *, ASTNode *);
 void checksym(Symbol *);
 void astprint(ASTNode *);
 void consparse(Const *, char *);
+void typecheck(ASTNode *);
+void typefinal(Type *, int, Type **, int *);

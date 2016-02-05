@@ -40,6 +40,7 @@ static Keyword kwtable[] = {
 	"output", LOUTPUT,
 	"reg", LREG,
 	"signed", LSIGNED,
+	"string", LSTRING,
 	"struct", LSTRUCT,
 	"typedef", LTYPEDEF,
 	"while", LWHILE,

@@ -169,7 +169,6 @@ nope:
 	error(nil, "'%c' in %s number", s[i], b == 8 ? "octal": b == 16 ? "hexadecimal" : b == 2 ? "binary" : "decimal");
 }
 
-
 void
 foldinit(void)
 {
