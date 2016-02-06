@@ -5,6 +5,8 @@
 #include "dat.h"
 #include "fns.h"
 
+int nerror;
+
 void *
 emalloc(int n)
 {
@@ -30,6 +32,17 @@ error(Line *l, char *fmt, ...)
 	snprint(buf, sizeof(buf), "%s:%d %s\n", l->filen, l->lineno, fmt);
 	vfprint(2, buf, va);
 	va_end(va);
+	nerror++;
+}
+
+void
+compile(ASTNode *n)
+{
+	typecheck(n);
+	if(nerror != 0) return;
+	n = descend(n, cfold);
+	if(nerror != 0) return;
+	astprint(n);
 }
 
 static void

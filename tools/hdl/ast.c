@@ -32,27 +32,6 @@ static char *astname[] = {
 	[ASTCINT] "ASTCINT",
 };
 
-typedef struct OpData OpData;
-
-struct OpData {
-	char *name;
-	int flags;
-	int prec;
-};
-
-enum {
-	OPDUNARY = 1,
-	OPDSPECIAL = 2,
-	OPDRIGHT = 4,
-	OPDREAL = 8,
-	OPDSTRING = 16,
-	OPDBITONLY = 32,
-	OPDBITOUT = 64,
-	OPDWMAX = 128,
-	OPDWADD = 256,
-	OPDWINF = 512,
-};
-
 static OpData opdata[] = {
 	[OPNOP] {"nop", OPDUNARY|OPDSPECIAL, 15},
 	[OPADD] {"+", OPDREAL|OPDWINF, 12},
@@ -186,6 +165,75 @@ node(int t, ...)
 }
 
 ASTNode *
+nodedup(ASTNode *n)
+{
+	ASTNode *m;
+
+	m = emalloc(sizeof(ASTNode));
+	memcpy(m, n, sizeof(ASTNode));
+	m->next = nil;
+	m->last = &m->next;
+	return m;
+}
+
+int
+ptreq(ASTNode *a, ASTNode *b, void *)
+{
+	return a == b;
+}
+
+int
+nodeeq(ASTNode *a, ASTNode *b, void *eqp)
+{
+	int (*eq)(ASTNode *, ASTNode *, void *);
+	ASTNode *m, *n;
+	
+	eq = (int(*)(ASTNode *, ASTNode *, void *)) eqp;
+	if(a == nil) return b == nil;
+	if(b == nil) return a == nil;
+	if(a == b) return 1;
+	if(a->t != b->t) return 0;
+	switch(a->t){
+	case ASTINVAL:
+	case ASTASS:
+	case ASTBREAK:
+	case ASTCONTINUE:
+	case ASTDECL:
+	case ASTDEFAULT:
+	case ASTDOWHILE:
+	case ASTFOR:
+	case ASTFSM:
+	case ASTGOTO:
+	case ASTIDX:
+	case ASTIF:
+	case ASTINITIAL:
+	case ASTMEMB:
+	case ASTOP:
+	case ASTPRIME:
+	case ASTSTATE:
+	case ASTSYMB:
+	case ASTTERN:
+	case ASTWHILE:
+		return a->op == b->op && eq(a->n1, b->n1, eq) && eq(a->n2, b->n2, eq) && eq(a->n3, b->n3, eq) && eq(a->n4, b->n4, eq) && a->sym == b->sym && a->st == b->st;
+	case ASTMODULE:
+	case ASTBLOCK:
+		if(a->sym != b->sym)
+			return 0;
+		for(m = a->n1, n = b->n1; m != n && m != nil && n != nil; m = m->next, n = n->next)
+			if(!eq(m, n, eq))
+				return 0;
+		return m == n;
+	case ASTCINT:
+		return a->i == b->i;
+	case ASTCONST:
+		return consteq(&a->cons, &b->cons);
+	default:
+		error(a, "nodeeq: unknown %A", a->t);
+		return 0;
+	}
+}
+
+ASTNode *
 nodecat(ASTNode *a, ASTNode *b)
 {
 	if(a == nil) return b;
@@ -213,6 +261,16 @@ nodewidth(ASTNode *a, ASTNode *b)
 	if(a->t == ASTCINT && b->t == ASTCINT && a->i - b->i + 1 >= 0)
 		return node(ASTCINT, a->i - b->i + 1);
 	return node(ASTOP, OPADD, node(ASTOP, OPSUB, a, b), node(ASTCINT, 1));
+}
+
+ASTNode *
+nodeaddi(ASTNode *a, int i)
+{
+	if(a == nil) return node(ASTCINT, i);
+	if(a->t == ASTCINT && (i >= 0 ? a->i + i >= a->i : a->i + i < a->i))
+		return node(ASTCINT, a->i + i);
+	return node(ASTOP, OPADD, a, node(ASTCINT, i));
+
 }
 
 void
@@ -318,6 +376,32 @@ typefmt(Fmt *f)
 	}
 }
 
+Type *
+typefold(Type *t)
+{
+	ASTNode *s;
+
+	switch(t->t){
+	case TYPBIT:
+	case TYPINT:
+	case TYPREAL:
+	case TYPSTRING:
+	case TYPENUM:
+		return t;
+	case TYPBITV:
+		s = descend(t->sz, cfold);
+		if(s == t->sz) return t;
+		return type(TYPBITV, s, t->sign);
+	case TYPVECTOR:
+		s = descend(t->sz, cfold);
+		if(s == t->sz) return t;
+		return type(TYPVECTOR, s, t->sign);
+	default:
+		warn(nil, "typefold: unknown %T", t);
+		return t;
+	}
+}
+
 static Type *enumt;
 static ASTNode *enumlast;
 static Symbol **enumlastp;
@@ -337,7 +421,7 @@ enumdecl(Symbol *s, ASTNode *n)
 	if(n != nil)
 		enumlast = n;
 	else if(enumlast != nil)
-		enumlast = node(ASTOP, OPADD, enumlast, node(ASTCINT, 1));
+		enumlast = nodeaddi(enumlast, 1);
 	else
 		enumlast = node(ASTCINT, 0);
 	s = decl(scope, s, SYMCONST, 0, enumlast, enumt);
@@ -355,7 +439,7 @@ enumend(void)
 	return t;
 }
 
-static OpData *
+OpData *
 getopdata(int op)
 {
 	if(op >= nelem(opdata) || opdata[op].name == nil){
@@ -591,18 +675,22 @@ condcheck(ASTNode *n)
 ASTNode *
 implicitcast(ASTNode *n, Type *t)
 {
-	if(n == nil || n->type == nil || t == nil)
+	if(n == nil || n->type == nil || t == nil || n->type == t)
 		return n;
 	switch(t->t){
 	case TYPBITV:
 	case TYPINT:
 	case TYPBIT:
 	case TYPREAL:
-		if(n->type->t == TYPBITV || n->type->t == TYPBIT || n->type->t == TYPREAL || n->type->t == TYPINT)
+		if(n->type->t == TYPBITV || n->type->t == TYPBIT || n->type->t == TYPREAL || n->type->t == TYPINT || n->type->t == TYPENUM)
 			return n;
 		break;
 	case TYPSTRING:
 		if(n->type->t == TYPSTRING)
+			return n;
+		break;
+	case TYPENUM:
+		if(n->type->t == TYPBITV || n->type->t == TYPBIT || n->type->t == TYPINT)
 			return n;
 		break;
 	default:
@@ -692,6 +780,8 @@ typecheck(ASTNode *n)
 			n->type = type(TYPBITV, node(ASTCINT, n->cons.sz), n->cons.sign);
 		break;
 	case ASTDECL:
+		insist(n->sym != nil);
+		n->sym->type = typefold(n->sym->type);
 		break;
 	case ASTSYMB:
 		insist(n->sym != nil);

@@ -169,6 +169,182 @@ nope:
 	error(nil, "'%c' in %s number", s[i], b == 8 ? "octal": b == 16 ? "hexadecimal" : b == 2 ? "binary" : "decimal");
 }
 
+ASTNode *
+cfold(ASTNode *n)
+{
+	OpData *d;
+	int a, b, c, ov;
+	vlong v;
+
+	switch(n->t){
+	case ASTSYMB:
+		if(n->sym == nil || n->sym->t != SYMCONST) return n;
+		return n->sym->val;
+	case ASTOP:
+		d = getopdata(n->op);
+		if(d == nil) return n;
+		if(n->n1 == nil || n->n1->t != ASTCINT) return n;
+		a = n->n1->i;
+		if((d->flags & OPDUNARY) == 0)
+			if(n->n2 != nil && n->n2->t == ASTCINT) b = n->n2->i;
+			else return n;
+		else
+			b = 0;
+		c = 0;
+		ov = 0;
+		switch(n->op){
+		case OPADD:
+			c = a + b;
+			ov = (~(a ^ b) & (a ^ c)) < 0;
+			break;
+		case OPSUB:
+			c = a - b;
+			ov = ((a ^ b) & (a ^ c)) < 0;
+			break;
+		case OPMUL:
+			v = (vlong)a * b;
+			c = v;
+			ov = v >= 0x7fffffffLL || v < -0x80000000LL;
+			break;
+		case OPDIV: c = a / b; break;
+		case OPEXP: ov = 1; break;
+		case OPMOD: c = a % b; break;
+		case OPAND: c = a & b; break;
+		case OPOR: c = a | b; break;
+		case OPXOR: c = a ^ b; break;
+		case OPLSL:
+			if(b >= 32 || b < 0)
+				c = 0;
+			else{
+				c = a << b;
+				ov = (a >> 32 - b) != 0 || (c ^ a) < 0;
+			}
+			break;
+		case OPASR:
+			if(n->type->sign)
+				if(b >= 32 || b < 0)
+					c = a >> 31;
+				else
+					c = a >> b;
+			else
+		case OPLSR:
+				if(b >= 32 || b < 0)
+					c = 0;
+				else
+					c = (unsigned)a >> b;
+			break;
+		case OPEQS:
+		case OPEQ:
+			c = a == b;
+			break;
+		case OPNES:
+		case OPNE:
+			c = a != b;
+			break;
+		case OPLT: c = a < b; break;
+		case OPGT: c = a > b; break;
+		case OPLE: c = a <= b; break;
+		case OPGE: c = a >= b; break;
+		case OPLAND: c = a && b; break;
+		case OPLOR: c = a || b; break;
+		case OPUPLUS: c = a; break;
+		case OPUMINUS: c = -a; break;
+		case OPNOT: c = ~a; break;
+		case OPLNOT: c = !a; break;
+		case OPUAND: c = a == -1; break;
+		case OPUOR: c = a != 0; break;
+		case OPUXOR: ov = 1; break;
+		case OPMAX: c = a >= b ? a : b; break;
+		default:
+			warn(n, "cfold: unknown %s", d->name);
+			ov = 1;
+		}
+		if(ov)
+			return n;
+		else
+			return node(ASTCINT, c);
+	default:
+		return n;
+	}
+}
+
+ASTNode *
+descend(ASTNode *n, ASTNode *(*mod)(ASTNode *))
+{
+	ASTNode *m, *r, **p;
+	
+	if(n == nil)
+		return nil;
+	m = nodedup(n);
+	switch(n->t){
+	case ASTBREAK:
+	case ASTCINT:
+	case ASTCONST:
+	case ASTCONTINUE:
+	case ASTGOTO:
+	case ASTSYMB:
+	case ASTSTATE:
+	case ASTDEFAULT:
+		break;
+	case ASTASS:
+	case ASTDECL:
+	case ASTDOWHILE:
+	case ASTFOR:
+	case ASTIDX:
+	case ASTIF:
+	case ASTOP:
+	case ASTPRIME:
+	case ASTTERN:
+	case ASTWHILE:
+		m->n1 = descend(m->n1, mod);
+		m->n2 = descend(m->n2, mod);
+		m->n3 = descend(m->n3, mod);
+		m->n4 = descend(m->n4, mod);
+		break;
+	case ASTBLOCK:
+	case ASTMODULE:
+		m->n1 = nil;
+		p = &m->n1;
+		for(r = n->n1; r != nil; r = r->next){
+			*p = descend(r, mod);
+			p = &(*p)->next;
+		}
+		if(m->n1 != nil)
+			m->n1->last = p;
+		break;
+	case ASTINVAL:
+	case ASTFSM:
+	case ASTINITIAL:
+	case ASTMEMB:
+	default:
+		error(n, "descend: unknown %A", n->t);
+		return n;
+	}
+	m = mod(m);
+	if(nodeeq(m, n, ptreq)){
+		nodeput(m);
+		return n;
+	}
+	return m;
+}
+
+int
+consteq(Const *a, Const *b)
+{
+	return a->sz == b->sz && a->sign == b->sign && mpcmp(a->n, b->n) == 0 && mpcmp(a->x, b->x) == 0;
+}
+
+ASTNode *
+mkcint(Const *a)
+{
+	static mpint *max;
+	
+	if(max == nil) max = itomp(((uint)-1) >> 1, nil);
+	if(mpmagcmp(a->n, max) <= 0 && mpcmp(a->x, mpzero) == 0 && a->sz == 0)
+		return node(ASTCINT, mptoi(a->n));
+	return node(ASTCONST, a);
+}
+
 void
 foldinit(void)
 {

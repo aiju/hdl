@@ -4,6 +4,7 @@ typedef struct SymTab SymTab;
 typedef struct Const Const;
 typedef struct Line Line;
 typedef struct Type Type;
+typedef struct OpData OpData;
 
 struct Const {
 	mpint *n, *x;
@@ -67,6 +68,12 @@ struct ASTNode {
 	Type *type;
 	ASTNode *next, **last;
 	Line;
+};
+
+struct OpData {
+	char *name;
+	int flags;
+	int prec;
 };
 
 enum {
@@ -156,8 +163,22 @@ enum {
 	OPTCLOCK = 128,
 };
 
+enum {
+	OPDUNARY = 1,
+	OPDSPECIAL = 2,
+	OPDRIGHT = 4,
+	OPDREAL = 8,
+	OPDSTRING = 16,
+	OPDBITONLY = 32,
+	OPDBITOUT = 64,
+	OPDWMAX = 128,
+	OPDWADD = 256,
+	OPDWINF = 512,
+};
+
 extern Line nilline, *curline;
 extern SymTab *scope;
+extern int nerror;
 
 #pragma varargck type "A" int
 #pragma varargck type "I" int

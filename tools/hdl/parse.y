@@ -57,7 +57,7 @@
 %%
 
 program:
-	| program globdef { typecheck($2); astprint($2); }
+	| program globdef { compile($2); }
 
 globdef: module
 	| type ';' { $$ = nil; }
@@ -236,7 +236,7 @@ optcexpr:
 	| cexpr
 
 primary:
-	LNUMB { $$ = node(ASTCONST, $1); }
+	LNUMB { $$ = mkcint(&$1); }
 	| lval
 	| '(' cexpr ')' { $$ = $2; }
 

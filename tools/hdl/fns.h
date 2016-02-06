@@ -21,3 +21,14 @@ void astprint(ASTNode *);
 void consparse(Const *, char *);
 void typecheck(ASTNode *);
 void typefinal(Type *, int, Type **, int *);
+ASTNode *nodedup(ASTNode *);
+int consteq(Const *, Const *);
+int nodeeq(ASTNode *, ASTNode *, void *);
+int ptreq(ASTNode *, ASTNode *, void *);
+ASTNode *mkcint(Const *);
+ASTNode *descend(ASTNode *, ASTNode *(*)(ASTNode *));
+ASTNode *cfold(ASTNode *);
+void compile(ASTNode *);
+#define nodeput free
+OpData *getopdata(int);
+#define warn error
