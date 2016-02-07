@@ -32,3 +32,4 @@ void compile(ASTNode *);
 #define nodeput free
 OpData *getopdata(int);
 #define warn error
+ASTNode *fsmgoto(Symbol *);

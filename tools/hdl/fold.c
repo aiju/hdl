@@ -303,6 +303,7 @@ descend(ASTNode *n, ASTNode *(*mod)(ASTNode *))
 		break;
 	case ASTBLOCK:
 	case ASTMODULE:
+	case ASTFSM:
 		m->n1 = nil;
 		p = &m->n1;
 		for(r = n->n1; r != nil; r = r->next){
@@ -313,7 +314,6 @@ descend(ASTNode *n, ASTNode *(*mod)(ASTNode *))
 			m->n1->last = p;
 		break;
 	case ASTINVAL:
-	case ASTFSM:
 	case ASTINITIAL:
 	case ASTMEMB:
 	default:
@@ -321,7 +321,7 @@ descend(ASTNode *n, ASTNode *(*mod)(ASTNode *))
 		return n;
 	}
 	m = mod(m);
-	if(nodeeq(m, n, ptreq)){
+	if(nodeeq(m, n, ptreq) && m->next == nil){
 		nodeput(m);
 		return n;
 	}

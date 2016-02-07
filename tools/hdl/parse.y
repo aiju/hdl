@@ -136,8 +136,8 @@ stat:
 	| LBREAK symb ';' { $$ = node(ASTBREAK, $2); }
 	| LCONTINUE ';' { $$ = node(ASTCONTINUE, nil); }
 	| LCONTINUE symb ';' { $$ = node(ASTCONTINUE, $2); }
-	| LGOTO ';' { $$ = node(ASTGOTO, nil); }
-	| LGOTO symb ';' { $$ = node(ASTGOTO, $2); }
+	| LGOTO ';' { $$ = fsmgoto(nil); }
+	| LGOTO symb ';' { $$ = fsmgoto($2); }
 	| ':' { $$ = fsmstate(nil); }
 	| symb ':' { $$ = fsmstate($1); }
 	| LDEFAULT ':' { $$ = node(ASTDEFAULT, nil); }

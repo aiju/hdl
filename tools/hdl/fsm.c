@@ -39,6 +39,11 @@ fsmstate(Symbol *s)
 	SymTab *st;
 	ASTNode *n;
 
+	if(curfsm == nil){
+		error(nil, "state outside of fsm");
+		return nil;
+	}
+	
 	if(s == nil){
 		s = contnum();
 		if(s == nil)
@@ -64,4 +69,16 @@ void
 fsmend(void)
 {
 	curfsm = nil;
+}
+
+ASTNode *
+fsmgoto(Symbol *s)
+{
+	if(s == nil)
+		s = lastlab;
+	if(s == nil){
+		error(nil, "'goto;' before label");
+		return nil;
+	}
+	return node(ASTGOTO, s);
 }

@@ -185,3 +185,4 @@ extern int nerror;
 #pragma varargck type "T" Type *
 #pragma varargck type "n" ASTNode *
 #pragma varargck type "C" Const *
+#pragma varargck type "σ" int

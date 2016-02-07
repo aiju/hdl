@@ -32,6 +32,17 @@ static char *astname[] = {
 	[ASTCINT] "ASTCINT",
 };
 
+static char *symtname[] = {
+	[SYMNONE] "undefined",
+	[SYMBLOCK] "block",
+	[SYMVAR] "variable",
+	[SYMCONST] "constant",
+	[SYMMODULE] "module",
+	[SYMSTATE] "state",
+	[SYMFSM] "fsm",
+	[SYMTYPE] "type",
+};
+
 static OpData opdata[] = {
 	[OPNOP] {"nop", OPDUNARY|OPDSPECIAL, 15},
 	[OPADD] {"+", OPDREAL|OPDWINF, 12},
@@ -79,6 +90,17 @@ astfmt(Fmt *f)
 	if(t >= nelem(astname) || astname[t] == nil)
 		return fmtprint(f, "??? (%d)", t);
 	return fmtstrcpy(f, astname[t]);
+}
+
+static int
+symtfmt(Fmt *f)
+{
+	int t;
+	
+	t = va_arg(f->args, int);
+	if(t >= nelem(symtname) || symtname[t] == nil)
+		return fmtprint(f, "??? (%d)", t);
+	return fmtstrcpy(f, symtname[t]);
 }
 
 ASTNode *
@@ -738,6 +760,7 @@ typecheck(ASTNode *n)
 	switch(n->t){
 	case ASTMODULE:
 	case ASTBLOCK:
+	case ASTFSM:
 		for(m = n->n1; m != nil; m = m->next)
 			typecheck(m);
 		break;
@@ -891,14 +914,18 @@ typecheck(ASTNode *n)
 		default: error(n->n1, "%T invalid in indexing", n->n1->t);
 		}
 		break;
+	case ASTSTATE:
+		break;
+	case ASTGOTO:
+		if(n->sym == nil) break;
+		if(n->sym->t != SYMSTATE)
+			error(n, "%σ invalid in goto", n->sym->t);
+		break;
 	case ASTBREAK:
 	case ASTCONTINUE:
 	case ASTDEFAULT:
-	case ASTFSM:
-	case ASTGOTO:
 	case ASTINITIAL:
 	case ASTMEMB:
-	case ASTSTATE:
 	default:
 		error(n, "typecheck: unknown %A", n->t);
 	}
