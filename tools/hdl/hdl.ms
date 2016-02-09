@@ -214,8 +214,7 @@ If a \fBgoto\fR statement is executed, execution is halted and the next state is
 If no label is given, the current one is assumed.
 .PP
 It is legal to reference the \fIsymbol\fR variable.
-Assigning to \fIsymbol\fB'\fR will set the next state without halting execution.
-Assigning to \fIsymbol\fR is illegal.
+Assigning to \fIsymbol\fR or \fIsymbol\fB'\fR is illegal.
 .bp
 .NH
 Modules

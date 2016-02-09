@@ -5,6 +5,7 @@ typedef struct Const Const;
 typedef struct Line Line;
 typedef struct Type Type;
 typedef struct OpData OpData;
+typedef struct Nodes Nodes;
 
 struct Const {
 	mpint *n, *x;
@@ -61,13 +62,18 @@ struct ASTNode {
 			ASTNode *n1, *n2, *n3, *n4;
 			Symbol *sym;
 			SymTab *st;
+			Nodes *nl;
 		};
 		Const cons;
 		int i;
 	};
 	Type *type;
-	ASTNode *next, **last;
 	Line;
+};
+
+struct Nodes {
+	ASTNode *n;
+	Nodes *next, **last;
 };
 
 struct OpData {
@@ -78,6 +84,7 @@ struct OpData {
 
 enum {
 	ASTINVAL,
+	ASTABORT,
 	ASTASS,
 	ASTBLOCK,
 	ASTBREAK,

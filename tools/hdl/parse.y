@@ -14,6 +14,7 @@
 %union {
 	Symbol *sym;
 	ASTNode *n;
+	Nodes *ns;
 	Const cons;
 	struct { Type *t; int i; } ti;
 }
@@ -29,8 +30,9 @@
 %token <sym> LSYMB LTYPE
 %token <cons> LNUMB
 
-%type <n> stat stat1 lval expr cexpr optcexpr globdef module stats vars var triggers trigger membs
+%type <n> stat1 lval expr cexpr optcexpr module var trigger membs
 %type <n> primary
+%type <ns> stats stat globdef vars triggers
 %type <ti> type type0 type1 typew opttypews typevector
 %type <sym> symb
 
@@ -59,10 +61,10 @@
 program:
 	| program globdef { compile($2); }
 
-globdef: module
+globdef: module { $$ = nl($1); }
 	| type ';' { $$ = nil; }
 
-module: LMODULE symb '(' { $<n>$ = newscope(ASTMODULE, $2); } args ')' '{' stats '}' { $$ = $<n>4; $$->n1 = $stats; }
+module: LMODULE symb '(' { $<n>$ = newscope(ASTMODULE, $2); } args ')' '{' stats '}' { $$ = $<n>4; $$->nl = $stats; }
 
 optargs: | '(' args ')';
 args: | args1 | args1 ','
@@ -124,29 +126,29 @@ packdef:
 	LOPACK symb
 	| LOPACK symb '[' cexpr ':' cexpr ']'
 
-stats: { $$ = nil; } | stats stat { $$ = nodecat($1, $2); }
+stats: { $$ = nil; } | stats stat { $$ = nlcat($1, $2); }
 
 stat:
-	LIF '(' cexpr ')' stat { $$ = node(ASTIF, $3, $5, nil); }
-	| LIF '(' cexpr ')' stat LELSE stat { $$ = node(ASTIF, $3, $5, $7); }
-	| LWHILE '(' cexpr ')' stat { $$ = node(ASTWHILE, $3, $5); }
-	| LDO stat LWHILE '(' cexpr ')' ';' { $$ = node(ASTDOWHILE, $5, $2); }
-	| LFOR '(' stat1 ';' optcexpr ';' stat1 ')' stat { $$ = node(ASTFOR, $3, $5, $7, $9); }
-	| LBREAK ';' { $$ = node(ASTBREAK, nil); }
-	| LBREAK symb ';' { $$ = node(ASTBREAK, $2); }
-	| LCONTINUE ';' { $$ = node(ASTCONTINUE, nil); }
-	| LCONTINUE symb ';' { $$ = node(ASTCONTINUE, $2); }
-	| LGOTO ';' { $$ = fsmgoto(nil); }
-	| LGOTO symb ';' { $$ = fsmgoto($2); }
-	| ':' { $$ = fsmstate(nil); }
-	| symb ':' { $$ = fsmstate($1); }
-	| LDEFAULT ':' { $$ = node(ASTDEFAULT, nil); }
+	LIF '(' cexpr ')' stat { $$ = nl(node(ASTIF, $3, mkblock($5), nil)); }
+	| LIF '(' cexpr ')' stat LELSE stat { $$ = nl(node(ASTIF, $3, mkblock($5), mkblock($7))); }
+	| LWHILE '(' cexpr ')' stat { $$ = nl(node(ASTWHILE, $3, mkblock($5))); }
+	| LDO stat LWHILE '(' cexpr ')' ';' { $$ = nl(node(ASTDOWHILE, $5, mkblock($2))); }
+	| LFOR '(' stat1 ';' optcexpr ';' stat1 ')' stat { $$ = nl(node(ASTFOR, $3, $5, $7, mkblock($9))); }
+	| LBREAK ';' { $$ = nl(node(ASTBREAK, nil)); }
+	| LBREAK symb ';' { $$ = nl(node(ASTBREAK, $2)); }
+	| LCONTINUE ';' { $$ = nl(node(ASTCONTINUE, nil)); }
+	| LCONTINUE symb ';' { $$ = nl(node(ASTCONTINUE, $2)); }
+	| LGOTO ';' { $$ = nl(fsmgoto(nil)); }
+	| LGOTO symb ';' { $$ = nl(fsmgoto($2)); }
+	| ':' { $$ = nl(fsmstate(nil)); }
+	| symb ':' { $$ = nl(fsmstate($1)); }
+	| LDEFAULT ':' { $$ = nl(node(ASTDEFAULT, nil)); }
 	| type { curtype = $1.t; curopt = $1.i; } vars ';' { $$ = $3; }
-	| '{' { $<n>$ = newscope(ASTBLOCK, nil); } stats { scopeup(); } '}' { $$ = $<n>2; $$->n1 = $3; }
-	| LSYMB '{' { $<n>$ = newscope(ASTBLOCK, $1); } stats { scopeup(); } '}' { $$ = $<n>3; $$->n1 = $stats; }
-	| LFSM symb '{' { $<n>$ = newscope(ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $$ = $<n>4; $$->n1 = $stats; }
-	| LINITIAL '(' triggers ecomma ')' stat { $$ = node(ASTINITIAL, $3, $6); }
-	| stat1 ';'
+	| '{' { $<n>$ = newscope(ASTBLOCK, nil); } stats { scopeup(); } '}' { $<n>2->nl = $3; $$ = nl($<n>2); }
+	| LSYMB '{' { $<n>$ = newscope(ASTBLOCK, $1); } stats { scopeup(); } '}' { $<n>3->nl = $4; $$ = nl($<n>3); }
+	| LFSM symb '{' { $<n>$ = newscope(ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $<n>4->nl = $5; $$ = nl($<n>4); }
+	| LINITIAL '(' triggers ecomma ')' stat { $$ = nl(node(ASTINITIAL, $3, mkblock($6))); }
+	| stat1 ';' { $$ = nl($1); }
 	| globdef
 
 stat1: { $$ = nil; }
@@ -166,14 +168,14 @@ stat1: { $$ = nil; }
 	| lval LOINC { $$ = node(ASTASS, OPADD, $1, node(ASTCINT, 1)); }
 	| lval LODEC { $$ = node(ASTASS, OPSUB, $1, node(ASTCINT, 1)); }
 
-triggers: trigger | triggers ',' trigger { $$ = nodecat($1, $3); }
+triggers: trigger { $$ = nl($1); } | triggers ',' trigger { $$ = nlcat($1, nl($3)); }
 trigger:
 	LDEFAULT { $$ = node(ASTDEFAULT); }
 	| expr
 	
 vars:
-	var
-	| vars ',' var { $$ = nodecat($1, $3); }
+	var { $$ = nl($1); }
+	| vars ',' var { $$ = nlcat($1, nl($3)); }
 
 var:
 	symb { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, curopt, nil, curtype), nil); }

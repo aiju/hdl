@@ -30,6 +30,7 @@ static char *astname[] = {
 	[ASTCONST] "ASTCONST",
 	[ASTDECL] "ASTDECL",
 	[ASTCINT] "ASTCINT",
+	[ASTABORT] "ASTABORT",
 };
 
 static char *symtname[] = {
@@ -111,7 +112,6 @@ node(int t, ...)
 	
 	n = emalloc(sizeof(ASTNode));
 	n->t = t;
-	n->last = &n->next;
 	n->Line = *curline;
 	setmalloctag(n, getcallerpc(&t));
 	va_start(va, t);
@@ -121,6 +121,7 @@ node(int t, ...)
 	case ASTDEFAULT:
 	case ASTFSM:
 	case ASTSTATE:
+	case ASTABORT:
 		break;
 	case ASTDECL:
 		n->sym = va_arg(va, Symbol *);
@@ -193,8 +194,6 @@ nodedup(ASTNode *n)
 
 	m = emalloc(sizeof(ASTNode));
 	memcpy(m, n, sizeof(ASTNode));
-	m->next = nil;
-	m->last = &m->next;
 	return m;
 }
 
@@ -208,7 +207,7 @@ int
 nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 {
 	int (*eq)(ASTNode *, ASTNode *, void *);
-	ASTNode *m, *n;
+	Nodes *mp, *np;
 	
 	eq = (int(*)(ASTNode *, ASTNode *, void *)) eqp;
 	if(a == nil) return b == nil;
@@ -217,6 +216,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	if(a->t != b->t) return 0;
 	switch(a->t){
 	case ASTINVAL:
+	case ASTABORT:
 	case ASTASS:
 	case ASTBREAK:
 	case ASTCONTINUE:
@@ -224,7 +224,6 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTDEFAULT:
 	case ASTDOWHILE:
 	case ASTFOR:
-	case ASTFSM:
 	case ASTGOTO:
 	case ASTIDX:
 	case ASTIF:
@@ -237,14 +236,15 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTTERN:
 	case ASTWHILE:
 		return a->op == b->op && eq(a->n1, b->n1, eq) && eq(a->n2, b->n2, eq) && eq(a->n3, b->n3, eq) && eq(a->n4, b->n4, eq) && a->sym == b->sym && a->st == b->st;
+	case ASTFSM:
 	case ASTMODULE:
 	case ASTBLOCK:
 		if(a->sym != b->sym)
 			return 0;
-		for(m = a->n1, n = b->n1; m != n && m != nil && n != nil; m = m->next, n = n->next)
-			if(!eq(m, n, eq))
+		for(mp = a->nl, np = b->nl; mp != np && mp != nil && np != nil; mp = mp->next, np = np->next)
+			if(!eq(mp->n, np->n, eq))
 				return 0;
-		return m == n;
+		return mp == np;
 	case ASTCINT:
 		return a->i == b->i;
 	case ASTCONST:
@@ -255,14 +255,49 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	}
 }
 
-ASTNode *
-nodecat(ASTNode *a, ASTNode *b)
+Nodes *
+nl(ASTNode *n)
+{
+	Nodes *m;
+	
+	m = emalloc(sizeof(Nodes));
+	m->n = n;
+	m->last = &m->next;
+	return m;
+}
+
+void
+nlput(Nodes *n)
+{
+	Nodes *m;
+	
+	for(; n != nil; n = m){
+		m = n->next;
+		free(n);
+	}
+}
+
+Nodes *
+nlcat(Nodes *a, Nodes *b)
 {
 	if(a == nil) return b;
 	if(b == nil) return a;
 	*a->last = b;
 	a->last = b->last;
 	return a;
+}
+
+Nodes *
+nls(ASTNode *n, ...)
+{
+	va_list va;
+	Nodes *r;
+	
+	va_start(va, n);
+	for(r = nil; n != nil; n = va_arg(va, ASTNode *))
+		r = nlcat(r, nl(n));
+	va_end(va);
+	return r;
 }
 
 ASTNode *
@@ -411,11 +446,11 @@ typefold(Type *t)
 	case TYPENUM:
 		return t;
 	case TYPBITV:
-		s = descend(t->sz, cfold);
+		s = constfold(t->sz);
 		if(s == t->sz) return t;
 		return type(TYPBITV, s, t->sign);
 	case TYPVECTOR:
-		s = descend(t->sz, cfold);
+		s = constfold(t->sz);
 		if(s == t->sz) return t;
 		return type(TYPVECTOR, s, t->sign);
 	default:
@@ -534,6 +569,8 @@ eastprint(Fmt *f, ASTNode *n, int env)
 		if(env > 3)
 			rc += fmtrune(f, ')');
 		break;
+	case ASTBREAK: rc += fmtstrcpy(f, "break"); break;
+	case ASTCONTINUE: rc += fmtstrcpy(f, "continue"); break;
 	default:
 		error(n, "eastprint: unknown %A", n->t);
 	}
@@ -547,10 +584,30 @@ exprfmt(Fmt *f)
 }
 
 static int
+blockprint(Fmt *f, ASTNode *n, int indent)
+{
+	static int iastprint(Fmt *, ASTNode *, int);
+	int rc;
+	Nodes *mp;
+	
+	rc = 0;
+	if(n == nil || n->t != ASTBLOCK){
+		rc += fmtprint(f, "\n");
+		rc += iastprint(f, n, indent + 1);
+	}else{
+		rc += fmtprint(f, "%s{\n", n->sym != nil ? n->sym->name : "");
+		for(mp = n->nl; mp != nil; mp = mp->next)
+			rc += iastprint(f, mp->n, indent + 1);
+		rc += fmtprint(f, "%I}\n", indent);
+	}
+	return rc;
+}
+
+static int
 iastprint(Fmt *f, ASTNode *n, int indent)
 {
 	int rc;
-	ASTNode *m;
+	Nodes *mp;
 	char *s;
 
 	rc = 0;
@@ -561,8 +618,8 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 	case ASTMODULE:
 		rc += fmtprint(f, "%Imodule %s(\n", indent, n->sym->name);
 		rc += fmtprint(f, "%I) {\n", indent);
-		for(m = n->n1; m != nil; m = m->next)
-			rc += iastprint(f, m, indent + 1);
+		for(mp = n->nl; mp != nil; mp = mp->next)
+			rc += iastprint(f, mp->n, indent + 1);
 		rc += fmtprint(f, "%I}\n", indent);
 		break;
 	case ASTDECL:
@@ -579,29 +636,27 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		rc += fmtstrcpy(f, ";\n");
 		break;
 	case ASTBLOCK:
-		rc += fmtprint(f, "%I%s{\n", indent, n->sym != nil ? n->sym->name : "");
-		for(m = n->n1; m != nil; m = m->next)
-			rc += iastprint(f, m, indent + 1);
-		rc += fmtprint(f, "%I}\n", indent);
+		rc += fmtprint(f, "%I", indent);
+		rc += blockprint(f, n, indent);
 		break;
 	case ASTASS:
 		rc += fmtprint(f, "%I%n %s= %n%s", indent, n->n1, n->op == OPNOP ? "" : opdata[n->op].name, n->n2, indent >= 0 ? ";\n" : "");
 		break;
 	case ASTIF:
-		rc += fmtprint(f, "%Iif(%n)\n", indent, n->n1);
-		rc += iastprint(f, n->n2, indent + 1);
+		rc += fmtprint(f, "%Iif(%n)", indent, n->n1);
+		rc += blockprint(f, n->n2, indent);
 		if(n->n3 != nil){
-			rc += fmtprint(f, "%Ielse\n", indent);
-			rc += iastprint(f, n->n3, indent + 1);
+			rc += fmtprint(f, "%Ielse", indent);
+			rc += blockprint(f, n->n3, indent);
 		}
 		break;
 	case ASTWHILE:
-		rc += fmtprint(f, "%Iwhile(%n)\n", indent, n->n1);
-		rc += iastprint(f, n->n2, indent + 1);
+		rc += fmtprint(f, "%Iwhile(%n)", indent, n->n1);
+		rc += blockprint(f, n->n2, indent);
 		break;
 	case ASTDOWHILE:
-		rc += fmtprint(f, "%Ido\n", indent);
-		rc += iastprint(f, n->n2, indent + 1);
+		rc += fmtprint(f, "%Ido", indent);
+		rc += blockprint(f, n->n2, indent);
 		rc += fmtprint(f, "%Iwhile(%n);\n", indent, n->n1);
 		break;
 	case ASTFOR:
@@ -609,8 +664,8 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		rc += iastprint(f, n->n1, -1);
 		rc += fmtprint(f, "; %n; ", n->n2);
 		rc += iastprint(f, n->n3, -1);
-		rc += fmtprint(f, ")\n");
-		rc += iastprint(f, n->n4, indent + 1);
+		rc += fmtprint(f, ")");
+		rc += blockprint(f, n->n4, indent);
 		break;
 	case ASTBREAK:
 		s = "break";
@@ -634,16 +689,19 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		break;
 	case ASTINITIAL:
 		rc += fmtprint(f, "%Iinitial(", indent);
-		for(m = n->n1; m != nil; m = m->next)
-			rc += fmtprint(f, m->next == nil ? "%n" : "%n, ", m);
+		for(mp = n->nl; mp != nil; mp = mp->next)
+			rc += fmtprint(f, mp->next == nil ? "%n" : "%n, ", mp->n);
 		rc += fmtprint(f, ")\n");
 		rc += iastprint(f, n->n2, indent + 1);
 		break;
 	case ASTFSM:
 		rc += fmtprint(f, "%Ifsm %s {\n", indent, n->sym->name);
-		for(m = n->n1; m != nil; m = m->next)
-			rc += iastprint(f, m, indent + 1);
+		for(mp = n->nl; mp != nil; mp = mp->next)
+			rc += iastprint(f, mp->n, indent + 1);
 		rc += fmtprint(f, "%I}\n", indent);
+		break;
+	case ASTABORT:
+		rc += fmtprint(f, "%Iabort;\n", indent);
 		break;
 	default:
 		error(n, "iastprint: unknown %A", n->t);
@@ -659,6 +717,18 @@ astprint(ASTNode *n)
 
 	fmtfdinit(&f, 1, buf, sizeof buf);
 	iastprint(&f, n, 0);
+	fmtfdflush(&f);
+}
+
+void
+nlprint(Nodes *m, int indent)
+{
+	Fmt f;
+	char buf[256];
+
+	fmtfdinit(&f, 1, buf, sizeof buf);
+	for(; m != nil; m = m->next)
+		iastprint(&f, m->n, indent);
 	fmtfdflush(&f);
 }
 
@@ -683,6 +753,7 @@ astinit(void)
 	fmtinstall('I', tabfmt);
 	fmtinstall('T', typefmt);
 	fmtinstall('n', exprfmt);
+	fmtinstall(L'σ', symtfmt);
 }
 
 static void
@@ -745,11 +816,19 @@ typemax(Type *a, Type *b)
 	return type(TYPBITV, nodemax(a->sz, b->sz), a->sign || b->sign);
 }
 
+static Symbol *
+fixsymb(Symbol *s)
+{
+	if(s->t == SYMNONE)
+		return getsym(s->st, 1, s->name);
+	return s;
+}
+
 #define insist(x) if(x){}else{error(n, "x"); return;}
 void
 typecheck(ASTNode *n)
 {
-	ASTNode *m;
+	Nodes *mp;
 	OpData *d;
 	int t1, t2;
 	int sgn;
@@ -761,8 +840,8 @@ typecheck(ASTNode *n)
 	case ASTMODULE:
 	case ASTBLOCK:
 	case ASTFSM:
-		for(m = n->n1; m != nil; m = m->next)
-			typecheck(m);
+		for(mp = n->nl; mp != nil; mp = mp->next)
+			typecheck(mp->n);
 		break;
 	case ASTIF:
 		typecheck(n->n1);
@@ -851,7 +930,7 @@ typecheck(ASTNode *n)
 		if(t1 >= 0 && t1 != TYPINT && t1 != TYPBIT && t1 != TYPBITV) goto t1fail;
 		if(t2 >= 0 && t2 != TYPINT && t2 != TYPBIT && t2 != TYPBITV) goto t2fail;
 		if((d->flags & OPDBITOUT) != 0)
-			n->type = type(TYPBIT);
+			n->type = type(TYPBIT, 0);
 		else if((d->flags & OPDWINF) != 0){
 			if(t1 == TYPINT && t2 == TYPINT)
 				n->type = type(TYPINT);
@@ -918,11 +997,13 @@ typecheck(ASTNode *n)
 		break;
 	case ASTGOTO:
 		if(n->sym == nil) break;
+		n->sym = fixsymb(n->sym);
 		if(n->sym->t != SYMSTATE)
 			error(n, "%σ invalid in goto", n->sym->t);
 		break;
 	case ASTBREAK:
 	case ASTCONTINUE:
+		break;
 	case ASTDEFAULT:
 	case ASTINITIAL:
 	case ASTMEMB:

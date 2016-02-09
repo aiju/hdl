@@ -36,13 +36,20 @@ error(Line *l, char *fmt, ...)
 }
 
 void
-compile(ASTNode *n)
+compile(Nodes *np)
 {
-	typecheck(n);
-	if(nerror != 0) return;
-	n = descend(n, cfold);
-	if(nerror != 0) return;
-	astprint(n);
+	ASTNode *n;
+
+	for(; np != nil; np = np->next){
+		n = np->n;
+		typecheck(n);
+		if(nerror != 0) return;
+		n = constfold(n);
+		if(nerror != 0) return;
+		n = fsmcompile(n);
+		if(nerror != 0) return;
+		astprint(n);
+	}
 }
 
 static void

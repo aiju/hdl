@@ -169,7 +169,7 @@ nope:
 	error(nil, "'%c' in %s number", s[i], b == 8 ? "octal": b == 16 ? "hexadecimal" : b == 2 ? "binary" : "decimal");
 }
 
-ASTNode *
+static Nodes *
 cfold(ASTNode *n)
 {
 	OpData *d;
@@ -178,16 +178,16 @@ cfold(ASTNode *n)
 
 	switch(n->t){
 	case ASTSYMB:
-		if(n->sym == nil || n->sym->t != SYMCONST) return n;
-		return n->sym->val;
+		if(n->sym == nil || n->sym->t != SYMCONST) break;
+		return nl(n->sym->val);
 	case ASTOP:
 		d = getopdata(n->op);
-		if(d == nil) return n;
-		if(n->n1 == nil || n->n1->t != ASTCINT) return n;
+		if(d == nil) break;
+		if(n->n1 == nil || n->n1->t != ASTCINT) break;
 		a = n->n1->i;
 		if((d->flags & OPDUNARY) == 0)
 			if(n->n2 != nil && n->n2->t == ASTCINT) b = n->n2->i;
-			else return n;
+			else break;
 		else
 			b = 0;
 		c = 0;
@@ -260,22 +260,98 @@ cfold(ASTNode *n)
 			ov = 1;
 		}
 		if(ov)
-			return n;
+			break;
 		else
-			return node(ASTCINT, c);
-	default:
-		return n;
+			return nl(node(ASTCINT, c));
 	}
+	return nl(n);
 }
 
 ASTNode *
-descend(ASTNode *n, ASTNode *(*mod)(ASTNode *))
+mkblock(Nodes *p)
 {
-	ASTNode *m, *r, **p;
+	ASTNode *n;
+
+	if(p == nil)
+		return nil;
+	if(p->next == nil){
+		n = p->n;
+		nlput(p);
+		return n;
+	}
+	n = node(ASTBLOCK);
+	n->nl = p;
+	return n;
+}
+
+Nodes *
+descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
+{
+	ASTNode *m;
+	Nodes *r;
 	
 	if(n == nil)
 		return nil;
 	m = nodedup(n);
+	if(pre != nil) pre(m);
+	switch(n->t){
+	case ASTABORT:
+	case ASTBREAK:
+	case ASTCINT:
+	case ASTCONST:
+	case ASTCONTINUE:
+	case ASTGOTO:
+	case ASTSYMB:
+	case ASTSTATE:
+	case ASTDEFAULT:
+		break;
+	case ASTASS:
+	case ASTDECL:
+	case ASTDOWHILE:
+	case ASTFOR:
+	case ASTIDX:
+	case ASTIF:
+	case ASTOP:
+	case ASTPRIME:
+	case ASTTERN:
+	case ASTWHILE:
+		m->n1 = mkblock(descend(m->n1, pre, mod));
+		m->n2 = mkblock(descend(m->n2, pre, mod));
+		m->n3 = mkblock(descend(m->n3, pre, mod));
+		m->n4 = mkblock(descend(m->n4, pre, mod));
+		break;
+	case ASTBLOCK:
+	case ASTMODULE:
+	case ASTFSM:
+		m->nl = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			m->nl = nlcat(m->nl, descend(r->n, pre, mod));
+		break;
+	case ASTINVAL:
+	case ASTINITIAL:
+	case ASTMEMB:
+	default:
+		error(n, "descend: unknown %A", n->t);
+		return nl(n);
+	}
+	r = mod(m);
+	if(r != nil && r->next == nil && nodeeq(r->n, n, ptreq)){
+		nodeput(r->n);
+		r->n = n;
+		return r;
+	}
+	return r;
+}
+
+int
+descendsum(ASTNode *n, int (*eval)(ASTNode *))
+{
+	int rc;
+	Nodes *r;
+	
+	if(n == nil)
+		return eval(nil);
+	rc = 0;
 	switch(n->t){
 	case ASTBREAK:
 	case ASTCINT:
@@ -296,36 +372,58 @@ descend(ASTNode *n, ASTNode *(*mod)(ASTNode *))
 	case ASTPRIME:
 	case ASTTERN:
 	case ASTWHILE:
-		m->n1 = descend(m->n1, mod);
-		m->n2 = descend(m->n2, mod);
-		m->n3 = descend(m->n3, mod);
-		m->n4 = descend(m->n4, mod);
+		rc += descendsum(n->n1, eval);
+		rc += descendsum(n->n2, eval);
+		rc += descendsum(n->n3, eval);
+		rc += descendsum(n->n4, eval);
 		break;
 	case ASTBLOCK:
 	case ASTMODULE:
 	case ASTFSM:
-		m->n1 = nil;
-		p = &m->n1;
-		for(r = n->n1; r != nil; r = r->next){
-			*p = descend(r, mod);
-			p = &(*p)->next;
-		}
-		if(m->n1 != nil)
-			m->n1->last = p;
+		for(r = n->nl; r != nil; r = r->next)
+			rc += descendsum(r->n, eval);
 		break;
 	case ASTINVAL:
 	case ASTINITIAL:
 	case ASTMEMB:
 	default:
-		error(n, "descend: unknown %A", n->t);
-		return n;
+		error(n, "descendsum: unknown %A", n->t);
+		break;
 	}
-	m = mod(m);
-	if(nodeeq(m, n, ptreq) && m->next == nil){
-		nodeput(m);
-		return n;
-	}
+	rc += eval(n);
+	return rc;
+}
+
+ASTNode *
+onlyone(ASTNode *n, Nodes *(*mod)(ASTNode *))
+{
+	Nodes *m;
+	ASTNode *r;
+	
+	m = descend(n, nil, mod);
+	if(m == nil)
+		return nil;
+	if(m->next != nil)
+		error(n, "onlyone: descend produced multiple nodes");
+	r = m->n;
+	nlput(m);
+	return r;
+}
+
+Nodes *
+descendnl(Nodes *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
+{
+	Nodes *m;
+	
+	for(m = nil; n != nil; n = n->next)
+		m = nlcat(m, descend(n->n, pre, mod));
 	return m;
+}
+
+ASTNode *
+constfold(ASTNode *n)
+{
+	return onlyone(n, cfold);
 }
 
 int
