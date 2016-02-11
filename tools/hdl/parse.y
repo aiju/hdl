@@ -21,7 +21,7 @@
 
 %token LMODULE LINPUT LOUTPUT LBIT LIF LELSE LCLOCK LWHILE LDO LFOR LBREAK LINTEGER
 %token LCONTINUE LGOTO LFSM LDEFAULT LREAL LSTRING LENUM LSTRUCT LWIRE LREG LTYPEDEF
-%token LINITIAL LSIGNED
+%token LINITIAL LSIGNED LSWITCH LCASE
 
 %token LOINC LODEC LOEXP LOLSL LOLSR LOASR LOEQ LOEQS LONE LONES LOLE LOGE LOLOR LOLAND LOPACK
 %token LOADDEQ LOSUBEQ LOMULEQ LODIVEQ LOMODEQ LOLSLEQ LOLSREQ LOASREQ LOANDEQ LOOREQ LOXOREQ LOEXPEQ
@@ -32,7 +32,7 @@
 
 %type <n> stat1 lval expr cexpr optcexpr module var trigger membs
 %type <n> primary
-%type <ns> stats stat globdef vars triggers
+%type <ns> stats stat globdef vars triggers elist
 %type <ti> type type0 type1 typew opttypews typevector
 %type <sym> symb
 
@@ -64,7 +64,7 @@ program:
 globdef: module { $$ = nl($1); }
 	| type ';' { $$ = nil; }
 
-module: LMODULE symb '(' { $<n>$ = newscope(ASTMODULE, $2); } args ')' '{' stats '}' { $$ = $<n>4; $$->nl = $stats; }
+module: LMODULE symb '(' { $<n>$ = newscope(scope, ASTMODULE, $2); } args ')' '{' stats '}' { $$ = $<n>4; $$->nl = $stats; }
 
 optargs: | '(' args ')';
 args: | args1 | args1 ','
@@ -144,10 +144,12 @@ stat:
 	| symb ':' { $$ = nl(fsmstate($1)); }
 	| LDEFAULT ':' { $$ = nl(node(ASTDEFAULT, nil)); }
 	| type { curtype = $1.t; curopt = $1.i; } vars ';' { $$ = $3; }
-	| '{' { $<n>$ = newscope(ASTBLOCK, nil); } stats { scopeup(); } '}' { $<n>2->nl = $3; $$ = nl($<n>2); }
-	| LSYMB '{' { $<n>$ = newscope(ASTBLOCK, $1); } stats { scopeup(); } '}' { $<n>3->nl = $4; $$ = nl($<n>3); }
-	| LFSM symb '{' { $<n>$ = newscope(ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $<n>4->nl = $5; $$ = nl($<n>4); }
+	| '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats { scopeup(); } '}' { $<n>2->nl = $3; $$ = nl($<n>2); }
+	| LSYMB '{' { $<n>$ = newscope(scope, ASTBLOCK, $1); } stats { scopeup(); } '}' { $<n>3->nl = $4; $$ = nl($<n>3); }
+	| LFSM symb '{' { $<n>$ = newscope(scope, ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $<n>4->nl = $5; $$ = nl($<n>4); }
 	| LINITIAL '(' triggers ecomma ')' stat { $$ = nl(node(ASTINITIAL, $3, mkblock($6))); }
+	| LSWITCH '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, $3, $<n>6)); }
+	| LCASE elist ':' { $$ = nl(node(ASTCASE, $2)); }
 	| stat1 ';' { $$ = nl($1); }
 	| globdef
 
@@ -172,6 +174,8 @@ triggers: trigger { $$ = nl($1); } | triggers ',' trigger { $$ = nlcat($1, nl($3
 trigger:
 	LDEFAULT { $$ = node(ASTDEFAULT); }
 	| expr
+
+elist: expr { $$ = nl($1); } | elist ',' expr { $$ = nlcat($1, nl($3)); }
 	
 vars:
 	var { $$ = nl($1); }

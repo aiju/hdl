@@ -350,10 +350,176 @@ fsmsubst(ASTNode *n)
 	return nl(n);
 }
 
+static ASTNode *
+deadcode(ASTNode *n, int *live)
+{
+	ASTNode *m, *s;
+	Nodes *r;
+	int live0, live1;
+	
+	if(n == nil)
+		return nil;
+	if(*live == 0)
+		return nil;
+	m = nodedup(n);
+	switch(n->t){
+	case ASTABORT:
+		error(n, "return from fsm");
+		*live = 0;
+		break;
+	case ASTGOTO:
+		*live = 0;
+		break;
+	case ASTASS:
+		break;
+	case ASTIF:
+		live0 = *live;
+		live1 = *live;
+		m->n2 = deadcode(m->n2, &live0);
+		m->n3 = deadcode(m->n3, &live1);
+		*live = live0 || live1;
+		break;
+	case ASTWHILE:
+		live0 = *live;
+		m->n2 = deadcode(m->n2, &live0);
+		break;
+	case ASTDOWHILE:
+		m->n2 = deadcode(m->n2, live);
+		break;
+	case ASTFOR:
+		live0 = *live;
+		m->n4 = deadcode(m->n4, &live0);
+		break;
+	case ASTBLOCK:
+		m->nl = nil;
+		for(r = n->nl; r != nil; r = r->next){
+			s = deadcode(r->n, live);
+			if(s != nil)
+				m->nl = nlcat(m->nl, nl(s));
+		}
+		break;
+	default:
+		error(n, "deadcode: unknown %A", n->t);
+		return n;
+	}
+	if(nodeeq(m, n, ptreq)){
+		nodeput(m);
+		return n;
+	}
+	return m;
+}
+
+static Symbol *fsmlabel;
+static ASTNode *curfsmc;
+
+static Nodes *
+gotofix(ASTNode *n)
+{
+	if(n->t == ASTGOTO)
+		return nls(node(ASTASS, OPNOP, node(ASTPRIME, node(ASTSYMB, curfsmc->sym)), node(ASTSYMB, n->sym)), node(ASTDISABLE, fsmlabel), nil);
+	return nl(n);
+}
+
+static Symbol *counttarg;
+static int
+countblock(ASTNode *n)
+{
+	if(n == nil) return 0;
+	switch(n->t){
+	case ASTBREAK:
+	case ASTCONTINUE:
+	case ASTDISABLE:
+		return n->sym == counttarg;
+	default:
+		return 0;
+	}
+}
+
+static ASTNode *
+simpdisable(ASTNode *n, Symbol *targ)
+{
+	ASTNode *m, *s;
+	Nodes *r;
+
+	if(n == nil) return n;
+	if(n->t == ASTDISABLE && n->sym == targ)
+		return nil;
+	if(n->t == ASTIF){
+		m = nodedup(n);
+		m->n2 = simpdisable(m->n2, targ);
+		m->n3 = simpdisable(m->n3, targ);
+		if(m->n2 == n->n2 && m->n3 == m->n3){
+			nodeput(m);
+			return n;
+		}
+		return m;
+	}
+	if(n->t == ASTBLOCK){
+		if(n->nl == nil) return n;
+		m = nodedup(n);
+		m->nl = nil;
+		for(r = n->nl; ; r = r->next){
+			if(r->next == nil)
+				break;
+			m->nl = nlcat(m->nl, nl(r->n));
+
+		}
+		s = simpdisable(r->n, targ);
+		if(m->sym != nil && (m->sym->opt & OPTTEMP) != 0){
+			counttarg = m->sym;
+			if(descendsum(m, countblock) == 0)
+				m->sym = nil;
+		}
+		if(s == r->n && m->sym == n->sym){
+			nlput(m->nl);
+			nodeput(m);
+			return n;
+		}else if(s != nil)
+			m->nl = nlcat(m->nl, nl(s));
+		if(m->sym != nil)
+			return m;
+		if(m->nl == nil)
+			return nil;
+		if(m->nl->next == nil){
+			s = m->nl->n;
+			nlput(m->nl);
+			nodeput(m);
+			return s;
+		}
+		return m;
+	}
+	return n;
+}
+
+static Type *
+fsmenum(void)
+{
+	Type *t;
+	Symbol **p;
+	FSMState *f;
+	int n;
+	
+	t = type(TYPENUM, nil);
+	p = &t->vals;
+	n = 0;
+	for(f = stfirst; f != nil; f = f->next){
+		if(f->pseudo) continue;
+		f->s->type = t;
+		f->s->val = node(ASTCINT, n++);
+		*p = f->s;
+		p = &f->s->enumnext;
+	}
+	return t;
+}
+
 static Nodes *
 findfsm(ASTNode *n)
 {
 	FSMState *f;
+	Nodes *r;
+	ASTNode *m;
+	int live;
+	ASTNode *bl, *bm;
 
 	if(n->t != ASTFSM)
 		return nl(n);
@@ -362,18 +528,35 @@ findfsm(ASTNode *n)
 	stfirst = nil;
 	stlast = &stfirst;
 	fsmcopy(n);
+	curfsmc = n;
 	stcur->nl = nlcat(stcur->nl, nl(node(ASTABORT)));
 	
+	bl = newscope(n->sym->st, ASTBLOCK, nil);
+	
 	for(f = stfirst; f != nil; f = f->next){
-		if(!f->pseudo)
-			f->nl = descendnl(f->nl, nil, fsmsubst);
-		else
+		if(f->pseudo)
 			continue;
-		print("%s:\n", f->s->name);
-		nlprint(f->nl, 1);
+		r = descendnl(f->nl, nil, fsmsubst);
+		live = 1;
+		bl->nl = nlcat(bl->nl, nl(node(ASTCASE, nl(node(ASTSYMB, f->s)))));
+		bm = newscope(bl->st, ASTBLOCK, getsym(bl->st, 0, smprint("_fsm_%s_%s", n->sym->name, f->s->name)));
+		fsmlabel = bm->sym;
+		fsmlabel->opt |= OPTTEMP;
+		for(; r != nil; r = r->next){
+			m = deadcode(r->n, &live);
+			if(m != nil)
+				bm->nl = nlcat(bm->nl, descend(m, nil, gotofix));
+		}
+		bl->nl = nlcat(bl->nl, nl(simpdisable(bm, fsmlabel)));
 	}
 	
-	return nl(n);
+	bl = node(ASTSWITCH, node(ASTSYMB, n->sym), bl);
+	bm = node(ASTBLOCK);
+	bm->nl = nl(bl);
+	
+	n->sym->type = fsmenum();
+	bl = node(ASTDECL, n->sym, nil);
+	return nls(bl, bm, nil);
 }
 
 ASTNode *

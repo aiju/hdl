@@ -4,7 +4,7 @@ void error(Line *, char *, ...);
 int parse(char *);
 ASTNode *node(int, ...);
 Nodes *nlcat(Nodes *, Nodes *);
-ASTNode *newscope(int, Symbol *);
+ASTNode *newscope(SymTab *, int, Symbol *);
 void scopeup(void);
 Symbol *decl(SymTab *, Symbol *, int, int, ASTNode *, Type *);
 Symbol *getsym(SymTab *, int, char *);

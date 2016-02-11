@@ -300,6 +300,7 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTCINT:
 	case ASTCONST:
 	case ASTCONTINUE:
+	case ASTDISABLE:
 	case ASTGOTO:
 	case ASTSYMB:
 	case ASTSTATE:
@@ -313,6 +314,7 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTIF:
 	case ASTOP:
 	case ASTPRIME:
+	case ASTSWITCH:
 	case ASTTERN:
 	case ASTWHILE:
 		m->n1 = mkblock(descend(m->n1, pre, mod));
@@ -323,6 +325,7 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTBLOCK:
 	case ASTMODULE:
 	case ASTFSM:
+	case ASTCASE:
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, descend(r->n, pre, mod));
@@ -357,6 +360,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTCINT:
 	case ASTCONST:
 	case ASTCONTINUE:
+	case ASTDISABLE:
 	case ASTGOTO:
 	case ASTSYMB:
 	case ASTSTATE:
@@ -370,6 +374,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTIF:
 	case ASTOP:
 	case ASTPRIME:
+	case ASTSWITCH:
 	case ASTTERN:
 	case ASTWHILE:
 		rc += descendsum(n->n1, eval);
@@ -380,6 +385,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTBLOCK:
 	case ASTMODULE:
 	case ASTFSM:
+	case ASTCASE:
 		for(r = n->nl; r != nil; r = r->next)
 			rc += descendsum(r->n, eval);
 		break;

@@ -23,6 +23,7 @@ struct File {
 static Keyword kwtable[] = {
 	"bit", LBIT,
 	"break", LBREAK,
+	"case", LCASE,
 	"clock", LCLOCK,
 	"continue", LCONTINUE,
 	"default", LDEFAULT,
@@ -42,6 +43,7 @@ static Keyword kwtable[] = {
 	"signed", LSIGNED,
 	"string", LSTRING,
 	"struct", LSTRUCT,
+	"switch", LSWITCH,
 	"typedef", LTYPEDEF,
 	"while", LWHILE,
 	"wire", LWIRE,

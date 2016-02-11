@@ -192,6 +192,8 @@ r1W12 l.
 ∨	\fBbreak \fR[\fIblock\fR]\fB;\fR
 ∨	\fBcontinue \fR[\fIblock\fR]\fB;\fR
 ∨	\fIvar-def\fB;\fR
+∨	\fBswitch(\fIcomma-expr\fB) { \fR{\fIstat\fR} \fB}\fR
+∨	\fBcase \fIexpr \fR{ \fB, \fIexpr \fR} \fB:\fR
 .TE
 .NH
 Finite state machines (FSM)

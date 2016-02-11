@@ -61,7 +61,7 @@ getsym(SymTab *st, int hier, char *n)
 }
 
 ASTNode *
-newscope(int t, Symbol *s)
+newscope(SymTab *sc, int t, Symbol *s)
 {
 	ASTNode *n;
 	int symt;
@@ -77,8 +77,8 @@ newscope(int t, Symbol *s)
 		case ASTFSM: symt = SYMFSM; break;
 		default: sysfatal("newscope: %A", t); symt = 0;
 		}
-		s = decl(scope, s, symt, 0, n, nil);
-		s->st = scope;
+		s = decl(sc, s, symt, 0, n, nil);
+		s->st = sc;
 		n->sym = s;
 	}
 	st->up = scope;

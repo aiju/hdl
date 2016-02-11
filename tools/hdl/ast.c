@@ -31,6 +31,9 @@ static char *astname[] = {
 	[ASTDECL] "ASTDECL",
 	[ASTCINT] "ASTCINT",
 	[ASTABORT] "ASTABORT",
+	[ASTSWITCH] "ASTSWITCH",
+	[ASTCASE] "ASTCASE",
+	[ASTDISABLE] "ASTDISABLE",
 };
 
 static char *symtname[] = {
@@ -85,9 +88,9 @@ static OpData opdata[] = {
 static int
 astfmt(Fmt *f)
 {
-	int t;
+	uint t;
 	
-	t = va_arg(f->args, int);
+	t = va_arg(f->args, uint);
 	if(t >= nelem(astname) || astname[t] == nil)
 		return fmtprint(f, "??? (%d)", t);
 	return fmtstrcpy(f, astname[t]);
@@ -96,9 +99,9 @@ astfmt(Fmt *f)
 static int
 symtfmt(Fmt *f)
 {
-	int t;
+	uint t;
 	
-	t = va_arg(f->args, int);
+	t = va_arg(f->args, uint);
 	if(t >= nelem(symtname) || symtname[t] == nil)
 		return fmtprint(f, "??? (%d)", t);
 	return fmtstrcpy(f, symtname[t]);
@@ -143,12 +146,14 @@ node(int t, ...)
 		n->n2 = va_arg(va, ASTNode *);
 		break;
 	case ASTINITIAL:
+	case ASTSWITCH:
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		break;
 	case ASTBREAK:
 	case ASTCONTINUE:
 	case ASTGOTO:
+	case ASTDISABLE:
 		n->sym = va_arg(va, Symbol *);
 		break;
 	case ASTPRIME:
@@ -180,6 +185,9 @@ node(int t, ...)
 	case ASTMEMB:
 		n->n1 = va_arg(va, ASTNode *);
 		n->sym = va_arg(va, Symbol *);
+		break;
+	case ASTCASE:
+		n->nl = va_arg(va, Nodes *);
 		break;
 	default: sysfatal("node: unknown %A", t);
 	}
@@ -222,6 +230,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTCONTINUE:
 	case ASTDECL:
 	case ASTDEFAULT:
+	case ASTDISABLE:
 	case ASTDOWHILE:
 	case ASTFOR:
 	case ASTGOTO:
@@ -232,6 +241,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTOP:
 	case ASTPRIME:
 	case ASTSTATE:
+	case ASTSWITCH:
 	case ASTSYMB:
 	case ASTTERN:
 	case ASTWHILE:
@@ -239,6 +249,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTFSM:
 	case ASTMODULE:
 	case ASTBLOCK:
+	case ASTCASE:
 		if(a->sym != b->sym)
 			return 0;
 		for(mp = a->nl, np = b->nl; mp != np && mp != nil && np != nil; mp = mp->next, np = np->next)
@@ -571,6 +582,7 @@ eastprint(Fmt *f, ASTNode *n, int env)
 		break;
 	case ASTBREAK: rc += fmtstrcpy(f, "break"); break;
 	case ASTCONTINUE: rc += fmtstrcpy(f, "continue"); break;
+	case ASTDISABLE: rc += fmtstrcpy(f, "disable"); break;
 	default:
 		error(n, "eastprint: unknown %A", n->t);
 	}
@@ -667,11 +679,23 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		rc += fmtprint(f, ")");
 		rc += blockprint(f, n->n4, indent);
 		break;
+	case ASTSWITCH:
+		rc += fmtprint(f, "%Iswitch(%n)", indent, n->n1);
+		rc += blockprint(f, n->n2, indent);
+		break;
+	case ASTCASE:
+		rc += fmtprint(f, "%Icase ", indent - 1);
+		for(mp = n->nl; mp != nil; mp = mp->next)
+			rc += fmtprint(f, "%n%s", mp->n, mp->next == nil ? ":\n" : ", ");
+		break;
 	case ASTBREAK:
 		s = "break";
 		goto breakcont;
 	case ASTCONTINUE:
 		s = "continue";
+		goto breakcont;
+	case ASTDISABLE:
+		s = "disable";
 		goto breakcont;
 	case ASTGOTO:
 		s = "goto";
@@ -1001,8 +1025,17 @@ typecheck(ASTNode *n)
 		if(n->sym->t != SYMSTATE)
 			error(n, "%σ invalid in goto", n->sym->t);
 		break;
+	case ASTSWITCH:
+		typecheck(n->n1);
+		typecheck(n->n2);
+		break;
+	case ASTCASE:
+		for(mp = n->nl; mp != nil; mp = mp->next)
+			typecheck(mp->n);
+		break;
 	case ASTBREAK:
 	case ASTCONTINUE:
+	case ASTDISABLE:
 		break;
 	case ASTDEFAULT:
 	case ASTINITIAL:
