@@ -299,6 +299,16 @@ nlcat(Nodes *a, Nodes *b)
 }
 
 Nodes *
+nldup(Nodes *a)
+{
+	Nodes *b;
+	
+	for(b = nil; a != nil; a = a->next)
+		b = nlcat(b, nl(a->n));
+	return b;
+}
+
+Nodes *
 nls(ASTNode *n, ...)
 {
 	va_list va;
@@ -1018,6 +1028,7 @@ typecheck(ASTNode *n)
 		}
 		break;
 	case ASTSTATE:
+	case ASTDEFAULT:
 		break;
 	case ASTGOTO:
 		if(n->sym == nil) break;
@@ -1037,7 +1048,6 @@ typecheck(ASTNode *n)
 	case ASTCONTINUE:
 	case ASTDISABLE:
 		break;
-	case ASTDEFAULT:
 	case ASTINITIAL:
 	case ASTMEMB:
 	default:

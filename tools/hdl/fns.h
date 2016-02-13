@@ -42,3 +42,4 @@ Nodes *nls(ASTNode *, ...);
 ASTNode *mkblock(Nodes *);
 int descendsum(ASTNode *, int (*)(ASTNode *));
 void nlprint(Nodes *, int);
+Nodes *nldup(Nodes *);

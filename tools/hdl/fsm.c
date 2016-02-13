@@ -94,7 +94,7 @@ struct FSMState {
 };
 
 static SymTab pseudo;
-static FSMState *stcur, *stfirst, **stlast;
+static FSMState *stcur, *stfirst, **stlast, *stdef;
 
 struct Loop {
 	FSMState *lbreak, *lcontinue;
@@ -224,6 +224,11 @@ fsmcopy(ASTNode *n)
 	case ASTIF:
 		if(stcur == nil) goto err;
 		if(!hasstate(n->n2) && !hasstate(n->n3)) goto copy;
+		if(stcur == stdef){
+		def:
+			error(n, "unsupported construct");
+			return;
+		}
 		m = nodedup(n);
 		stcur->nl = nlcat(stcur->nl, nl(m));
 		s0 = newstate(nil, 0);
@@ -247,6 +252,7 @@ fsmcopy(ASTNode *n)
 	case ASTWHILE:
 		if(stcur == nil) goto err;
 		if(!hasstate(n->n2)) goto copy;
+		if(stcur == stdef) goto def;
 		s0 = newstate(nil, 1);
 		s1 = newstate(nil, 1);
 		s2 = newstate(nil, 0);
@@ -263,6 +269,7 @@ fsmcopy(ASTNode *n)
 	case ASTDOWHILE:
 		if(stcur == nil) goto err;
 		if(!hasstate(n->n2)) goto copy;
+		if(stcur == stdef) goto def;
 		s0 = newstate(nil, 1);
 		s1 = newstate(nil, 0);
 		s2 = newstate(nil, 0);
@@ -280,6 +287,7 @@ fsmcopy(ASTNode *n)
 	case ASTFOR:
 		if(stcur == nil) goto err;
 		if(!hasstate(n->n1) && !hasstate(n->n3) && !hasstate(n->n4)) goto copy;
+		if(stcur == stdef) goto def;
 		fsmcopy(n->n1);
 		
 		s0 = newstate(nil, 1);
@@ -306,9 +314,17 @@ fsmcopy(ASTNode *n)
 		statappend(s3);
 		break;
 	case ASTSTATE:
-		if(stcur != nil)
+		if(stcur != nil && stcur != stdef)
 			stcur->nl = nlcat(stcur->nl, nl(node(ASTGOTO, n->sym)));
 		stcur = newstate(n->sym, 1);
+		break;	
+	case ASTDEFAULT:
+		if(stcur != nil)
+			stcur->nl = nlcat(stcur->nl, nl(node(ASTABORT)));
+		stcur = newstate(n->sym, 1);
+		if(stdef != nil)
+			error(n, "duplicate default");
+		stdef = stcur;
 		break;
 	case ASTFSM:
 	case ASTBLOCK:
@@ -512,11 +528,37 @@ fsmenum(void)
 	return t;
 }
 
+static int
+countgoto(ASTNode *n)
+{
+	return n != nil && n->t == ASTGOTO;
+}
+#define hasgoto(n) descendsum(n, countgoto)
+
+static Nodes *
+fixdefault(void)
+{
+	Nodes *n, *m, **r;
+	
+	if(stdef == nil) return nil;
+	m = stdef->nl;
+	r = nil;
+	for(n = stdef->nl; n != nil && !hasgoto(n->n); n = n->next)
+		r = &n->next;
+	stdef->nl = n;
+	if(r != nil){
+		*r = nil;
+		m->last = r;
+		return m;
+	}
+	return nil;		
+}
+
 static Nodes *
 findfsm(ASTNode *n)
 {
 	FSMState *f;
-	Nodes *r;
+	Nodes *r, *def;
 	ASTNode *m;
 	int live;
 	ASTNode *bl, *bm;
@@ -529,13 +571,17 @@ findfsm(ASTNode *n)
 	stlast = &stfirst;
 	fsmcopy(n);
 	curfsmc = n;
-	stcur->nl = nlcat(stcur->nl, nl(node(ASTABORT)));
+	if(stcur != stdef)
+		stcur->nl = nlcat(stcur->nl, nl(node(ASTABORT)));
 	
 	bl = newscope(n->sym->st, ASTBLOCK, nil);
+	def = fixdefault();
 	
 	for(f = stfirst; f != nil; f = f->next){
 		if(f->pseudo)
 			continue;
+		if(stdef != nil)
+			f->nl = nlcat(nldup(stdef->nl), f->nl);
 		r = descendnl(f->nl, nil, fsmsubst);
 		live = 1;
 		bl->nl = nlcat(bl->nl, nl(node(ASTCASE, nl(node(ASTSYMB, f->s)))));
@@ -552,7 +598,7 @@ findfsm(ASTNode *n)
 	
 	bl = node(ASTSWITCH, node(ASTSYMB, n->sym), bl);
 	bm = node(ASTBLOCK);
-	bm->nl = nl(bl);
+	bm->nl = nlcat(def, nl(bl));
 	
 	n->sym->type = fsmenum();
 	bl = node(ASTDECL, n->sym, nil);
