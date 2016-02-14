@@ -523,7 +523,7 @@ fsmenum(void)
 		f->s->type = t;
 		f->s->val = node(ASTCINT, n++);
 		*p = f->s;
-		p = &f->s->enumnext;
+		p = &f->s->typenext;
 	}
 	return t;
 }

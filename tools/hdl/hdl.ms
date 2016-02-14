@@ -253,3 +253,6 @@ Doing element-wise arithmetic on arrays
 .IP
 \(bu
 Fixed-point arithmetic
+.IP
+\(bu
+Operator overloading.

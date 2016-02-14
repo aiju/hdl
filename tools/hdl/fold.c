@@ -312,6 +312,8 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTFOR:
 	case ASTIDX:
 	case ASTIF:
+	case ASTLITELEM:
+	case ASTMEMB:
 	case ASTOP:
 	case ASTPRIME:
 	case ASTSWITCH:
@@ -326,13 +328,11 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTMODULE:
 	case ASTFSM:
 	case ASTCASE:
+	case ASTLITERAL:
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, descend(r->n, pre, mod));
 		break;
-	case ASTINVAL:
-	case ASTINITIAL:
-	case ASTMEMB:
 	default:
 		error(n, "descend: unknown %A", n->t);
 		return nl(n);
@@ -372,6 +372,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTFOR:
 	case ASTIDX:
 	case ASTIF:
+	case ASTLITELEM:
 	case ASTOP:
 	case ASTPRIME:
 	case ASTSWITCH:
@@ -386,6 +387,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTMODULE:
 	case ASTFSM:
 	case ASTCASE:
+	case ASTLITERAL:
 		for(r = n->nl; r != nil; r = r->next)
 			rc += descendsum(r->n, eval);
 		break;

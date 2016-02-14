@@ -34,6 +34,8 @@ static char *astname[] = {
 	[ASTSWITCH] "ASTSWITCH",
 	[ASTCASE] "ASTCASE",
 	[ASTDISABLE] "ASTDISABLE",
+	[ASTLITERAL] "ASTLITERAL",
+	[ASTLITELEM] "ASTLITELEM",
 };
 
 static char *symtname[] = {
@@ -45,6 +47,17 @@ static char *symtname[] = {
 	[SYMSTATE] "state",
 	[SYMFSM] "fsm",
 	[SYMTYPE] "type",
+};
+
+static char *littname[] = {
+	[LITINVAL] "LITINVAL",
+	[LITUNORD] "LITUNORD",
+	[LITELSE] "LITELSE",
+	[LITIDX] "LITIDX",
+	[LITRANGE] "LITRANGE",
+	[LITPRANGE] "LITPRANGE",
+	[LITMRANGE] "LITMRANGE",
+	[LITFIELD] "LITFIELD",
 };
 
 static OpData opdata[] = {
@@ -85,27 +98,17 @@ static OpData opdata[] = {
 	[OPMAX] {"max", OPDWMAX, 3},
 };
 
-static int
-astfmt(Fmt *f)
-{
-	uint t;
-	
-	t = va_arg(f->args, uint);
-	if(t >= nelem(astname) || astname[t] == nil)
-		return fmtprint(f, "??? (%d)", t);
-	return fmtstrcpy(f, astname[t]);
-}
-
-static int
-symtfmt(Fmt *f)
-{
-	uint t;
-	
-	t = va_arg(f->args, uint);
-	if(t >= nelem(symtname) || symtname[t] == nil)
-		return fmtprint(f, "??? (%d)", t);
-	return fmtstrcpy(f, symtname[t]);
-}
+#define enumfmt(name, array) \
+	static int \
+	name(Fmt *f) \
+	{ \
+		uint t; \
+		\
+		t = va_arg(f->args, uint); \
+		if(t >= nelem(array) || array[t] == nil) \
+			return fmtprint(f, "??? (%d)", t); \
+		return fmtstrcpy(f, array[t]); \
+	}
 
 ASTNode *
 node(int t, ...)
@@ -177,6 +180,7 @@ node(int t, ...)
 		n->n4 = va_arg(va, ASTNode *);
 		break;
 	case ASTIDX:
+	case ASTLITELEM:
 		n->op = va_arg(va, int);
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
@@ -187,6 +191,7 @@ node(int t, ...)
 		n->sym = va_arg(va, Symbol *);
 		break;
 	case ASTCASE:
+	case ASTLITERAL:
 		n->nl = va_arg(va, Nodes *);
 		break;
 	default: sysfatal("node: unknown %A", t);
@@ -237,6 +242,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTIDX:
 	case ASTIF:
 	case ASTINITIAL:
+	case ASTLITELEM:
 	case ASTMEMB:
 	case ASTOP:
 	case ASTPRIME:
@@ -250,6 +256,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTMODULE:
 	case ASTBLOCK:
 	case ASTCASE:
+	case ASTLITERAL:
 		if(a->sym != b->sym)
 			return 0;
 		for(mp = a->nl, np = b->nl; mp != np && mp != nil && np != nil; mp = mp->next, np = np->next)
@@ -348,7 +355,6 @@ nodeaddi(ASTNode *a, int i)
 	if(a->t == ASTCINT && (i >= 0 ? a->i + i >= a->i : a->i + i < a->i))
 		return node(ASTCINT, a->i + i);
 	return node(ASTOP, OPADD, a, node(ASTCINT, i));
-
 }
 
 void
@@ -415,6 +421,7 @@ type(int ty, ...)
 	case TYPINT:
 	case TYPREAL:
 	case TYPSTRING:
+	case TYPSTRUCT:
 		break;
 	default:
 		sysfatal("type: unknown %d", ty);
@@ -434,6 +441,7 @@ typefmt(Fmt *f)
 	t = va_arg(f->args, Type *);
 	indent = f->prec;
 	if(t == nil) return fmtprint(f, "<nil>");
+	if(t->name != nil) return fmtprint(f, "%s", t->name->name);
 	switch(t->t){
 	case TYPBIT: return fmtprint(f, "bit%s", t->sign ? " signed" : "");
 	case TYPBITV: return fmtprint(f, "bit%s [%n]", t->sign ? " signed" : "", t->sz);
@@ -446,10 +454,11 @@ typefmt(Fmt *f)
 			return fmtprint(f, "enum { ... }");
 		rc = 0;
 		rc += fmtprint(f, "enum {\n");
-		for(s = t->vals; s != nil; s = s->enumnext)
+		for(s = t->vals; s != nil; s = s->typenext)
 			rc += fmtprint(f, "%I%s = %n,\n", indent + 1, s->name, s->val);
 		rc += fmtprint(f, "%I}", indent);
 		return rc;
+	case TYPSTRUCT: return fmtprint(f, "struct { ... }");
 	default: return fmtprint(f, "??? (%d)", t->t);
 	}
 }
@@ -504,7 +513,7 @@ enumdecl(Symbol *s, ASTNode *n)
 		enumlast = node(ASTCINT, 0);
 	s = decl(scope, s, SYMCONST, 0, enumlast, enumt);
 	*enumlastp = s;
-	enumlastp = &s->enumnext;
+	enumlastp = &s->typenext;
 }
 
 Type *
@@ -532,6 +541,7 @@ eastprint(Fmt *f, ASTNode *n, int env)
 {
 	int rc;
 	OpData *d;
+	Nodes *mp;
 
 	if(n == nil)
 		return fmtstrcpy(f, "<nil>");
@@ -593,6 +603,43 @@ eastprint(Fmt *f, ASTNode *n, int env)
 	case ASTBREAK: rc += fmtstrcpy(f, "break"); break;
 	case ASTCONTINUE: rc += fmtstrcpy(f, "continue"); break;
 	case ASTDISABLE: rc += fmtstrcpy(f, "disable"); break;
+	case ASTLITERAL:
+		rc += fmtrune(f, '{');
+		for(mp = n->nl; mp != nil; mp = mp->next){
+			rc += eastprint(f, mp->n, 2);
+			if(mp->next != nil)
+				rc += fmtstrcpy(f, ", ");
+		}
+		rc += fmtrune(f, '}');
+		break;
+	case ASTLITELEM:
+		switch(n->op){
+		case LITUNORD: break;
+		case LITELSE: rc += fmtstrcpy(f, "[] "); break;
+		case LITIDX:
+			rc += fmtrune(f, '[');
+			rc += eastprint(f, n->n2, 0);
+			rc += fmtstrcpy(f, "] ");
+			break;
+		case LITRANGE:
+		case LITPRANGE:
+		case LITMRANGE:
+			rc += fmtrune(f, '[');
+			rc += eastprint(f, n->n2, 0);
+			rc += fmtstrcpy(f, n->op == LITPRANGE ? "+:" : n->op == LITMRANGE ? "-:" : ":");
+			rc += eastprint(f, n->n3, 0);
+			rc += fmtstrcpy(f, "] ");
+			break;
+		case LITFIELD:
+			rc += fmtrune(f, '.');
+			rc += eastprint(f, n->n2, env);
+			rc += fmtrune(f, ' ');
+			break;
+		default:
+			error(n, "eastprint: unknown %L", n->op);
+		}
+		eastprint(f, n->n1, env); 
+		break;
 	default:
 		error(n, "eastprint: unknown %A", n->t);
 	}
@@ -780,11 +827,16 @@ tabfmt(Fmt *f)
 	return rc;
 }
 
+enumfmt(astfmt, astname)
+enumfmt(symtfmt, symtname)
+enumfmt(littfmt, littname)
+
 void
 astinit(void)
 {
 	fmtinstall('A', astfmt);
 	fmtinstall('I', tabfmt);
+	fmtinstall('L', littfmt);
 	fmtinstall('T', typefmt);
 	fmtinstall('n', exprfmt);
 	fmtinstall(L'σ', symtfmt);
@@ -860,12 +912,15 @@ fixsymb(Symbol *s)
 
 #define insist(x) if(x){}else{error(n, "x"); return;}
 void
-typecheck(ASTNode *n)
+typecheck(ASTNode *n, Type *ctxt)
 {
 	Nodes *mp;
 	OpData *d;
 	int t1, t2;
 	int sgn;
+	Symbol *s;
+	Symbol *cur;
+	ASTNode *m, *curn;
 
 	if(n == nil)
 		return;
@@ -875,31 +930,31 @@ typecheck(ASTNode *n)
 	case ASTBLOCK:
 	case ASTFSM:
 		for(mp = n->nl; mp != nil; mp = mp->next)
-			typecheck(mp->n);
+			typecheck(mp->n, nil);
 		break;
 	case ASTIF:
-		typecheck(n->n1);
+		typecheck(n->n1, nil);
 		condcheck(n->n1);
-		typecheck(n->n2);
-		typecheck(n->n3);
+		typecheck(n->n2, nil);
+		typecheck(n->n3, nil);
 		break;
 	case ASTWHILE:
 	case ASTDOWHILE:
-		typecheck(n->n1);
+		typecheck(n->n1, nil);
 		condcheck(n->n1);
-		typecheck(n->n2);
+		typecheck(n->n2, nil);
 		break;
 	case ASTFOR:
-		typecheck(n->n1);
-		typecheck(n->n2);
+		typecheck(n->n1, nil);
+		typecheck(n->n2, nil);
 		condcheck(n->n2);
-		typecheck(n->n3);
-		typecheck(n->n4);
+		typecheck(n->n3, nil);
+		typecheck(n->n4, nil);
 		break;
 	case ASTASS:
-		typecheck(n->n1);
+		typecheck(n->n1, nil);
 		insist(n->n1 != nil);
-		typecheck(n->n2);
+		typecheck(n->n2, n->n1->type);
 		insist(n->op == OPNOP);
 		n->n2 = implicitcast(n->n2, n->n1->type);
 		break;
@@ -924,14 +979,14 @@ typecheck(ASTNode *n)
 		n->type = n->sym->type;
 		break;
 	case ASTPRIME:
-		typecheck(n->n1);
+		typecheck(n->n1, ctxt);
 		insist(n->n1 != nil);
 		n->type = n->n1->type;
 		break;
 	case ASTOP:
 		d = getopdata(n->op);
-		typecheck(n->n1);
-		typecheck(n->n2);
+		typecheck(n->n1, ctxt);
+		typecheck(n->n2, ctxt);
 		insist(d != nil);
 		t1 = n->n1 != nil && n->n1->type != nil ? n->n1->type->t : -1;
 		t2 = n->n2 != nil && n->n2->type != nil ? n->n2->type->t : -1;
@@ -986,18 +1041,18 @@ typecheck(ASTNode *n)
 		n->type = nil;
 		break;
 	case ASTTERN:
-		typecheck(n->n1);
+		typecheck(n->n1, nil);
 		condcheck(n->n1);
-		typecheck(n->n2);
-		typecheck(n->n3);
+		typecheck(n->n2, ctxt);
+		typecheck(n->n3, ctxt);
 		n->type = typemax(n->n2->type, n->n3->type);
 		n->n2 = implicitcast(n->n2, n->type);
 		n->n3 = implicitcast(n->n3, n->type);
 		break;
 	case ASTIDX:
-		typecheck(n->n1);
-		typecheck(n->n2);
-		typecheck(n->n3);
+		typecheck(n->n1, ctxt);
+		typecheck(n->n2, nil);
+		typecheck(n->n3, nil);
 		if(n->n1 == nil || n->n1->type == nil){
 			n->type = nil;
 			return;
@@ -1037,19 +1092,91 @@ typecheck(ASTNode *n)
 			error(n, "%σ invalid in goto", n->sym->t);
 		break;
 	case ASTSWITCH:
-		typecheck(n->n1);
-		typecheck(n->n2);
+		typecheck(n->n1, nil);
+		typecheck(n->n2, nil);
 		break;
 	case ASTCASE:
 		for(mp = n->nl; mp != nil; mp = mp->next)
-			typecheck(mp->n);
+			typecheck(mp->n, nil);
 		break;
 	case ASTBREAK:
 	case ASTCONTINUE:
 	case ASTDISABLE:
 		break;
-	case ASTINITIAL:
 	case ASTMEMB:
+		insist(n->n1 != nil && n->sym != nil);
+		typecheck(n->n1, nil);
+		if(n->n1->type == nil) break;
+		if(n->n1->type->t != TYPSTRUCT){
+			error(n, "'%T' is not a struct", n->n1->type);
+			break;
+		}
+		s = getsym(n->n1->type->st, 0, n->sym->name);
+		if(s->t == SYMNONE){
+			error(n, "'%s' not a member of '%T'", s->name, n->n1->type);
+			break;
+		}
+		n->type = s->type;
+		break;
+	case ASTLITERAL:
+		if(ctxt == nil)
+			error(n, "can't identify literal type");
+		n->type = ctxt;
+		if(ctxt->t == TYPSTRUCT){
+			cur = ctxt->vals;
+			for(mp = n->nl; mp != nil; mp = mp->next){
+				m = mp->n;
+				insist(m->t == ASTLITELEM);
+				switch(m->op){
+				case LITFIELD:
+					s = getsym(ctxt->st, 0, m->n2->sym->name);
+					if(s->t == SYMNONE){
+						error(n, "'%s' not a member of '%T'", m->n2->sym->name, ctxt);
+						break;
+					}
+					typecheck(m->n1, s->type);
+					cur = s->typenext;
+					break;
+				case LITUNORD:
+					if(cur == nil){
+						error(n, "out of struct fields");
+						break;
+					}
+					m->op = LITFIELD;
+					m->n2 = node(ASTSYMB, cur);
+					typecheck(m->n1, cur->type);
+					cur = cur->typenext;
+					break;
+				default:
+					error(m, "%L not valid in struct literal", m->op);
+				}
+			}
+		}else{
+			curn = node(ASTCINT, 0);
+			for(mp = n->nl; mp != nil; mp = mp->next){
+				m = mp->n;
+				insist(m->t == ASTLITELEM);
+				switch(m->op){
+				case LITIDX:
+					typecheck(m->n1, ctxt->elem);
+					curn = nodeaddi(m->n2, 1);
+					break;
+				case LITUNORD:
+					if(curn == nil){
+						error(n, "unordered invalid here");
+						break;
+					}
+					m->op = LITIDX;
+					m->n2 = curn;
+					typecheck(m->n1, ctxt->elem);
+					curn = nodeaddi(curn, 1);
+					break;
+				default:
+					error(m, "%L not valid in struct literal", m->op);
+				}
+			}
+		}
+		break;
 	default:
 		error(n, "typecheck: unknown %A", n->t);
 	}

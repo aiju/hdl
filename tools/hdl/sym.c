@@ -114,6 +114,83 @@ decl(SymTab *st, Symbol *s, int t, int opt, ASTNode *n, Type *ty)
 	return s;
 }
 
+static Type *
+typefix(ASTNode *n, Type *ty, Symbol **sp)
+{
+	switch(n->t){
+	case ASTSYMB:
+		*sp = n->sym;
+		return ty;
+	case ASTIDX:
+		ty = typefix(n->n1, ty, sp);
+		ty = type(TYPVECTOR, ty, n->n2);
+		ty->sign = 1;
+		return ty;
+	default:
+		error(n, "typefix: unknown %A", n->t);
+		return nil;
+	}
+}
+
+typedef struct Struct Struct;
+struct Struct {
+	Type *t;
+	Symbol **last;
+	Struct *up;
+};
+static Struct *curstruct;
+
+void
+structstart(void)
+{
+	Struct *s;
+
+	s = emalloc(sizeof(Struct));
+	s->t = type(TYPSTRUCT);
+	s->last = &s->t->vals;
+	s->up = curstruct;
+	s->t->st = emalloc(sizeof(SymTab));
+	curstruct  = s;
+}
+
+void
+structend(Type *t0, int i0, Type **tp, int *ip, Symbol *sym)
+{
+	Struct *s;
+	
+	if(t0 != nil || (i0 & (OPTSIGNED | OPTBIT | OPTCLOCK)) != 0){
+		error(nil, "invalid type");
+		i0 &= ~(OPTSIGNED | OPTBIT | OPTCLOCK);
+	}
+	s = curstruct;
+	if(tp != nil)
+		*tp = s->t;
+	if(ip != nil)
+		*ip = i0;
+	if(sym != nil)
+		s->t->name = decl(scope, sym, SYMTYPE, 0, nil, s->t);
+	
+	curstruct = s->up;
+	free(s);
+}
+
+ASTNode *
+vardecl(SymTab *st, ASTNode *ns, int opt, ASTNode *n, Type *ty)
+{
+	Symbol *s;
+	
+	ty = typefix(ns, ty, &s);
+	if(ty == nil) return nil;
+	if(curstruct != nil)
+		st = curstruct->t->st;
+	s = decl(st, s, SYMVAR, opt, nil, ty);
+	if(curstruct != nil){
+		*curstruct->last = s;
+		curstruct->last = &s->typenext;
+	}
+	return node(ASTDECL, s, n);
+}
+
 void
 checksym(Symbol *s)
 {

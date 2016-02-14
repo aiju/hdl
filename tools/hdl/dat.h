@@ -24,6 +24,8 @@ struct Type {
 	Type *elem;
 	ASTNode *sz;
 	int sign;
+	SymTab *st;
+	Symbol *name;
 };
 
 enum {
@@ -35,6 +37,7 @@ enum {
 	TYPSTRING,
 	TYPVECTOR,
 	TYPENUM,
+	TYPSTRUCT,
 };
 
 struct Symbol {
@@ -43,7 +46,7 @@ struct Symbol {
 	ASTNode *val;
 	Type *type;
 	SymTab *st;
-	Symbol *next, *enumnext;
+	Symbol *next, *typenext;
 	Line;
 };
 
@@ -102,6 +105,8 @@ enum {
 	ASTIDX,
 	ASTIF,
 	ASTINITIAL,
+	ASTLITELEM,
+	ASTLITERAL,
 	ASTMEMB,
 	ASTMODULE,
 	ASTOP,
@@ -149,6 +154,17 @@ enum {
 	OPUOR,
 	OPUXOR,
 	OPMAX,
+};
+
+enum {
+	LITINVAL,
+	LITUNORD,
+	LITELSE,
+	LITIDX,
+	LITRANGE,
+	LITPRANGE,
+	LITMRANGE,
+	LITFIELD,
 };
 
 enum {

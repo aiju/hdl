@@ -1,12 +1,14 @@
 void *emalloc(int);
 int yylex(void);
 void error(Line *, char *, ...);
+void warn(Line *, char *, ...);
 int parse(char *);
 ASTNode *node(int, ...);
 Nodes *nlcat(Nodes *, Nodes *);
 ASTNode *newscope(SymTab *, int, Symbol *);
 void scopeup(void);
 Symbol *decl(SymTab *, Symbol *, int, int, ASTNode *, Type *);
+ASTNode *vardecl(SymTab *, ASTNode *, int, ASTNode *, Type *);
 Symbol *getsym(SymTab *, int, char *);
 ASTNode *fsmstate(Symbol *);
 void fsmstart(ASTNode *);
@@ -19,7 +21,7 @@ void enumdecl(Symbol *, ASTNode *);
 void checksym(Symbol *);
 void astprint(ASTNode *);
 void consparse(Const *, char *);
-void typecheck(ASTNode *);
+void typecheck(ASTNode *, Type *);
 void typefinal(Type *, int, Type **, int *);
 ASTNode *nodedup(ASTNode *);
 int consteq(Const *, Const *);
@@ -33,7 +35,6 @@ ASTNode *constfold(ASTNode *);
 void compile(Nodes *);
 #define nodeput free
 OpData *getopdata(int);
-#define warn error
 ASTNode *fsmgoto(Symbol *);
 Nodes *nl(ASTNode *);
 void nlput(Nodes *);
@@ -43,3 +44,5 @@ ASTNode *mkblock(Nodes *);
 int descendsum(ASTNode *, int (*)(ASTNode *));
 void nlprint(Nodes *, int);
 Nodes *nldup(Nodes *);
+void structstart(void);
+void structend(Type *, int, Type **, int *, Symbol *);

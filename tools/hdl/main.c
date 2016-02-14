@@ -36,13 +36,27 @@ error(Line *l, char *fmt, ...)
 }
 
 void
+warn(Line *l, char *fmt, ...)
+{
+	va_list va;
+	static char buf[ERRMAX];
+	
+	if(l == nil)
+		l = curline;
+	va_start(va, fmt);
+	snprint(buf, sizeof(buf), "%s:%d %s\n", l->filen, l->lineno, fmt);
+	vfprint(2, buf, va);
+	va_end(va);
+}
+
+void
 compile(Nodes *np)
 {
 	ASTNode *n;
 
 	for(; np != nil; np = np->next){
 		n = np->n;
-		typecheck(n);
+		typecheck(n, nil);
 		if(nerror != 0) return;
 		n = constfold(n);
 		if(nerror != 0) return;

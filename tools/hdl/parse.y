@@ -31,8 +31,8 @@
 %token <cons> LNUMB
 
 %type <n> stat1 lval expr cexpr optcexpr module var trigger membs
-%type <n> primary
-%type <ns> stats stat globdef vars triggers elist
+%type <n> primary varspec litexpr
+%type <ns> stats stat globdef vars triggers elist litexprs litexprs1
 %type <ti> type type0 type1 typew opttypews typevector
 %type <sym> symb
 
@@ -76,8 +76,8 @@ arg:
 	
 type: typevector
 	| opttypews LENUM '{' { enumstart($1.t); } enumvals '}' { $$.t = enumend(); $$.i = $1.i; }
-	| opttypews LSTRUCT '{' memberdefs '}'
-	| opttypews LSTRUCT symb optargs '{' memberdefs '}'
+	| opttypews LSTRUCT '{' { structstart(); } memberdefs '}' { structend($1.t, $1.i, &$$.t, &$$.i, nil); }
+	| opttypews LSTRUCT symb optargs '{' { structstart(); } memberdefs '}' { structend($1.t, $1.i, nil, nil, $3); }
 
 typevector:
 	type1 { typefinal($1.t, $1.i, &$$.t, &$$.i); }
@@ -90,7 +90,7 @@ type0: typew | type0 typew { typeor($1.t, $1.i, $2.t, $2.i, &$$.t, &$$.i); }
 type1: type0
 	| type0 LTYPE { typeor($1.t, $1.i, $2->type, 0, &$$.t, &$$.i); }
 	| type0 LTYPE type0 { typeor($1.t, $1.i, $2->type, 0, &$$.t, &$$.i); typeor($$.t, $$.i, $3.t, $3.i, &$$.t, &$$.i); }
-	| LTYPE { $$.t = $1->type; }
+	| LTYPE { $$.t = $1->type; $$.i = 0; }
 
 typew:
 	LBIT { $$.t = 0; $$.i = OPTBIT; }
@@ -182,8 +182,12 @@ vars:
 	| vars ',' var { $$ = nlcat($1, nl($3)); }
 
 var:
-	symb { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, curopt, nil, curtype), nil); }
-	| symb '=' cexpr { $$ = node(ASTDECL, decl(scope, $1, SYMVAR, curopt, nil, curtype), $3); }
+	varspec { $$ = vardecl(scope, $1, curopt, nil, curtype); }
+	| varspec '=' cexpr { $$ = vardecl(scope, $1, SYMVAR, $3, curtype); }
+
+varspec:
+	symb { $$ = node(ASTSYMB, $1); }
+	| varspec '[' cexpr ']' { $$ = node(ASTIDX, 0, $1, $3, nil); }
 
 lval:
 	membs
@@ -195,7 +199,7 @@ lval:
 
 membs:
 	LSYMB { $$ = node(ASTSYMB, $1); checksym($1); }
-	| membs '.' LSYMB { $$ = node(ASTMEMB, $1, $3); }
+	| membs '.' symb { $$ = node(ASTMEMB, $1, $3); }
 
 expr:
 	primary
@@ -232,6 +236,7 @@ expr:
 	| '|' primary %prec unaryprec { $$ = node(ASTOP, OPUOR, $2, nil); }
 	| '^' primary %prec unaryprec { $$ = node(ASTOP, OPUXOR, $2, nil); }
 	| '!' primary %prec unaryprec { $$ = node(ASTOP, OPLNOT, $2, nil); }
+	| '{' litexprs '}' { $$ = node(ASTLITERAL, $2); }
 
 cexpr:
 	expr
@@ -245,6 +250,19 @@ primary:
 	LNUMB { $$ = mkcint(&$1); }
 	| lval
 	| '(' cexpr ')' { $$ = $2; }
+
+litexprs: { $$ = nil; } | litexprs1 | litexprs1 ','
+litexprs1:
+	litexpr { $$ = nl($1); }
+	| litexprs1 ',' litexpr { $$ = nlcat($1, nl($3)); }
+litexpr:
+	expr { $$ = node(ASTLITELEM, LITUNORD, $1, nil, nil); }
+	| '[' ']' expr { $$ = node(ASTLITELEM, LITELSE, $3, nil, nil); }
+	| '[' cexpr ']' expr { $$ = node(ASTLITELEM, LITIDX, $4, $2, nil); }
+	| '[' cexpr ':' cexpr ']' expr { $$ = node(ASTLITELEM, LITRANGE, $6, $2, $4); }
+	| '[' cexpr LOPLCOL cexpr ']' expr { $$ = node(ASTLITELEM, LITPRANGE, $6, $2, $4); }
+	| '[' cexpr LOMICOL cexpr ']' expr { $$ = node(ASTLITELEM, LITMRANGE, $6, $2, $4); }
+	| '.' symb expr { $$ = node(ASTLITELEM, LITFIELD, $3, node(ASTSYMB, $2), nil); }
 
 symb: LSYMB | LTYPE
 ecomma: | ','
