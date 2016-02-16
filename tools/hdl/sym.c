@@ -124,7 +124,7 @@ typefix(ASTNode *n, Type *ty, Symbol **sp)
 	case ASTIDX:
 		ty = typefix(n->n1, ty, sp);
 		ty = type(TYPVECTOR, ty, n->n2);
-		ty->sign = 1;
+		ty->mem = 1;
 		return ty;
 	default:
 		error(n, "typefix: unknown %A", n->t);
@@ -137,6 +137,7 @@ struct Struct {
 	Type *t;
 	Symbol **last;
 	Struct *up;
+	ASTNode *def;
 };
 static Struct *curstruct;
 
@@ -150,6 +151,7 @@ structstart(void)
 	s->last = &s->t->vals;
 	s->up = curstruct;
 	s->t->st = emalloc(sizeof(SymTab));
+	s->def = node(ASTSYMB, getsym(&globals, 0, "$0_$1"));
 	curstruct  = s;
 }
 
@@ -189,6 +191,23 @@ vardecl(SymTab *st, ASTNode *ns, int opt, ASTNode *n, Type *ty)
 		curstruct->last = &s->typenext;
 	}
 	return node(ASTDECL, s, n);
+}
+
+void
+setpackdef(Nodes *mp, ASTNode *p)
+{
+	if(p == nil)
+		p = curstruct->def;
+	for(; mp != nil; mp = mp->next){
+		assert(mp->n != nil && mp->n->t == ASTDECL && mp->n->sym != nil);
+		mp->n->sym->pack = p;
+	}
+}
+
+void
+defpackdef(ASTNode *p)
+{
+	curstruct->def = p;
 }
 
 void

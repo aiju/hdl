@@ -23,7 +23,7 @@ struct Type {
 	Symbol *vals;
 	Type *elem;
 	ASTNode *sz;
-	int sign;
+	int sign, mem;
 	SymTab *st;
 	Symbol *name;
 };
@@ -47,6 +47,8 @@ struct Symbol {
 	Type *type;
 	SymTab *st;
 	Symbol *next, *typenext;
+	ASTNode *pack;
+	void *typc;
 	Line;
 };
 
@@ -209,7 +211,10 @@ extern int nerror;
 
 #pragma varargck type "A" int
 #pragma varargck type "I" int
+#pragma varargck type "L" int
 #pragma varargck type "T" Type *
 #pragma varargck type "n" ASTNode *
 #pragma varargck type "C" Const *
 #pragma varargck type "σ" int
+#pragma varargck argpos error 2
+#pragma varargck argpos warn 2

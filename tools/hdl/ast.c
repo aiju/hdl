@@ -115,12 +115,22 @@ node(int t, ...)
 {
 	ASTNode *n;
 	va_list va;
+	int i;
+	static ASTNode *cintzero, *cintone;
 	
+	va_start(va, t);
+	SET(i);
+	if(t == ASTCINT){
+		i = va_arg(va, int);
+		if(i == 0){
+			if(cintzero != nil) return cintzero;
+		}else if(i == 1)
+			if(cintone != nil) return cintone;
+	}
 	n = emalloc(sizeof(ASTNode));
 	n->t = t;
 	n->Line = *curline;
 	setmalloctag(n, getcallerpc(&t));
-	va_start(va, t);
 	switch(t){
 	case ASTMODULE:
 	case ASTBLOCK:
@@ -137,7 +147,9 @@ node(int t, ...)
 		n->cons = va_arg(va, Const);
 		break;
 	case ASTCINT:
-		n->i = va_arg(va, int);
+		n->i = i;
+		if(i == 0) cintzero = n;
+		else if(i == 1) cintone = n;
 		break;
 	case ASTSYMB:
 		n->sym = va_arg(va, Symbol *);
@@ -223,10 +235,8 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	Nodes *mp, *np;
 	
 	eq = (int(*)(ASTNode *, ASTNode *, void *)) eqp;
-	if(a == nil) return b == nil;
-	if(b == nil) return a == nil;
 	if(a == b) return 1;
-	if(a->t != b->t) return 0;
+	if(a == nil || b == nil || a->t != b->t) return 0;
 	switch(a->t){
 	case ASTINVAL:
 	case ASTABORT:
@@ -356,6 +366,24 @@ nodeaddi(ASTNode *a, int i)
 		return node(ASTCINT, a->i + i);
 	return node(ASTOP, OPADD, a, node(ASTCINT, i));
 }
+ASTNode *
+nodeadd(ASTNode *a, ASTNode *b)
+{
+	enum { M = ((uint)-1) >> 1 };
+	if(a == nil || b == nil) return nil;
+	if(a->t == ASTCINT && b->t == ASTCINT && (int)((a->i & M) + (b->i & M)) >= 0)
+		return node(ASTCINT, a->i + b->i);
+	return node(ASTOP, OPADD, a, b);
+}
+
+ASTNode *
+nodemul(ASTNode *a, ASTNode *b)
+{
+	if(a == nil || b == nil) return nil;
+	if(a->t == ASTCINT && b->t == ASTCINT && (int)(a->i * b->i) == (vlong)a->i * b->i)
+		return node(ASTCINT, a->i * b->i);
+	return node(ASTOP, OPMUL, a, b);
+}
 
 void
 typeor(Type *t1, int i1, Type *t2, int i2, Type **tp, int *ip)
@@ -417,7 +445,7 @@ type(int ty, ...)
 		t->sz = va_arg(va, ASTNode *);
 		t->sign = va_arg(va, int);
 		assert(t->sign == 0 || t->sign == 1);
-		break;		
+		break;
 	case TYPINT:
 	case TYPREAL:
 	case TYPSTRING:
@@ -482,7 +510,7 @@ typefold(Type *t)
 	case TYPVECTOR:
 		s = constfold(t->sz);
 		if(s == t->sz) return t;
-		return type(TYPVECTOR, s, t->sign);
+		return type(TYPVECTOR, t->elem, s);
 	default:
 		warn(nil, "typefold: unknown %T", t);
 		return t;
@@ -599,6 +627,19 @@ eastprint(Fmt *f, ASTNode *n, int env)
 		rc += eastprint(f, n->n3, 3);
 		if(env > 3)
 			rc += fmtrune(f, ')');
+		break;
+	case ASTIDX:
+		rc += eastprint(f, n->n1, 16);
+		rc += fmtrune(f, '[');
+		rc += eastprint(f, n->n2, 0);
+		switch(n->op){
+		case 1: rc += fmtrune(f, ':'); break;
+		case 2: rc += fmtstrcpy(f, "+:"); break;
+		case 3: rc += fmtstrcpy(f, "-:"); break;
+		}
+		if(n->op > 0)
+			rc += eastprint(f, n->n3, 0);
+		rc += fmtrune(f, ']');
 		break;
 	case ASTBREAK: rc += fmtstrcpy(f, "break"); break;
 	case ASTCONTINUE: rc += fmtstrcpy(f, "continue"); break;
@@ -872,6 +913,10 @@ implicitcast(ASTNode *n, Type *t)
 		if(n->type->t == TYPBITV || n->type->t == TYPBIT || n->type->t == TYPINT)
 			return n;
 		break;
+	case TYPSTRUCT:
+		if(n->type == t)
+			return n;
+		break;
 	default:
 		error(n, "implicitcast: unknown %T", t);
 		return n;
@@ -1058,7 +1103,7 @@ typecheck(ASTNode *n, Type *ctxt)
 			return;
 		}
 		insist(n->op >= 0 && n->op <= 3);
-		switch(n->type->t){
+		switch(n->n1->type->t){
 		case TYPSTRING:
 			if(n->op == 0)
 				n->type = type(TYPINT);
@@ -1074,12 +1119,12 @@ typecheck(ASTNode *n, Type *ctxt)
 			break;
 		case TYPVECTOR:
 			switch(n->op){
-			case 0: n->type = n->type->elem;
-			case 1: n->type = type(TYPVECTOR, n->type->elem, nodewidth(n->n2, n->n3)); break;
-			case 2: case 3: n->type = type(TYPBITV, n->type->elem, n->n3); break;
+			case 0: n->type = n->n1->type->elem; break;
+			case 1: n->type = type(TYPVECTOR, n->n1->type->elem, nodewidth(n->n2, n->n3)); break;
+			case 2: case 3: n->type = type(TYPBITV, n->n1->type->elem, n->n3); break;
 			}
 			break;
-		default: error(n->n1, "%T invalid in indexing", n->n1->t);
+		default: error(n->n1, "%T invalid in indexing", n->n1->type);
 		}
 		break;
 	case ASTSTATE:

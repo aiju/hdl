@@ -608,5 +608,5 @@ findfsm(ASTNode *n)
 ASTNode *
 fsmcompile(ASTNode *n)
 {
-	return onlyone(n, findfsm);
+	return onlyone(n, nil, findfsm);
 }

@@ -9,6 +9,7 @@ OFILES=\
 	sym.$O \
 	fsm.$O \
 	fold.$O \
+	typc.$O \
 
 BIN=/$objtype/bin
 

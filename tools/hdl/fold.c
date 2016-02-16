@@ -403,12 +403,12 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 }
 
 ASTNode *
-onlyone(ASTNode *n, Nodes *(*mod)(ASTNode *))
+onlyone(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 {
 	Nodes *m;
 	ASTNode *r;
 	
-	m = descend(n, nil, mod);
+	m = descend(n, pre, mod);
 	if(m == nil)
 		return nil;
 	if(m->next != nil)
@@ -431,7 +431,7 @@ descendnl(Nodes *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 ASTNode *
 constfold(ASTNode *n)
 {
-	return onlyone(n, cfold);
+	return onlyone(n, nil, cfold);
 }
 
 int

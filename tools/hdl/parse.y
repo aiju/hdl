@@ -30,8 +30,8 @@
 %token <sym> LSYMB LTYPE
 %token <cons> LNUMB
 
-%type <n> stat1 lval expr cexpr optcexpr module var trigger membs
-%type <n> primary varspec litexpr
+%type <n> stat1 lval expr cexpr optcexpr module var trigger
+%type <n> primary varspec litexpr packdef optpackdef
 %type <ns> stats stat globdef vars triggers elist litexprs litexprs1
 %type <ti> type type0 type1 typew opttypews typevector
 %type <sym> symb
@@ -117,14 +117,15 @@ memberdefs:
 	| memberdefs memberdef
 
 memberdef:
-	type vars optpackdef ';'
+	type { curtype = $1.t; curopt = $1.i; } vars optpackdef ';' { setpackdef($3, $4); }
 	| type optpackdef ';'
-	| packdef ';'
+	| packdef ';' { defpackdef($1); }
 
-optpackdef: | packdef
+optpackdef: { $$ = nil; }
+	| packdef
 packdef:
-	LOPACK symb
-	| LOPACK symb '[' cexpr ':' cexpr ']'
+	LOPACK symb { $$ = node(ASTSYMB, $2); }
+	| LOPACK symb '[' cexpr ':' cexpr ']' { $$ = node(ASTIDX, 0, node(ASTSYMB, $2), $4, $6, nil); }
 
 stats: { $$ = nil; } | stats stat { $$ = nlcat($1, $2); }
 
@@ -190,16 +191,13 @@ varspec:
 	| varspec '[' cexpr ']' { $$ = node(ASTIDX, 0, $1, $3, nil); }
 
 lval:
-	membs
+	LSYMB { $$ = node(ASTSYMB, $1); checksym($1); }
+	| lval '.' symb { $$ = node(ASTMEMB, $1, $3); }
 	| lval '\'' { $$ = node(ASTPRIME, $1); }
 	| lval '[' cexpr ']' { $$ = node(ASTIDX, 0, $1, $3, nil); }
 	| lval '[' cexpr ':' cexpr ']' { $$ = node(ASTIDX, 1, $1, $3, $5); }
 	| lval '[' cexpr LOPLCOL cexpr ']' { $$ = node(ASTIDX, 2, $1, $3, $5); }
 	| lval '[' cexpr LOMICOL cexpr ']' { $$ = node(ASTIDX, 3, $1, $3, $5); }
-
-membs:
-	LSYMB { $$ = node(ASTSYMB, $1); checksym($1); }
-	| membs '.' symb { $$ = node(ASTMEMB, $1, $3); }
 
 expr:
 	primary
