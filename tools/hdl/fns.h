@@ -51,4 +51,6 @@ void defpackdef(ASTNode *);
 ASTNode *typconc(ASTNode *);
 ASTNode *nodeadd(ASTNode *, ASTNode *);
 ASTNode *nodemul(ASTNode *, ASTNode *);
+ASTNode *nodewidth(ASTNode *, ASTNode *);
+ASTNode *nodesub(ASTNode *, ASTNode *);
 ASTNode *nodeaddi(ASTNode *a, int i);

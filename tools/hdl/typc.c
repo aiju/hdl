@@ -31,8 +31,8 @@ struct Field {
 struct FieldR {
 	Field *f;
 	Symbol *sym;
-	ASTNode *lo;
-	ASTNode *mlo;
+	ASTNode *lo, *sz, *maxsz;
+	ASTNode *mlo, *msz;
 	FieldR *next;
 	int prime;
 };
@@ -112,6 +112,7 @@ dodecl(Symbol *s, Type *t)
 				h->len = t->sz;
 				h->look = LOOKVEC;
 			}
+			print("%s %n %n\n", h->sym->name, h->sz, h->cnt);
 			*p = h;
 			p = &h->next;
 		}
@@ -134,6 +135,9 @@ fieldsym(Field *f)
 		r->sym = f->sym;
 		r->f = f;
 		r->lo = node(ASTCINT, 0);
+		r->sz = f->sz;
+		r->msz = f->cnt;
+		r->maxsz = f->sz;
 		if(f->cnt != nil)
 			r->mlo = node(ASTCINT, 0);
 		*p = r;
@@ -143,9 +147,10 @@ fieldsym(Field *f)
 }
 
 static FieldR *
-fieldidx(FieldR *f, ASTNode *i)
+fieldidx(FieldR *f, int op, ASTNode *i, ASTNode *j)
 {
 	FieldR *r;
+	ASTNode **lo, **sz;
 	
 	for(r = f; r != nil; r = r->next){
 		if(r->f == nil){
@@ -153,12 +158,31 @@ fieldidx(FieldR *f, ASTNode *i)
 			continue;
 		}
 		switch(r->f->look){
-		case LOOKVEC: r->lo = nodeadd(r->lo, nodemul(r->f->stride, i)); break;
-		case LOOKMEM: r->mlo = nodeadd(r->mlo, nodemul(r->f->stride, i)); break;
+		case LOOKVEC: lo = &r->lo; sz = &r->sz; break;
+		case LOOKMEM: lo = &r->mlo; sz = &r->msz; break;
 		default:
 			error(r->sym, "fieldidx: unknown %d", r->f->look);
+			continue;
 		}
-		r->f = r->f->down;
+		switch(op){
+		case 0:
+			*lo = nodeadd(*lo, nodemul(r->f->stride, i));
+			*sz = r->f->stride;
+			r->f = r->f->down;
+			break;
+		case 1:
+			*lo = nodeadd(*lo, nodemul(r->f->stride, j));
+			*sz = nodemul(r->f->stride, nodewidth(i, j));
+			break;
+		case 2:
+			*lo = nodeadd(*lo, nodemul(r->f->stride, i));
+			*sz = nodemul(r->f->stride, j);
+			break;
+		case 3:
+			*lo = nodeadd(*lo, nodemul(nodesub(i, j), r->f->stride));
+			*sz = nodemul(r->f->stride, j);
+			break;
+		}
 	}
 	return f;
 }
@@ -204,11 +228,11 @@ fieldval(ASTNode *m, FieldR *f)
 		return nil;
 	}
 	if(f->mlo != nil){
-		if(f->f->cnt != nil) error(m, "fieldval: f->f->cnt != nil");
+		if(f->msz != nil && !nodeeq(f->msz, node(ASTCINT, 1), nodeeq)) error(m, "fieldval: phase error: multiple memory accesses");
 		n = node(ASTIDX, 0, n, f->mlo, nil);
 	}
-	if(!nodeeq(f->lo, node(ASTCINT, 0), nodeeq) || !nodeeq(f->f->sz, f->sym->type->sz, nodeeq))
-		n = node(ASTIDX, 2, n, f->lo, f->f->sz);
+	if(!nodeeq(f->lo, node(ASTCINT, 0), nodeeq) || !nodeeq(f->sz, f->maxsz, nodeeq))
+		n = node(ASTIDX, 2, n, f->lo, f->sz);
 	if(f->prime)
 		n = node(ASTPRIME, n);
 	return n;
@@ -279,8 +303,9 @@ typconc1(ASTNode *n, FieldR **fp)
 	case ASTIDX:
 		m->n1 = mkblock(typconc1(n->n1, &f1));
 		m->n2 = mkblock(typconc1(n->n2, nil));
+		m->n3 = mkblock(typconc1(n->n3, nil));
 		if(fp != nil)
-			*fp = fieldidx(f1, m->n2);
+			*fp = fieldidx(f1, m->op, m->n2, m->n3);
 		break;
 	case ASTMEMB:
 		m->n1 = mkblock(typconc1(n->n1, &f1));

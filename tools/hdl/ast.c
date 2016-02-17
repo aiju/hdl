@@ -366,6 +366,7 @@ nodeaddi(ASTNode *a, int i)
 		return node(ASTCINT, a->i + i);
 	return node(ASTOP, OPADD, a, node(ASTCINT, i));
 }
+
 ASTNode *
 nodeadd(ASTNode *a, ASTNode *b)
 {
@@ -374,6 +375,16 @@ nodeadd(ASTNode *a, ASTNode *b)
 	if(a->t == ASTCINT && b->t == ASTCINT && (int)((a->i & M) + (b->i & M)) >= 0)
 		return node(ASTCINT, a->i + b->i);
 	return node(ASTOP, OPADD, a, b);
+}
+
+ASTNode *
+nodesub(ASTNode *a, ASTNode *b)
+{
+	enum { M = ((uint)-1) >> 1 };
+	if(a == nil || b == nil) return nil;
+	if(a->t == ASTCINT && b->t == ASTCINT && (int)((a->i & M) - (b->i & M)) >= 0)
+		return node(ASTCINT, a->i + b->i);
+	return node(ASTOP, OPSUB, a, b);
 }
 
 ASTNode *
@@ -511,6 +522,8 @@ typefold(Type *t)
 		s = constfold(t->sz);
 		if(s == t->sz) return t;
 		return type(TYPVECTOR, t->elem, s);
+	case TYPSTRUCT:
+		return t;
 	default:
 		warn(nil, "typefold: unknown %T", t);
 		return t;
@@ -915,6 +928,10 @@ implicitcast(ASTNode *n, Type *t)
 		break;
 	case TYPSTRUCT:
 		if(n->type == t)
+			return n;
+		break;
+	case TYPVECTOR:
+		if(n->type->elem == t->elem && nodeeq(n->type->sz, t->sz, nodeeq))
 			return n;
 		break;
 	default:
