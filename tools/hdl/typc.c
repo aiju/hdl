@@ -72,6 +72,7 @@ dodecl(Symbol *s, Type *t)
 		f->sz = t->sz;
 		f->cnt = nil;
 		f->look = LOOKBITV;
+		f->stride = node(ASTCINT, 1);
 		return f;
 	case TYPSTRUCT:
 		f = nil;
@@ -158,6 +159,7 @@ fieldidx(FieldR *f, int op, ASTNode *i, ASTNode *j)
 			continue;
 		}
 		switch(r->f->look){
+		case LOOKBITV: lo = &r->lo; sz = &r->sz; break;
 		case LOOKVEC: lo = &r->lo; sz = &r->sz; break;
 		case LOOKMEM: lo = &r->mlo; sz = &r->msz; break;
 		default:
@@ -168,7 +170,8 @@ fieldidx(FieldR *f, int op, ASTNode *i, ASTNode *j)
 		case 0:
 			*lo = nodeadd(*lo, nodemul(r->f->stride, i));
 			*sz = r->f->stride;
-			r->f = r->f->down;
+			if(r->f->look != LOOKBITV)
+				r->f = r->f->down;
 			break;
 		case 1:
 			*lo = nodeadd(*lo, nodemul(r->f->stride, j));
@@ -232,7 +235,10 @@ fieldval(ASTNode *m, FieldR *f)
 		n = node(ASTIDX, 0, n, f->mlo, nil);
 	}
 	if(!nodeeq(f->lo, node(ASTCINT, 0), nodeeq) || !nodeeq(f->sz, f->maxsz, nodeeq))
-		n = node(ASTIDX, 2, n, f->lo, f->sz);
+		if(nodeeq(f->sz, node(ASTCINT, 1), nodeeq))
+			n = node(ASTIDX, 0, n, f->lo, nil);
+		else
+			n = node(ASTIDX, 2, n, f->lo, f->sz);
 	if(f->prime)
 		n = node(ASTPRIME, n);
 	return n;
