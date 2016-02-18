@@ -185,7 +185,7 @@ vardecl(SymTab *st, ASTNode *ns, int opt, ASTNode *n, Type *ty)
 	if(ty == nil) return nil;
 	if(curstruct != nil)
 		st = curstruct->t->st;
-	s = decl(st, s, SYMVAR, opt, nil, ty);
+	s = decl(st, s, SYMVAR, opt, curstruct != nil ? n : nil, ty);
 	if(curstruct != nil){
 		*curstruct->last = s;
 		curstruct->last = &s->typenext;

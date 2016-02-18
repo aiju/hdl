@@ -589,7 +589,7 @@ eastprint(Fmt *f, ASTNode *n, int env)
 	rc = 0;
 	switch(n->t){
 	case ASTSYMB:
-		return fmtstrcpy(f, n->sym->name);
+		return fmtstrcpy(f, n->sym == nil ? nil : n->sym->name);
 	case ASTMEMB:
 		return fmtprint(f, "%n.%s", n->n1, n->sym->name);
 	case ASTCINT:
@@ -1244,4 +1244,20 @@ typecheck(ASTNode *n, Type *ctxt)
 	}
 }
 
+ASTNode *
+defaultval(Type *t)
+{
+	Const c;
 
+	switch(t->t){
+	case TYPBITV:
+		memset(&c, 0, sizeof(Const));
+		c.n = itomp(0, nil);
+		c.x = itomp(-1, nil);
+		c.sz = 0;
+		return node(ASTCONST, c);
+	default:
+		error(nil, "defaultval: unknown '%T'", t);
+		return nil;
+	}
+}

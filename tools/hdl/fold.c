@@ -20,7 +20,7 @@ binput(Fmt *f, Const *c)
 	i = j > k ? j : k;
 	if(x->sign == -1){
 		mptrunc(n, ++i, n);
-		mptrunc(n, i, n);
+		mptrunc(x, i, x);
 	}else if(k >= j)
 		i++;
 	if(n->sign == -1)

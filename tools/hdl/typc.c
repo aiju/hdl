@@ -245,11 +245,49 @@ fieldval(ASTNode *m, FieldR *f)
 }
 
 static Nodes *
+litass(ASTNode *m, FieldR *f)
+{
+	Symbol *s;
+	Nodes *r, *tp;
+	ASTNode *v;
+	ASTNode *t;
+	FieldR *fn;
+
+	if(m->n2 == nil || m->n2->type == nil || m->n2->type->t != TYPSTRUCT){
+		error(m, "litass: phase error");
+		return nil;
+	}
+	r = nil;
+	for(; f != nil; f = fn){
+		fn = f->next;
+		f->next = nil;
+		for(s = m->n2->type->vals; s != nil && strcmp(s->name, f->f->fname); s = s->typenext)
+			;
+		if(s == nil){
+			error(m, "litass: can't find field '%s'", f->f->fname);
+			return nil;
+		}
+		v = s->val != nil ? s->val : defaultval(s->type);
+		for(tp = m->n2->nl; tp != nil; tp = tp->next){
+			t = tp->n;
+			if(t->t == ASTLITELEM && t->op == LITFIELD && strcmp(t->n2->sym->name, s->name) == 0){
+				v = t->n1;
+				break;
+			}
+		}
+		r = nlcat(r, nl(node(ASTASS, OPNOP, fieldval(m, f), v)));
+	}
+	return r;
+}
+
+static Nodes *
 fieldass(ASTNode *m, FieldR *f, FieldR *g)
 {
 	FieldR *fn, *gn;
 	Nodes *r;
 
+	if(m->n2 != nil && m->n2->t == ASTLITERAL)
+		return litass(m, f);
 	if((f == nil || f->next == nil) && (g == nil || g->next == nil)){
 		if(f != nil) m->n1 = fieldval(m->n1, f);
 		if(g != nil) m->n2 = fieldval(m->n2, g);
@@ -270,7 +308,7 @@ fieldass(ASTNode *m, FieldR *f, FieldR *g)
 static Nodes *
 typconc1(ASTNode *n, FieldR **fp)
 {
-	FieldR *f1, *f2, *fn;
+	FieldR *f1, *f2, *f3, *fn;
 	Field *f;
 	ASTNode *m;
 	Nodes *r;
@@ -278,6 +316,7 @@ typconc1(ASTNode *n, FieldR **fp)
 	if(n == nil) return nil;
 	f1 = nil;
 	f2 = nil;
+	f3 = nil;
 	m = nodedup(n);
 	switch(n->t){
 	case ASTDECL:
@@ -332,6 +371,16 @@ typconc1(ASTNode *n, FieldR **fp)
 		m->n2 = mkblock(typconc1(n->n2, &f2));
 		m->n2 = fieldval(m->n2, f2);
 		break;
+	case ASTLITELEM:
+		m->n1 = mkblock(typconc1(n->n1, &f1));
+		m->n1 = fieldval(m->n1, f1);
+		if(m->op != LITFIELD){
+			m->n2 = mkblock(typconc1(n->n2, &f2));
+			m->n2 = fieldval(m->n2, f2);
+			m->n3 = mkblock(typconc1(n->n3, &f3));
+			m->n3 = fieldval(m->n3, f3);
+		}
+		break;
 	case ASTIF:
 	case ASTWHILE:
 	case ASTFOR:
@@ -342,6 +391,7 @@ typconc1(ASTNode *n, FieldR **fp)
 		break;
 	case ASTBLOCK:
 	case ASTMODULE:
+	case ASTLITERAL:
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, typconc1(r->n, nil));

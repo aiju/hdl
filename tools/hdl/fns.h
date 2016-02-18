@@ -54,3 +54,4 @@ ASTNode *nodemul(ASTNode *, ASTNode *);
 ASTNode *nodewidth(ASTNode *, ASTNode *);
 ASTNode *nodesub(ASTNode *, ASTNode *);
 ASTNode *nodeaddi(ASTNode *a, int i);
+ASTNode *defaultval(Type *);
