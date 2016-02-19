@@ -191,6 +191,7 @@ enum {
 	OPTBIT = 64,
 	OPTCLOCK = 128,
 	OPTTEMP = 256,
+	OPTCONST = 512,
 };
 
 enum {

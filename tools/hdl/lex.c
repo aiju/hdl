@@ -25,6 +25,7 @@ static Keyword kwtable[] = {
 	"break", LBREAK,
 	"case", LCASE,
 	"clock", LCLOCK,
+	"const", LCONST,
 	"continue", LCONTINUE,
 	"default", LDEFAULT,
 	"do", LDO,

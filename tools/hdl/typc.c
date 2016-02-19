@@ -65,6 +65,15 @@ dodecl(Symbol *s, Type *t)
 	Field *f, *g, *h, **p;
 	Symbol *m;
 
+	switch(s->t){
+	case SYMVAR:
+		break;
+	case SYMCONST:
+		return nil;
+	default:
+		error(s, "typc dodecl: unknown %σ", t->t);
+		return nil;
+	}
 	switch(t->t){
 	case TYPBIT:
 		f = emalloc(sizeof(Field));

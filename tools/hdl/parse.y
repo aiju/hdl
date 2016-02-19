@@ -21,7 +21,7 @@
 
 %token LMODULE LINPUT LOUTPUT LBIT LIF LELSE LCLOCK LWHILE LDO LFOR LBREAK LINTEGER
 %token LCONTINUE LGOTO LFSM LDEFAULT LREAL LSTRING LENUM LSTRUCT LWIRE LREG LTYPEDEF
-%token LINITIAL LSIGNED LSWITCH LCASE
+%token LINITIAL LSIGNED LSWITCH LCASE LCONST
 
 %token LOINC LODEC LOEXP LOLSL LOLSR LOASR LOEQ LOEQS LONE LONES LOLE LOGE LOLOR LOLAND LOPACK
 %token LOADDEQ LOSUBEQ LOMULEQ LODIVEQ LOMODEQ LOLSLEQ LOLSREQ LOASREQ LOANDEQ LOOREQ LOXOREQ LOEXPEQ
@@ -93,8 +93,8 @@ type1: type0
 	| LTYPE { $$.t = $1->type; $$.i = 0; }
 
 typew:
-	LBIT { $$.t = 0; $$.i = OPTBIT; }
-	| LCLOCK { $$.t = 0; $$.i = OPTCLOCK; }
+	LBIT { $$.t = nil; $$.i = OPTBIT; }
+	| LCLOCK { $$.t = nil; $$.i = OPTCLOCK; }
 	| LINTEGER { $$.t = type(TYPINT); $$.i = 0; }
 	| LREAL { $$.t = type(TYPREAL); $$.i = 0; }
 	| LSTRING { $$.t = type(TYPSTRING); $$.i = 0; }
@@ -104,6 +104,7 @@ typew:
 	| LOUTPUT { $$.t = nil; $$.i = OPTOUT; }
 	| LTYPEDEF { $$.t = nil; $$.i = OPTTYPEDEF; }
 	| LSIGNED { $$.t = nil; $$.i = OPTSIGNED; }
+	| LCONST { $$.t = nil; $$.i = OPTCONST; }
 
 enumvals: | enumvals1 | enumvals1 ','
 enumvals1: enumval | enumvals1 ',' enumval
@@ -184,7 +185,7 @@ vars:
 
 var:
 	varspec { $$ = vardecl(scope, $1, curopt, nil, curtype); }
-	| varspec '=' cexpr { $$ = vardecl(scope, $1, SYMVAR, $3, curtype); }
+	| varspec '=' cexpr { $$ = vardecl(scope, $1, curopt, $3, curtype); }
 
 varspec:
 	symb { $$ = node(ASTSYMB, $1); }

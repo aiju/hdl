@@ -104,6 +104,10 @@ decl(SymTab *st, Symbol *s, int t, int opt, ASTNode *n, Type *ty)
 		t = SYMTYPE;
 		opt &= ~OPTTYPEDEF;
 	}
+	if((opt & OPTCONST) != 0){
+		t = SYMCONST;
+		opt &= ~OPTCONST;
+	}
 	if(t == SYMVAR && ty == nil)
 		error(nil, "'%s' nil type", s->name);
 	s->t = t;
@@ -180,12 +184,30 @@ ASTNode *
 vardecl(SymTab *st, ASTNode *ns, int opt, ASTNode *n, Type *ty)
 {
 	Symbol *s;
+	ASTNode *nv;
 	
+	nv = nil;
+	if((opt & OPTCONST) != 0){
+		if(n == nil){
+			error(ns, "const with no value");
+			return nil;
+		}
+		if(ty == nil){
+			typecheck(n, nil);
+			ty = n->type;
+		}
+		nv = n;
+	}
 	ty = typefix(ns, ty, &s);
-	if(ty == nil) return nil;
-	if(curstruct != nil)
+	if(ty == nil) {
+		error(nil, "nil type in declaration");
+		return nil;
+	}
+	if(curstruct != nil){
 		st = curstruct->t->st;
-	s = decl(st, s, SYMVAR, opt, curstruct != nil ? n : nil, ty);
+		nv = n;
+	}
+	s = decl(st, s, SYMVAR, opt, nv, ty);
 	if(curstruct != nil){
 		*curstruct->last = s;
 		curstruct->last = &s->typenext;

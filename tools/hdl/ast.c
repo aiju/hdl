@@ -412,9 +412,9 @@ typeor(Type *t1, int i1, Type *t2, int i2, Type **tp, int *ip)
 	int io, ia, ib;
 
 	io = i1 | i2;
-	ia = io & (OPTWIRE | OPTREG | OPTTYPEDEF);
+	ia = io & (OPTWIRE | OPTREG | OPTTYPEDEF | OPTCONST);
 	ia &= ia - 1;
-	ib = io & (OPTIN | OPTOUT | OPTTYPEDEF);
+	ib = io & (OPTIN | OPTOUT | OPTTYPEDEF | OPTCONST);
 	ib &= ib - 1;
 	*tp = t1 == nil ? t2 : t1;
 	*ip = io;
@@ -427,8 +427,8 @@ typefinal(Type *t, int i, Type **tp, int *ip)
 {
 	if(t != nil && (i & (OPTSIGNED | OPTBIT | OPTCLOCK)) != 0)
 		error(nil, "invalid type");
-	if(t == nil)
-		t = type(TYPBIT, (i & OPTSIGNED) != 0);
+	if(t == nil && ((i & OPTCONST) == 0 || (i & OPTBIT) != 0))
+			t = type(TYPBIT, (i & OPTSIGNED) != 0);
 	*tp = t;
 	*ip = i & ~(OPTSIGNED | OPTBIT);
 }
