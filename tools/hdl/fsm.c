@@ -520,6 +520,7 @@ fsmenum(void)
 	n = 0;
 	for(f = stfirst; f != nil; f = f->next){
 		if(f->pseudo) continue;
+		f->s->t = SYMCONST;
 		f->s->type = t;
 		f->s->val = node(ASTCINT, n++);
 		*p = f->s;
@@ -608,5 +609,5 @@ findfsm(ASTNode *n)
 ASTNode *
 fsmcompile(ASTNode *n)
 {
-	return onlyone(n, nil, findfsm);
+	return constfold(onlyone(n, nil, findfsm));
 }
