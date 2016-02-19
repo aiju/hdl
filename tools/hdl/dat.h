@@ -204,6 +204,7 @@ enum {
 	OPDWMAX = 128,
 	OPDWADD = 256,
 	OPDWINF = 512,
+	OPDEQ = 1024,
 };
 
 extern Line nilline, *curline;

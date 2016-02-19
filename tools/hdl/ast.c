@@ -74,9 +74,9 @@ static OpData opdata[] = {
 	[OPOR] {"|", OPDWMAX, 8},
 	[OPXOR] {"^", OPDWMAX, 9},
 	[OPEXP] {"**", OPDRIGHT|OPDWINF, 14},
-	[OPEQ] {"==", OPDREAL|OPDBITOUT, 6},
+	[OPEQ] {"==", OPDEQ|OPDREAL|OPDBITOUT, 6},
 	[OPEQS] {"===", 0|OPDBITOUT, 6},
-	[OPNE] {"!=", OPDREAL|OPDBITOUT, 6},
+	[OPNE] {"!=", OPDEQ|OPDREAL|OPDBITOUT, 6},
 	[OPNES] {"!==", 0|OPDBITOUT, 6},
 	[OPLT] {"<", OPDREAL|OPDBITOUT, 7},
 	[OPLE] {"<=", OPDREAL|OPDBITOUT, 7},
@@ -1075,6 +1075,10 @@ typecheck(ASTNode *n, Type *ctxt)
 			}
 			return;
 		}
+		if(n->n1->type == n->n2->type && (d->flags & OPDEQ) != 0){
+			n->type = type(TYPBIT);
+			return;
+		}
 		if((t1 == TYPSTRING || t2 == TYPSTRING) && (d->flags & OPDSTRING) != 0){
 			if(t1 >= 0 && t1 != TYPSTRING) goto t1fail;
 			if(t2 >= 0 && t2 != TYPSTRING) goto t2fail;
@@ -1266,6 +1270,8 @@ defaultval(Type *t)
 		c.x = itomp(-1, nil);
 		c.sz = 0;
 		return node(ASTCONST, c);
+	case TYPENUM:
+		return t->vals != nil ? t->vals->val : nil;
 	default:
 		error(nil, "defaultval: unknown '%T'", t);
 		return nil;
