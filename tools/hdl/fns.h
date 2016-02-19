@@ -55,3 +55,5 @@ ASTNode *nodewidth(ASTNode *, ASTNode *);
 ASTNode *nodesub(ASTNode *, ASTNode *);
 ASTNode *nodeaddi(ASTNode *a, int i);
 ASTNode *defaultval(Type *);
+ASTNode *enumsz(Type *);
+int clog2(uint);

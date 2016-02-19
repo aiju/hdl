@@ -156,6 +156,7 @@ enum {
 	OPUOR,
 	OPUXOR,
 	OPMAX,
+	OPCLOG2,
 };
 
 enum {

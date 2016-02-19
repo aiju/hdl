@@ -96,6 +96,7 @@ static OpData opdata[] = {
 	[OPUOR] {"|", OPDUNARY|OPDBITOUT, 15},
 	[OPUXOR] {"^", OPDUNARY|OPDBITOUT, 15},
 	[OPMAX] {"max", OPDWMAX, 3},
+	[OPCLOG2] {"clog2", OPDUNARY|OPDWINF, 15},
 };
 
 #define enumfmt(name, array) \
@@ -394,6 +395,15 @@ nodemul(ASTNode *a, ASTNode *b)
 	if(a->t == ASTCINT && b->t == ASTCINT && (int)(a->i * b->i) == (vlong)a->i * b->i)
 		return node(ASTCINT, a->i * b->i);
 	return node(ASTOP, OPMUL, a, b);
+}
+
+ASTNode *
+nodeclog2(ASTNode *a)
+{
+	if(a == nil) return node(ASTCINT, 1);
+	if(a->t == ASTCINT)
+		return node(ASTCINT, clog2(a->i));
+	return node(ASTOP, OPCLOG2, a, nil);
 }
 
 void
@@ -1260,4 +1270,17 @@ defaultval(Type *t)
 		error(nil, "defaultval: unknown '%T'", t);
 		return nil;
 	}
+}
+
+ASTNode *
+enumsz(Type *t)
+{
+	ASTNode *n;
+	Symbol *s;
+	
+	n = nil;
+	for(s = t->vals; s != nil; s = s->typenext)
+		n = nodemax(n, s->val);
+	n = nodeaddi(n, 1);
+	return nodeclog2(n);
 }

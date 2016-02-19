@@ -169,6 +169,22 @@ nope:
 	error(nil, "'%c' in %s number", s[i], b == 8 ? "octal": b == 16 ? "hexadecimal" : b == 2 ? "binary" : "decimal");
 }
 
+int
+clog2(uint i)
+{
+	int n;
+
+	if(i == 0) return 0;
+	n = 1;
+	i--;
+	if((i & 0xffff0000) != 0) { n += 16; i >>= 16; }
+	if((i & 0xff00) != 0)     { n += 8; i >>= 8; }
+	if((i & 0xf0) != 0)       { n += 4; i >>= 4; }
+	if((i & 0xc) != 0)        { n += 2; i >>= 2; }
+	if((i & 2) != 0)          { n += 1; }
+	return n;
+}
+
 static Nodes *
 cfold(ASTNode *n)
 {
@@ -255,6 +271,7 @@ cfold(ASTNode *n)
 		case OPUOR: c = a != 0; break;
 		case OPUXOR: ov = 1; break;
 		case OPMAX: c = a >= b ? a : b; break;
+		case OPCLOG2: c = clog2(a); break;
 		default:
 			warn(n, "cfold: unknown %s", d->name);
 			ov = 1;

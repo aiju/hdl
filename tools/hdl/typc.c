@@ -118,6 +118,14 @@ dodecl(Symbol *s, Type *t)
 			p = &h->next;
 		}
 		return f;
+	case TYPENUM:
+		f = emalloc(sizeof(Field));
+		f->sym = s;
+		f->sz = enumsz(t);
+		f->cnt = nil;
+		f->look = LOOKBITV;
+		f->stride = node(ASTCINT, 1);
+		return f;
 	default:
 		error(s, "typc dodecl: unknown %T", t);
 		return nil;
@@ -308,7 +316,7 @@ fieldass(ASTNode *m, FieldR *f, FieldR *g)
 static Nodes *
 typconc1(ASTNode *n, FieldR **fp)
 {
-	FieldR *f1, *f2, *f3, *fn;
+	FieldR *f1, *f2, *f3, *f4, *fn;
 	Field *f;
 	ASTNode *m;
 	Nodes *r;
@@ -317,6 +325,7 @@ typconc1(ASTNode *n, FieldR **fp)
 	f1 = nil;
 	f2 = nil;
 	f3 = nil;
+	f4 = nil;
 	m = nodedup(n);
 	switch(n->t){
 	case ASTDECL:
@@ -347,8 +356,8 @@ typconc1(ASTNode *n, FieldR **fp)
 		break;
 	case ASTIDX:
 		m->n1 = mkblock(typconc1(n->n1, &f1));
-		m->n2 = mkblock(typconc1(n->n2, nil));
-		m->n3 = mkblock(typconc1(n->n3, nil));
+		m->n2 = fieldval(mkblock(typconc1(n->n2, &f2)), f2);
+		m->n3 = fieldval(mkblock(typconc1(n->n3, &f3)), f3);
 		if(fp != nil)
 			*fp = fieldidx(f1, m->op, m->n2, m->n3);
 		break;
@@ -384,10 +393,16 @@ typconc1(ASTNode *n, FieldR **fp)
 	case ASTIF:
 	case ASTWHILE:
 	case ASTFOR:
-		m->n1 = mkblock(typconc1(n->n1, nil));
-		m->n2 = mkblock(typconc1(n->n2, nil));
-		m->n3 = mkblock(typconc1(n->n3, nil));
-		m->n4 = mkblock(typconc1(n->n4, nil));
+	case ASTSWITCH:
+		m->n1 = fieldval(mkblock(typconc1(n->n1, &f1)), f1);
+		m->n2 = fieldval(mkblock(typconc1(n->n2, &f2)), f2);
+		m->n3 = fieldval(mkblock(typconc1(n->n3, &f3)), f3);
+		m->n4 = fieldval(mkblock(typconc1(n->n4, &f4)), f4);
+		break;
+	case ASTCASE:
+		m->nl = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			m->nl = nlcat(m->nl, nl(fieldval(mkblock(typconc1(r->n, &f1)), f1)));
 		break;
 	case ASTBLOCK:
 	case ASTMODULE:
