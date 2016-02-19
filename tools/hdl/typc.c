@@ -66,6 +66,14 @@ dodecl(Symbol *s, Type *t)
 	Symbol *m;
 
 	switch(t->t){
+	case TYPBIT:
+		f = emalloc(sizeof(Field));
+		f->sym = s;
+		f->sz = node(ASTCINT, 1);
+		f->cnt = nil;
+		f->look = LOOKBITV;
+		f->stride = node(ASTCINT, 1);
+		return f;
 	case TYPBITV:
 		f = emalloc(sizeof(Field));
 		f->sym = s;
@@ -333,7 +341,10 @@ typconc1(ASTNode *n, FieldR **fp)
 		f = dodecl(n->sym, n->sym->type);
 		n->sym->typc = f;
 		for(; f != nil; f = f->next){
-			f->sym->type = type(TYPBITV, f->sz, 0);
+			if(nodeeq(f->sz, node(ASTCINT, 1), nodeeq))
+				f->sym->type = type(TYPBIT, 0);
+			else
+				f->sym->type = type(TYPBITV, f->sz, 0);
 			if(f->cnt != nil)
 				f->sym->type = type(TYPVECTOR, f->sym->type, f->cnt);
 			r = nlcat(r, nl(node(ASTDECL, f->sym, nil)));
