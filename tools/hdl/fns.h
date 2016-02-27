@@ -1,4 +1,5 @@
 void *emalloc(int);
+void *erealloc(void *, int, int);
 int yylex(void);
 void error(Line *, char *, ...);
 void warn(Line *, char *, ...);
@@ -57,3 +58,5 @@ ASTNode *nodeaddi(ASTNode *a, int i);
 ASTNode *defaultval(Type *);
 ASTNode *enumsz(Type *);
 int clog2(uint);
+ASTNode *semcomp(ASTNode *);
+ASTNode *nodededup(ASTNode *, ASTNode *);

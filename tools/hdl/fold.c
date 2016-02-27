@@ -322,6 +322,7 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTSYMB:
 	case ASTSTATE:
 	case ASTDEFAULT:
+	case ASTSSA:
 		break;
 	case ASTASS:
 	case ASTDECL:
@@ -346,6 +347,7 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTFSM:
 	case ASTCASE:
 	case ASTLITERAL:
+	case ASTPHI:
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, descend(r->n, pre, mod));
@@ -465,7 +467,7 @@ mkcint(Const *a)
 	if(max == nil) max = itomp(((uint)-1) >> 1, nil);
 	if(mpmagcmp(a->n, max) <= 0 && mpcmp(a->x, mpzero) == 0 && a->sz == 0)
 		return node(ASTCINT, mptoi(a->n));
-	return node(ASTCONST, a);
+	return node(ASTCONST, *a);
 }
 
 void

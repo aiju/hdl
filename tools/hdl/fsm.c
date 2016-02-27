@@ -418,11 +418,7 @@ deadcode(ASTNode *n, int *live)
 		error(n, "deadcode: unknown %A", n->t);
 		return n;
 	}
-	if(nodeeq(m, n, ptreq)){
-		nodeput(m);
-		return n;
-	}
-	return m;
+	return nodededup(n, m);
 }
 
 static Symbol *fsmlabel;
@@ -601,6 +597,7 @@ findfsm(ASTNode *n)
 	bm = node(ASTBLOCK);
 	bm->nl = nlcat(def, nl(bl));
 	
+	n->sym->t = SYMVAR;
 	n->sym->type = fsmenum();
 	bl = node(ASTDECL, n->sym, nil);
 	return nls(bl, bm, nil);

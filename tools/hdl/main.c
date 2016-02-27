@@ -20,6 +20,18 @@ emalloc(int n)
 	return v;
 }
 
+void *
+erealloc(void *a, int o, int n)
+{
+	a = realloc(a, n);
+	if(n == 0) return a;
+	if(a == nil)
+		sysfatal("realloc: %r");
+	if(n > o)
+		memset((char*)a + o, 0, n - o);
+	return a;
+}
+
 void
 error(Line *l, char *fmt, ...)
 {
@@ -63,6 +75,8 @@ compile(Nodes *np)
 		n = fsmcompile(n);
 		if(nerror != 0) return;
 		n = typconc(n);
+		if(nerror != 0) return;
+		n = semcomp(n);
 		if(nerror != 0) return;
 		astprint(n);
 	}

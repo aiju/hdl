@@ -69,9 +69,10 @@ dodecl(Symbol *s, Type *t)
 	case SYMVAR:
 		break;
 	case SYMCONST:
+	case SYMTYPE:
 		return nil;
 	default:
-		error(s, "typc dodecl: unknown %σ", t->t);
+		error(s, "typc dodecl: unknown %σ", s->t);
 		return nil;
 	}
 	switch(t->t){
@@ -345,6 +346,10 @@ typconc1(ASTNode *n, FieldR **fp)
 	f4 = nil;
 	m = nodedup(n);
 	switch(n->t){
+	case ASTCINT:
+	case ASTCONST:
+	case ASTDEFAULT:
+		break;
 	case ASTDECL:
 		r = nil;
 		f = dodecl(n->sym, n->sym->type);
@@ -367,8 +372,6 @@ typconc1(ASTNode *n, FieldR **fp)
 			return r;
 		m = r->n;
 		nlput(r);
-		break;
-	case ASTCINT:
 		break;
 	case ASTSYMB:
 		if(fp != nil)
@@ -434,11 +437,7 @@ typconc1(ASTNode *n, FieldR **fp)
 	default:
 		error(n, "typconc1: unknown %A", n->t);
 	}
-	if(nodeeq(m, n, ptreq)){
-		nodeput(m);
-		return nl(n);
-	}
-	return nl(m);
+	return nl(nodededup(n, m));
 }
 
 ASTNode *

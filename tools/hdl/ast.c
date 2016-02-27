@@ -36,6 +36,8 @@ static char *astname[] = {
 	[ASTDISABLE] "ASTDISABLE",
 	[ASTLITERAL] "ASTLITERAL",
 	[ASTLITELEM] "ASTLITELEM",
+	[ASTSSA] "ASTSSA",
+	[ASTPHI] "ASTPHI",
 };
 
 static char *symtname[] = {
@@ -139,6 +141,7 @@ node(int t, ...)
 	case ASTFSM:
 	case ASTSTATE:
 	case ASTABORT:
+	case ASTPHI:
 		break;
 	case ASTDECL:
 		n->sym = va_arg(va, Symbol *);
@@ -207,6 +210,9 @@ node(int t, ...)
 	case ASTLITERAL:
 		n->nl = va_arg(va, Nodes *);
 		break;
+	case ASTSSA:
+		n->semv = va_arg(va, SemVar *);
+		break;
 	default: sysfatal("node: unknown %A", t);
 	}
 	va_end(va);
@@ -268,6 +274,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTBLOCK:
 	case ASTCASE:
 	case ASTLITERAL:
+	case ASTPHI:
 		if(a->sym != b->sym)
 			return 0;
 		for(mp = a->nl, np = b->nl; mp != np && mp != nil && np != nil; mp = mp->next, np = np->next)
@@ -278,10 +285,22 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 		return a->i == b->i;
 	case ASTCONST:
 		return consteq(&a->cons, &b->cons);
+	case ASTSSA:
+		return a->semv == b->semv;
 	default:
 		error(a, "nodeeq: unknown %A", a->t);
 		return 0;
 	}
+}
+
+ASTNode *
+nodededup(ASTNode *old, ASTNode *new)
+{
+	if(nodeeq(old, new, ptreq)){
+		nodeput(new);
+		return old;
+	}
+	return new;
 }
 
 Nodes *
@@ -593,6 +612,7 @@ eastprint(Fmt *f, ASTNode *n, int env)
 	int rc;
 	OpData *d;
 	Nodes *mp;
+	extern int ssaprint(Fmt *, ASTNode *);
 
 	if(n == nil)
 		return fmtstrcpy(f, "<nil>");
@@ -704,6 +724,9 @@ eastprint(Fmt *f, ASTNode *n, int env)
 		}
 		eastprint(f, n->n1, env); 
 		break;
+	case ASTSSA:
+	case ASTPHI:
+		return ssaprint(f, n);
 	default:
 		error(n, "eastprint: unknown %A", n->t);
 	}
