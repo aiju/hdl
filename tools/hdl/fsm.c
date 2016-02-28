@@ -606,5 +606,5 @@ findfsm(ASTNode *n)
 ASTNode *
 fsmcompile(ASTNode *n)
 {
-	return constfold(onlyone(n, nil, findfsm));
+	return constfold(onlyone(descend(n, nil, findfsm)));
 }

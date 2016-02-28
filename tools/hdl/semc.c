@@ -14,6 +14,7 @@ struct SemVar {
 	Symbol *sym;
 	int prime;
 	int idx;
+	int cannext;
 };
 struct SemDef {
 	Symbol *sym;
@@ -113,7 +114,7 @@ ssaprint(Fmt *f, ASTNode *n)
 	switch(n->t){
 	case ASTSSA:
 		if(n->semv == nil) return fmtstrcpy(f, "<nil>");
-		return fmtprint(f, "%s%s$%d", n->semv->sym->name, n->semv->prime ? "'" : "", n->semv->idx);
+		return fmtprint(f, "%s%s$%d%s", n->semv->sym->name, n->semv->prime ? "'" : "", n->semv->idx, n->semv->cannext > 0 ? "!" : ".");
 	case ASTPHI:
 		rc = fmtprint(f, "φ(");
 		for(r = n->nl; r != nil; r = r->next){
@@ -326,8 +327,78 @@ ssabuild(ASTNode *n, SemDefs *d, int attr)
 	return nl(nodededup(n, m));
 }
 
+static int
+markfinal(ASTNode *n)
+{
+	if(n == nil || n->t != ASTASS || n->n1 == nil || n->n1->t != ASTSSA) return 0;
+	if(n->n1->semv->sym->semc[1] == n->n1->semv)
+		n->n1->semv->sym->semc[0]->cannext = 1;
+	return 0;
+}
+
+static int
+exprcan(ASTNode *n)
+{
+	if(n == nil || n->t != ASTSSA) return 0;
+	if(n->semv->cannext == 0) return 1;
+	return 0;
+}
+
+static int
+propcan(ASTNode *n)
+{
+	int v, o, rc;
+	Nodes *r, *t;
+	SemVar *s;
+
+	if(n == nil) return 0;
+	switch(n->t){
+	case ASTDECL:
+	case ASTDEFAULT:
+		return 0;
+	case ASTASS:
+		if(n->n1 == nil || n->n1->t != ASTSSA) return 0;
+		s = n->n1->semv;
+		if(s->cannext != 0) return 0;
+		v = descendsum(n->n2, exprcan) == 0;
+		o = s->cannext;
+		s->cannext = v;
+		return o != v;
+	case ASTIF:
+		if(descendsum(n->n1, exprcan) == 0)
+			return propcan(n->n2) + propcan(n->n3);
+		return 0;
+	case ASTSWITCH:
+		if(descendsum(n->n1, exprcan) != 0)
+			return 0;
+		if(n->n2 == nil || n->n2->t != ASTBLOCK) return 0;
+		rc = 0;
+		for(r = n->n2->nl; r != nil; r = r->next)
+			if(r->n->t == ASTCASE){
+				for(t = r->n->nl; t != nil; t = t->next)
+					if(descendsum(t->n, exprcan) != 0)
+						return rc;
+			}else
+				rc += propcan(r->n);
+		return rc;
+	case ASTMODULE:
+	case ASTBLOCK:
+		rc = 0;
+		for(r = n->nl; r != nil; r = r->next)
+			rc += propcan(r->n);
+		return rc;
+	default:
+		error(n, "propcan: unknown %A", n->t);
+		return 0;
+	}
+}
+
 ASTNode *
 semcomp(ASTNode *n)
 {
-	return ssabuild(n, nil, 0)->n;
+	n = onlyone(ssabuild(n, nil, 0));
+	descendsum(n, markfinal);
+	while(propcan(n) > 0)
+		;
+	return n;
 }

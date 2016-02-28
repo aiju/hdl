@@ -384,6 +384,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTSYMB:
 	case ASTSTATE:
 	case ASTDEFAULT:
+	case ASTSSA:
 		break;
 	case ASTASS:
 	case ASTDECL:
@@ -407,6 +408,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTFSM:
 	case ASTCASE:
 	case ASTLITERAL:
+	case ASTPHI:
 		for(r = n->nl; r != nil; r = r->next)
 			rc += descendsum(r->n, eval);
 		break;
@@ -422,16 +424,13 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 }
 
 ASTNode *
-onlyone(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
+onlyone(Nodes *m)
 {
-	Nodes *m;
 	ASTNode *r;
-	
-	m = descend(n, pre, mod);
-	if(m == nil)
-		return nil;
+
+	if(m == nil) return nil;
 	if(m->next != nil)
-		error(n, "onlyone: descend produced multiple nodes");
+		error(m->n, "onlyone: produced multiple nodes");
 	r = m->n;
 	nlput(m);
 	return r;
@@ -450,7 +449,7 @@ descendnl(Nodes *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 ASTNode *
 constfold(ASTNode *n)
 {
-	return onlyone(n, nil, cfold);
+	return onlyone(descend(n, nil, cfold));
 }
 
 int

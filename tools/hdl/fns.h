@@ -30,7 +30,7 @@ int nodeeq(ASTNode *, ASTNode *, void *);
 int ptreq(ASTNode *, ASTNode *, void *);
 ASTNode *mkcint(Const *);
 Nodes *descend(ASTNode *, void (*pre)(ASTNode *), Nodes *(*)(ASTNode *));
-ASTNode *onlyone(ASTNode *, void (*pre)(ASTNode *), Nodes *(*)(ASTNode *));
+ASTNode *onlyone(Nodes *);
 Nodes *descendnl(Nodes *, void (*pre)(ASTNode *), Nodes *(*)(ASTNode *));
 ASTNode *constfold(ASTNode *);
 void compile(Nodes *);
