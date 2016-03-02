@@ -446,6 +446,23 @@ descendnl(Nodes *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	return m;
 }
 
+static int
+clearauxf(ASTNode *n)
+{
+	int rc;
+	
+	if(n == nil) return 0;
+	rc = n->aux != nil;
+	n->aux = nil;
+	return rc;
+}
+
+int
+clearaux(ASTNode *n)
+{
+	return descendsum(n, clearauxf);
+}
+
 ASTNode *
 constfold(ASTNode *n)
 {

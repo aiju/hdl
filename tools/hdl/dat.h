@@ -81,6 +81,7 @@ struct ASTNode {
 	};
 	Type *type;
 	Line;
+	void *aux;
 };
 
 struct Nodes {
@@ -228,5 +229,6 @@ extern int nerror;
 #pragma varargck type "n" ASTNode *
 #pragma varargck type "C" Const *
 #pragma varargck type "σ" int
+#pragma varargck type "Σ" SemVar *
 #pragma varargck argpos error 2
 #pragma varargck argpos warn 2

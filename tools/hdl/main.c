@@ -92,12 +92,13 @@ void
 main(int argc, char **argv)
 {
 	typedef void init(void);
-	extern init lexinit, astinit, foldinit;
+	extern init lexinit, astinit, foldinit, semvinit;
 
 	fmtinstall('B', mpfmt);
 	lexinit();
 	astinit();
 	foldinit();
+	semvinit();
 
 	ARGBEGIN {
 	default:

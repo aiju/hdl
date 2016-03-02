@@ -6,6 +6,7 @@
 #include "fns.h"
 
 typedef struct SemDef SemDef;
+typedef struct SemVars SemVars;
 typedef struct SemDefs SemDefs;
 
 enum { SEMHASH = 32 };
@@ -14,8 +15,26 @@ struct SemVar {
 	Symbol *sym;
 	int prime;
 	int idx;
-	int cannext;
+	
+	SemVar *next;
+	
+	int def;
+	enum {
+		SVCANNX = 1,
+		SVNEEDNX = 2,
+		SVDELDEF = 4,
+		SVREG = 8,
+	} flags;
+	SemVars *deps;
+	SemVars *live;
+	SemVar *tnext;
 };
+struct SemVars {
+	SemVar **p;
+	int n;
+	int ref;
+};
+enum { SEMVARSBLOCK = 32 }; /* must be power of two */
 struct SemDef {
 	Symbol *sym;
 	int prime;
@@ -25,6 +44,9 @@ struct SemDef {
 struct SemDefs {
 	SemDef *hash[SEMHASH];
 };
+
+static SemVars nodeps = {.ref = 1000};
+static SemVar *vars, **varslast = &vars;
 
 static SemDefs *
 defsnew(void)
@@ -54,18 +76,29 @@ defsdup(SemDefs *d)
 	return n;
 }
 
+static SemVar *
+mkvar(Symbol *s, int p, int i)
+{
+	SemVar *v;
+	
+	v = emalloc(sizeof(SemVar));
+	v->sym = s;
+	v->prime = p;
+	v->idx = i;
+	nodeps.ref++;
+	v->live = &nodeps;
+	*varslast = v;
+	varslast = &v->next;
+	return v;
+}
+
 static void
 defsym(Symbol *s)
 {
 	int i;
-	SemVar *v;
 	
-	for(i = 0; i < 2; i++){
-		v = emalloc(sizeof(SemVar));
-		v->sym = s;
-		v->prime = i;
-		s->semc[i] = v;
-	}
+	for(i = 0; i < 2; i++)
+		s->semc[i] = mkvar(s, i, 0);
 }
 
 static SemVar *
@@ -75,10 +108,7 @@ ssadef(SemDefs *d, Symbol *s, int pr)
 	SemVar *v;
 	SemDef *dv;
 	
-	v = emalloc(sizeof(SemVar));
-	v->sym = s;
-	v->prime = pr;
-	v->idx = ++s->semcidx[pr];
+	v = mkvar(s, pr, ++s->semcidx[pr]);
 	dv = emalloc(sizeof(SemDef));
 	dv->sym = s;
 	dv->prime = pr;
@@ -105,6 +135,16 @@ ssaget(SemDefs *d, Symbol *s, int pr)
 	return s->semc[pr];
 }
 
+static int
+semvfmt(Fmt *f)
+{
+	SemVar *v;
+	
+	v = va_arg(f->args, SemVar *);
+	if(v == nil) return fmtstrcpy(f, "<nil>");
+	return fmtprint(f, "%s%s$%d%s", v->sym->name, v->prime ? "'" : "", v->idx, (v->flags & SVCANNX) != 0 ? "!" : ".");
+}
+
 int
 ssaprint(Fmt *f, ASTNode *n)
 {
@@ -113,8 +153,7 @@ ssaprint(Fmt *f, ASTNode *n)
 
 	switch(n->t){
 	case ASTSSA:
-		if(n->semv == nil) return fmtstrcpy(f, "<nil>");
-		return fmtprint(f, "%s%s$%d%s", n->semv->sym->name, n->semv->prime ? "'" : "", n->semv->idx, n->semv->cannext > 0 ? "!" : ".");
+		return fmtprint(f, "%Σ", n->semv);
 	case ASTPHI:
 		rc = fmtprint(f, "φ(");
 		for(r = n->nl; r != nil; r = r->next){
@@ -327,78 +366,398 @@ ssabuild(ASTNode *n, SemDefs *d, int attr)
 	return nl(nodededup(n, m));
 }
 
-static int
-markfinal(ASTNode *n)
+static void
+putdeps(SemVars *v)
 {
-	if(n == nil || n->t != ASTASS || n->n1 == nil || n->n1->t != ASTSSA) return 0;
-	if(n->n1->semv->sym->semc[1] == n->n1->semv)
-		n->n1->semv->sym->semc[0]->cannext = 1;
-	return 0;
+	if(v != nil && --v->ref == 0){
+		free(v->p);
+		free(v);
+	}
 }
 
-static int
-exprcan(ASTNode *n)
+static SemVars *
+depmod(SemVars *a)
 {
-	if(n == nil || n->t != ASTSSA) return 0;
-	if(n->semv->cannext == 0) return 1;
-	return 0;
+	SemVars *b;
+
+	if(a->ref == 1) return a;
+	assert(a->ref > 1);
+	b = emalloc(sizeof(SemVars));
+	b->p = emalloc(-(-a->n & -SEMVARSBLOCK) * sizeof(SemVar *));
+	memcpy(b->p, a->p, a->n * sizeof(SemVar *));
+	b->n = a->n;
+	b->ref = 1;
+	return b;
 }
 
-static int
-propcan(ASTNode *n)
+static SemVars *
+depadd(SemVars *a, SemVar *b)
 {
-	int v, o, rc;
-	Nodes *r, *t;
-	SemVar *s;
+	int i;
+	
+	assert(a != nil && a->ref > 0);
+	for(i = 0; i < a->n; i++)
+		if(a->p[i] == b)
+			return a;
+	a = depmod(a);
+	if((a->n % SEMVARSBLOCK) == 0)
+		a->p = erealloc(a->p, a->n * sizeof(SemVar *), (a->n + SEMVARSBLOCK) * sizeof(SemVar *));
+	a->p[a->n++] = b;
+	return a;
+}
 
-	if(n == nil) return 0;
+static SemVars *
+depsub(SemVars *a, SemVar *b)
+{
+	int i;
+	
+	assert(a != nil && a->ref > 0);
+	for(i = 0; i < a->n; i++)
+		if(a->p[i] == b)
+			break;
+	if(i == a->n) return a;
+	a = depmod(a);
+	memcpy(a->p + i, a->p + i + 1, (a->n - i - 1) * sizeof(SemVar *));
+	a->n--;
+	return a;
+}
+
+static SemVars *
+depcat(SemVars *a, SemVars *b)
+{
+	int i;
+
+	assert(a != nil && a->ref > 0);
+	assert(b != nil && b->ref > 0);
+	if(a == b){
+		putdeps(b);
+		return a;
+	}
+	for(i = 0; i < b->n; i++)
+		a = depadd(a, b->p[i]);
+	putdeps(b);
+	return a;
+}
+
+static SemVars *
+trackdep(ASTNode *n, SemVars *cdep)
+{
+	Nodes *r, *s;
+	SemVars *d0;
+
+	if(n == nil) return cdep;
 	switch(n->t){
 	case ASTDECL:
+	case ASTCINT:
+	case ASTCONST:
 	case ASTDEFAULT:
-		return 0;
-	case ASTASS:
-		if(n->n1 == nil || n->n1->t != ASTSSA) return 0;
-		s = n->n1->semv;
-		if(s->cannext != 0) return 0;
-		v = descendsum(n->n2, exprcan) == 0;
-		o = s->cannext;
-		s->cannext = v;
-		return o != v;
-	case ASTIF:
-		if(descendsum(n->n1, exprcan) == 0)
-			return propcan(n->n2) + propcan(n->n3);
-		return 0;
-	case ASTSWITCH:
-		if(descendsum(n->n1, exprcan) != 0)
-			return 0;
-		if(n->n2 == nil || n->n2->t != ASTBLOCK) return 0;
-		rc = 0;
-		for(r = n->n2->nl; r != nil; r = r->next)
-			if(r->n->t == ASTCASE){
-				for(t = r->n->nl; t != nil; t = t->next)
-					if(descendsum(t->n, exprcan) != 0)
-						return rc;
-			}else
-				rc += propcan(r->n);
-		return rc;
+		return cdep;
 	case ASTMODULE:
 	case ASTBLOCK:
-		rc = 0;
-		for(r = n->nl; r != nil; r = r->next)
-			rc += propcan(r->n);
-		return rc;
+		for(r = n->nl; r != nil; r = r->next){
+			cdep->ref++;
+			putdeps(trackdep(r->n, cdep));
+		}
+		return cdep;
+	case ASTASS:
+		if(n->n1 == nil || n->n1->t != ASTSSA) return cdep;
+		n->n1->semv->def++;
+		cdep->ref++;
+		n->n1->semv->deps = trackdep(n->n2, cdep);
+		return cdep;
+	case ASTOP:
+		cdep->ref++;
+		return depcat(trackdep(n->n1, cdep), trackdep(n->n2, cdep));
+	case ASTSSA:
+		return depadd(cdep, n->semv);
+	case ASTPHI:
+		for(r = n->nl; r != nil; r = r->next){
+			cdep->ref++;
+			cdep = depcat(cdep, trackdep(r->n, cdep));
+		}
+		return cdep;
+	case ASTIF:
+		cdep->ref += 2;
+		d0 = depcat(cdep, trackdep(n->n1, cdep));
+		d0->ref++;
+		putdeps(trackdep(n->n2, d0));
+		putdeps(trackdep(n->n3, d0));
+		return cdep;
+	case ASTSWITCH:
+		assert(n->n2 != nil && n->n2->t == ASTBLOCK);
+		cdep->ref += 2;
+		d0 = depcat(cdep, trackdep(n->n1, cdep));
+		for(r = n->n2->nl; r != nil; r = r->next)
+			if(r->n->t == ASTCASE){
+				for(s = n->n1->nl; s != nil; s = s->next){
+					d0->ref++;
+					d0 = depcat(d0, trackdep(n->n1, d0));
+				}
+			}else{
+				cdep->ref++;
+				putdeps(trackdep(r->n, cdep));
+			}
+		putdeps(d0);
+		return cdep;
 	default:
-		error(n, "propcan: unknown %A", n->t);
-		return 0;
+		error(n, "trackdep: unknown %A", n->t);
+		return cdep;
 	}
+}
+
+static void
+trackcans(void)
+{
+	SemVar *v;
+	int ch, i, n;
+	
+	for(v = vars; v != nil; v = v->next)
+		if(v->def && v->idx == 0 && v->prime)
+			v->sym->semc[0]->flags |= SVCANNX;
+	do{
+		ch = 0;
+		for(v = vars; v != nil; v = v->next){
+			if(v->deps == nil) continue;
+			n = SVCANNX;
+			for(i = 0; i < v->deps->n; i++)
+				n &= v->deps->p[i]->flags;
+			ch += (v->flags & SVCANNX) != n;
+			v->flags = v->flags & ~SVCANNX | n;
+		}
+	}while(ch > 0);
+}
+
+static void
+trackneed(void)
+{
+	SemVar *v;
+	int ch, i, o;
+
+	for(v = vars; v != nil; v = v->next)
+		if(v->idx == 0 && v->prime){
+			if(v->sym->semc[0]->def != 0 && v->sym->semc[1]->def != 0){
+				error(v->sym, "'%s' both primed and unprimed defined", v->sym->name);
+				continue;
+			}
+			if((v->sym->opt & OPTREG) != 0 && v->sym->semc[0]->def != 0){
+				if((v->sym->semc[0]->flags & SVCANNX) == 0){
+					error(v->sym, "'%s' cannot be register", v->sym->name);
+					v->sym->opt &= ~OPTREG;
+				}else
+					v->sym->semc[0]->flags |= SVNEEDNX | SVDELDEF | SVREG;
+			}
+			if(v->sym->semc[1]->def != 0){
+				if((v->sym->opt & OPTWIRE) != 0){
+					error(v->sym, "'%s' cannot be wire", v->sym->name);
+					v->sym->opt &= ~OPTWIRE;
+				}else
+					v->sym->semc[0]->flags |= SVREG;
+			}
+		}
+	do{
+		ch = 0;
+		for(v = vars; v != nil; v = v->next){
+			if((v->flags & SVNEEDNX) == 0) continue;
+			if(v->deps == nil) continue;
+			for(i = 0; i < v->deps->n; i++){
+				o = v->deps->p[i]->flags & SVNEEDNX;
+				v->deps->p[i]->flags |= SVNEEDNX;
+				ch += o == 0;
+			}
+		}
+	}while(ch > 0);
+	for(v = vars; v != nil; v = v->next){
+		if((v->flags & SVREG) != 0)
+			v->tnext = v->sym->semc[1];
+		else if((v->flags & SVNEEDNX) != 0) 
+			v->tnext = mkvar(v->sym, 1, ++v->sym->semcidx[1]);
+	}
+}
+
+static int
+countnext(ASTNode *n)
+{
+	if(n == nil) return 0;
+	if(n->t != ASTASS || n->n1 == nil || n->n1->t != ASTSSA) return 0;
+	return (n->n1->semv->flags & SVNEEDNX) != 0;
+}
+
+static Nodes *
+makenext1(ASTNode *n)
+{
+	ASTNode *m;
+	Nodes *r;
+
+	if(n == nil) return nil;
+	m = nodedup(n);
+	switch(n->t){
+	case ASTCINT:
+	case ASTCONST:
+	case ASTDEFAULT:
+		break;
+	case ASTASS:
+		if(n->n1 == nil || n->n1->t != ASTSSA) return nil;
+		if((n->n1->semv->flags & SVNEEDNX) == 0) return nil;
+		m->n1 = mkblock(makenext1(n->n1));
+		m->n2 = mkblock(makenext1(n->n2));
+		break;
+	case ASTSSA:
+		m->semv = m->semv->tnext;
+		break;
+	case ASTOP:
+		m->n1 = mkblock(makenext1(n->n1));
+		m->n2 = mkblock(makenext1(n->n2));
+		m->n3 = mkblock(makenext1(n->n3));
+		m->n4 = mkblock(makenext1(n->n4));
+		break;
+	case ASTIF:
+		if(descendsum(n->n2, countnext) + descendsum(n->n3, countnext) == 0)
+			return nil;
+		m->n1 = mkblock(makenext1(n->n1));
+		m->n2 = mkblock(makenext1(n->n2));
+		m->n3 = mkblock(makenext1(n->n3));
+		break;
+	case ASTPHI:		
+	case ASTBLOCK:
+	case ASTCASE:
+		m->nl = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			m->nl = nlcat(m->nl, makenext1(r->n));
+		break;
+	case ASTSWITCH:
+		m->n1 = mkblock(makenext1(n->n1));
+		m->n2 = mkblock(makenext1(n->n2));
+		break;
+	default:
+		error(n, "makenext1: unknown %A", n->t);
+	}
+	return nl(nodededup(n, m));
+}
+
+static Nodes *
+deldefs(ASTNode *n)
+{
+	if(n == nil) return nil;
+	if(n->t != ASTASS) return nl(n);
+	if(n->n1 != nil && n->n1->t == ASTSSA && (n->n1->semv->flags & SVDELDEF) != 0){
+		n->n1->semv->flags &= ~SVDELDEF;
+		n->n1->semv->def--;
+		return nil;
+	}
+	return nl(n);
+}
+
+static ASTNode *
+makenext(ASTNode *n)
+{
+	Nodes *r;
+	ASTNode *m;
+
+	if(n == nil) return nil;
+	if(n->t != ASTMODULE){
+		error(n, "makenext: unknown %A", n->t);
+		return n;
+	}
+	m = nodedup(n);
+	m->nl = nil;
+	for(r = n->nl; r != nil; r = r->next){
+		m->nl = nlcat(m->nl, descend(r->n, nil, deldefs));
+		if(descendsum(r->n, countnext) > 0)
+			m->nl = nlcat(m->nl, makenext1(r->n));
+	}
+	return nodededup(n, m);
+}
+
+static void
+listarr(Nodes *n, ASTNode ***rp, int *nrp)
+{
+	ASTNode **r;
+	int nr;
+	enum { BLOCK = 64 };
+	
+	r = nil;
+	nr = 0;
+	for(; n != nil; n = n->next){
+		if((nr % BLOCK) == 0)
+			r = erealloc(r, nr * sizeof(ASTNode *), (nr + BLOCK) * sizeof(ASTNode *));
+		r[nr++] = n->n;
+	}
+	*rp = r;
+	*nrp = nr;
+}
+
+static SemVars *
+tracklive(ASTNode *n, SemVars *live)
+{
+	Nodes *r;
+	int i;
+	ASTNode **rl;
+	int nrl;
+
+	if(n == nil) return live;
+	switch(n->t){
+	case ASTDECL:
+	case ASTCONST:
+	case ASTCINT:
+		break;
+	case ASTBLOCK:
+		listarr(n->nl, &rl, &nrl);
+		for(i = nrl; --i >= 0; )
+			live = tracklive(rl[i], live);
+		free(rl);
+		break;
+	case ASTMODULE:
+		for(r = n->nl; r != nil; r = r->next)
+			live = tracklive(r->n, live);
+		for(r = n->nl; r != nil; r = r->next)
+			live = tracklive(r->n, live);
+		break;
+	case ASTASS:
+		if(n->n1 == nil || n->n1->t != ASTSSA) return live;
+		live = depsub(live, n->n1->semv);
+		live = tracklive(n->n2, live);
+		break;
+	case ASTSSA:
+		live = depadd(live, n->semv);
+		live->ref++;
+		n->semv->live = depcat(n->semv->live, live);
+		break;
+	case ASTOP:
+		live = tracklive(n->n1, live);
+		live = tracklive(n->n2, live);
+		break;
+	default:
+		error(n, "tracklive: unknown %A", n->t);
+	}
+	return live;
 }
 
 ASTNode *
 semcomp(ASTNode *n)
 {
 	n = onlyone(ssabuild(n, nil, 0));
-	descendsum(n, markfinal);
-	while(propcan(n) > 0)
-		;
+	nodeps.ref++; putdeps(trackdep(n, &nodeps));
+	trackcans();
+	trackneed();
+	n = makenext(n);
+	astprint(n);
+	nodeps.ref++; putdeps(tracklive(n, &nodeps));
+	{
+		SemVar *v;
+		int i;
+		
+		for(v = vars; v != nil; v = v->next){
+			print("%Σ ", v);
+			for(i = 0; i < v->live->n; i++)
+				print("%Σ,", v->live->p[i]);
+			print("\n");
+		}
+	}
 	return n;
+}
+
+void
+semvinit(void)
+{
+	fmtinstall(L'Σ', semvfmt);
 }

@@ -60,3 +60,4 @@ ASTNode *enumsz(Type *);
 int clog2(uint);
 ASTNode *semcomp(ASTNode *);
 ASTNode *nodededup(ASTNode *, ASTNode *);
+int clearaux(ASTNode *);
