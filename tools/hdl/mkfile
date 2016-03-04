@@ -11,6 +11,7 @@ OFILES=\
 	fold.$O \
 	typc.$O \
 	semc.$O \
+	set.$O \
 
 BIN=/$objtype/bin
 

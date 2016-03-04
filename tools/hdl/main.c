@@ -21,14 +21,14 @@ emalloc(int n)
 }
 
 void *
-erealloc(void *a, int o, int n)
+erealloc(void *a, int s, int o, int inc)
 {
-	a = realloc(a, n);
-	if(n == 0) return a;
+	a = realloc(a, (o + inc) * s);
+	if(o+inc == 0) return a;
 	if(a == nil)
 		sysfatal("realloc: %r");
-	if(n > o)
-		memset((char*)a + o, 0, n - o);
+	if(inc > 0)
+		memset((char*)a + o * s, 0, inc * s);
 	return a;
 }
 

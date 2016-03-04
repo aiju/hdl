@@ -1,4 +1,5 @@
 typedef struct ASTNode ASTNode;
+typedef struct BitSet BitSet;
 typedef struct Symbol Symbol;
 typedef struct SymTab SymTab;
 typedef struct Const Const;
@@ -221,6 +222,11 @@ enum {
 	OPDWADD = 256,
 	OPDWINF = 512,
 	OPDEQ = 1024,
+};
+
+struct BitSet {
+	int n;
+	u32int p[1];
 };
 
 extern Line nilline, *curline;

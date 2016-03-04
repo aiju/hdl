@@ -1,5 +1,5 @@
 void *emalloc(int);
-void *erealloc(void *, int, int);
+void *erealloc(void *, int, int, int);
 int yylex(void);
 void error(Line *, char *, ...);
 void warn(Line *, char *, ...);
@@ -61,3 +61,19 @@ int clog2(uint);
 ASTNode *semcomp(ASTNode *);
 ASTNode *nodededup(ASTNode *, ASTNode *);
 int clearaux(ASTNode *);
+BitSet *bsnew(int);
+void bsreset(BitSet *);
+int bsadd(BitSet *, int);
+int bstest(BitSet *, int);
+int bsiter(BitSet *, int);
+void bscopy(BitSet *, BitSet *);
+int bscmp(BitSet *, BitSet *);
+void bsunion(BitSet *, BitSet *, BitSet *);
+void bsminus(BitSet *, BitSet *, BitSet *);
+void bsinter(BitSet *, BitSet *, BitSet *);
+int bsrem(BitSet *, int);
+int bscnt(BitSet *);
+BitSet* bsgrow(BitSet *, int);
+BitSet* bsdup(BitSet *);
+#define bsfree free
+void bscntgr(BitSet *, BitSet *, int *, int *);
