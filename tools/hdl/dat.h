@@ -7,7 +7,9 @@ typedef struct Type Type;
 typedef struct OpData OpData;
 typedef struct Nodes Nodes;
 typedef struct SemVar SemVar;
+typedef struct SemBlock SemBlock;
 #pragma incomplete SemVar
+#pragma incomplete SemBlock
 
 struct Const {
 	mpint *n, *x;
@@ -54,6 +56,7 @@ struct Symbol {
 	
 	SemVar *semc[2];
 	int semcidx[2];
+	int multiwhine;
 	
 	Line;
 };
@@ -78,6 +81,7 @@ struct ASTNode {
 		Const cons;
 		int i;
 		SemVar *semv;
+		SemBlock *semb;
 	};
 	Type *type;
 	Line;
@@ -122,6 +126,7 @@ enum {
 	ASTOP,
 	ASTPHI,
 	ASTPRIME,
+	ASTSEMGOTO,
 	ASTSSA,
 	ASTSTATE,
 	ASTSWITCH,

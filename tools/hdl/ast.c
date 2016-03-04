@@ -38,6 +38,7 @@ static char *astname[] = {
 	[ASTLITELEM] "ASTLITELEM",
 	[ASTSSA] "ASTSSA",
 	[ASTPHI] "ASTPHI",
+	[ASTSEMGOTO] "ASTSEMGOTO",
 };
 
 static char *symtname[] = {
@@ -213,6 +214,9 @@ node(int t, ...)
 	case ASTSSA:
 		n->semv = va_arg(va, SemVar *);
 		break;
+	case ASTSEMGOTO:
+		n->semb = va_arg(va, SemBlock *);
+		break;
 	default: sysfatal("node: unknown %A", t);
 	}
 	va_end(va);
@@ -287,6 +291,8 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 		return consteq(&a->cons, &b->cons);
 	case ASTSSA:
 		return a->semv == b->semv;
+	case ASTSEMGOTO:
+		return a->semb == b->semb;
 	default:
 		error(a, "nodeeq: unknown %A", a->t);
 		return 0;
@@ -870,6 +876,9 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		break;
 	case ASTABORT:
 		rc += fmtprint(f, "%Iabort;\n", indent);
+		break;
+	case ASTSEMGOTO:
+		rc += fmtprint(f, "%Igoto %p;\n", indent, n->semb);
 		break;
 	default:
 		error(n, "iastprint: unknown %A", n->t);

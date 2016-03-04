@@ -38,15 +38,36 @@ enum { SEMVARSBLOCK = 32 }; /* must be power of two */
 struct SemDef {
 	Symbol *sym;
 	int prime;
+	int ctr;
 	SemVar *sv;
 	SemDef *next;
 };
 struct SemDefs {
 	SemDef *hash[SEMHASH];
 };
+enum { FROMBLOCK = 16 };
+struct SemBlock {
+	SemBlock **from;
+	int nfrom;
+	ASTNode *phi;
+	ASTNode *cont;
+	ASTNode *jump;
+	SemDefs *defs;
+	SemVars *deps;
+	SemBlock *next;
+};
 
 static SemVars nodeps = {.ref = 1000};
-static SemVar *vars, **varslast = &vars;
+static SemVar *vars, **varslast;
+static SemBlock *blocks, **blockslast;
+
+static SemVars *
+depinc(SemVars *v)
+{
+	assert(v != nil && v->ref > 0);
+	v->ref++;
+	return v;
+}
 
 static SemDefs *
 defsnew(void)
@@ -85,41 +106,9 @@ mkvar(Symbol *s, int p, int i)
 	v->sym = s;
 	v->prime = p;
 	v->idx = i;
-	nodeps.ref++;
-	v->live = &nodeps;
+	v->live = depinc(&nodeps);
 	*varslast = v;
 	varslast = &v->next;
-	return v;
-}
-
-static void
-defsym(Symbol *s)
-{
-	int i;
-	
-	for(i = 0; i < 2; i++)
-		s->semc[i] = mkvar(s, i, 0);
-}
-
-static SemVar *
-ssadef(SemDefs *d, Symbol *s, int pr)
-{
-	SemDef **p;
-	SemVar *v;
-	SemDef *dv;
-	
-	v = mkvar(s, pr, ++s->semcidx[pr]);
-	dv = emalloc(sizeof(SemDef));
-	dv->sym = s;
-	dv->prime = pr;
-	dv->sv = v;
-	for(p = &d->hash[((uintptr)s)%SEMHASH]; *p != nil; p = &(*p)->next)
-		if((*p)->sym == s && (*p)->prime == pr){
-			dv->next = (*p)->next;
-			(*p)->next = nil;
-			break;
-		}
-	*p = dv;
 	return v;
 }
 
@@ -128,11 +117,59 @@ ssaget(SemDefs *d, Symbol *s, int pr)
 {
 	SemDef *p;
 	
+	if(d == nil) return nil;
 	for(p = d->hash[((uintptr)s) % SEMHASH]; p != nil; p = p->next)
 		if(p->sym == s && p->prime == pr)
 			return p->sv;
-	assert(s->semc[pr] != nil);
-	return s->semc[pr];
+	return nil;
+}
+
+static void
+defsadd(SemDefs *d, SemVar *sv, int mode)
+{
+	SemDef **p;
+	SemDef *dv;
+	
+	for(p = &d->hash[((uintptr)sv->sym) % SEMHASH]; *p != nil && ((*p)->sym < sv->sym || (*p)->prime < sv->prime); p = &(*p)->next)
+		;
+	if(*p != nil && (*p)->sym == sv->sym && (*p)->prime == sv->prime){
+		(*p)->ctr++;
+		switch(mode){
+		case 2:
+			if(sv->sym->multiwhine++ == 0)
+				error(sv->sym, "multi-driven variable %s%s", sv->sym->name, sv->prime ? "'" : "");
+			break;
+		case 1:
+			(*p)->sv = sv;
+			break;
+		case 0:
+			if(sv != (*p)->sv)
+				(*p)->sv = nil;
+			break;
+		}
+		return;
+	}
+	dv = emalloc(sizeof(SemDef));
+	dv->sym = sv->sym;
+	dv->prime = sv->prime;
+	dv->sv = sv;
+	dv->ctr = 1;
+	dv->next = *p;
+	*p = dv;
+}
+
+static void
+defsunion(SemDefs *d, SemDefs *s, int mode)
+{
+	SemDef *p;
+	int i;
+	
+	if(s == nil)
+		return;
+	for(i = 0; i < SEMHASH; i++)
+		for(p = s->hash[i]; p != nil; p = p->next)
+			if(mode != 2 || p->sv != p->sym->semc[p->prime])
+				defsadd(d, p->sv, mode);
 }
 
 static int
@@ -169,15 +206,125 @@ ssaprint(Fmt *f, ASTNode *n)
 	}
 }
 
+static void
+defsym(Symbol *s, SemDefs *glob)
+{
+	int i;
+	
+	for(i = 0; i < 2; i++){
+		s->semc[i] = mkvar(s, i, 0);
+		defsadd(glob, s->semc[i], 0);
+	}
+}
+
+static SemBlock *
+newblock(void)
+{
+	SemBlock *s;
+	
+	s = emalloc(sizeof(SemBlock));
+	s->cont = node(ASTBLOCK);
+	s->deps = depinc(&nodeps);
+	*blockslast = s;
+	blockslast = &s->next;
+	return s;
+}
+
+static ASTNode *
+semgoto(SemBlock *fr, SemBlock *to)
+{
+	ASTNode *n;
+	
+	n = node(ASTSEMGOTO, to);
+	if((to->nfrom % FROMBLOCK) == 0)
+		to->from = erealloc(to->from, to->nfrom * sizeof(SemBlock *), (to->nfrom + FROMBLOCK) * sizeof(SemBlock *));
+	to->from[to->nfrom++] = fr;
+	return n;
+}
+
+static SemBlock *
+blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob)
+{
+	Nodes *r;
+	SemBlock *s1, *s2, *s3;
+	ASTNode *m;
+	int def;
+
+	if(n == nil) return sb;
+	switch(n->t){
+	case ASTASS:
+		if(sb != nil)
+			sb->cont->nl = nlcat(sb->cont->nl, nl(n));
+		return sb;
+	case ASTIF:
+		s1 = n->n1 != nil ? newblock() : nil;
+		s2 = n->n2 != nil ? newblock() : nil;
+		s3 = newblock();
+		m = nodedup(n);
+		m->n2 = semgoto(sb, s1 != nil ? s1 : s3);
+		m->n3 = semgoto(sb, s2 != nil ? s2 : s3);
+		sb->jump = m;
+		s1 = blockbuild(n->n2, s1, glob);
+		s2 = blockbuild(n->n3, s2, glob);
+		if(s1 != nil) s1->jump = semgoto(s1, s3);
+		if(s2 != nil) s2->jump = semgoto(s2, s3);
+		return s3;
+	case ASTBLOCK:
+		for(r = n->nl; r != nil; r = r->next)
+			sb = blockbuild(r->n, sb, glob);
+		return sb;
+	case ASTMODULE:
+		assert(sb == nil);
+		
+		for(r = n->nl; r != nil; r = r->next){
+			if(r->n->t == ASTDECL){
+				defsym(r->n->sym, glob);
+				continue;
+			}
+			assert(r->n->t != ASTMODULE);
+			blockbuild(r->n, newblock(), nil);
+		}
+		return nil;
+	case ASTSWITCH:
+		m = nodedup(n);
+		m->n2 = nodedup(n->n2);
+		m->n2->nl = nil;
+		s1 = nil;
+		s2 = newblock();
+		sb->jump = m;
+		def = 0;
+		for(r = n->n2->nl; r != nil; r = r->next){
+			if(r->n->t == ASTCASE || r->n->t == ASTDEFAULT){
+				if(r->n->t == ASTDEFAULT)
+					def++;
+				if(s1 != nil) s1->jump = semgoto(s1, s2);
+				s1 = newblock();
+				m->n2->nl = nlcat(m->n2->nl, nls(r->n, semgoto(sb, s1), nil));
+			}else
+				s1 = blockbuild(r->n, s1, glob);
+		}
+		if(s1 != nil) s1->jump = semgoto(s1, s2);
+		if(!def)
+			m->n2->nl = nlcat(m->n2->nl, nls(node(ASTDEFAULT), semgoto(sb, s2), nil));
+		return s2;
+	default:
+		error(n, "blockbuild: unknown %A", n->t);
+		return nil;
+	}
+}
+
 static ASTNode *
 lvalhandle(ASTNode *n, SemDefs *d, int attr)
 {
 	ASTNode *m, *r;
+	SemVar *v;
 
 	if(n == nil) return nil;
 	switch(n->t){
 	case ASTSYMB:
-		return node(ASTSSA, ssadef(d, n->sym, attr));
+		v = mkvar(n->sym, attr, ++n->sym->semcidx[attr]);
+		defsadd(d, v, 1);
+		return node(ASTSSA, v);
 	case ASTPRIME:
 		r = lvalhandle(n->n1, d, 1);
 		if(r != nil && r->t == ASTSSA)
@@ -187,132 +334,99 @@ lvalhandle(ASTNode *n, SemDefs *d, int attr)
 		m = nodedup(n);
 		m->n1 = r;
 		return m;
+	case ASTSSA:
+		defsadd(d, n->semv, 1);
+		return n;
 	default:
 		error(n, "lvalhandle: unknown %A", n->t);
 		return n;
 	}
 }
 
-static Nodes *
-phi(SemDefs *dp, int n, SemDefs **d)
+static SemVar *
+findphi(Nodes *r, Symbol *s, int pr)
 {
-	int i, j;
-	SemDef *p;
-	SemVar *s, *q;
-	ASTNode *m;
-	Nodes *rv, *r, *rs, *rp;
+	SemVar *v;
 
-	if(n == 0) return nil;
-	rv = nil;
-	for(i = 0; i < n; i++){
-		if(d[i] == nil)
-			continue;
-		for(j = 0; j < SEMHASH; j++)
-			for(p = d[i]->hash[j]; p != nil; p = p->next){
-				q = ssaget(dp, p->sym, p->prime);
-				if(q != nil && p->sv == q) continue;
-				for(r = rv; r != nil; r = r->next)
-					if(r->n->n1->semv->sym == p->sym && r->n->n1->semv->prime == p->prime)
-						break;
-				if(r == nil){
-					s = ssadef(dp, p->sym, p->prime);
-					m = node(ASTPHI);
-					m->nl = nls(node(ASTSSA, q), node(ASTSSA, p->sv), nil);
-					m = node(ASTASS, OPNOP, node(ASTSSA, s), m);
-					rv = nlcat(rv, nl(m));
-				}else{
-					for(rs = r->n->n2->nl; rs != nil; rs = rs->next)
-						if(rs->n->semv == p->sv)
-							break;
-					if(rs == nil)
-						r->n->n2->nl = nlcat(r->n->n2->nl, nl(node(ASTSSA, p->sv)));
-				}
-			}
-	}
-	for(r = rv; r != nil; r = r->next){
-		for(rp = r->n->n2->nl, j = 0; rp != nil; rp = rp->next, j++)
-			;
-		if(j == n + 1)
-			r->n->n2->nl = r->n->n2->nl->next;
-	}
-	return rv;
-}
-
-static SemDefs *fixlastd;
-static Nodes *
-fixlast(ASTNode *n)
-{
-	if(n == nil) return nil;
-	if(n->t != ASTSSA) return nl(n);
-	if(n->semv == ssaget(fixlastd, n->semv->sym, n->semv->prime))
-		n->semv = n->semv->sym->semc[n->semv->prime];
-	return nl(n);
-}
-
-static Nodes *
-ssaswitch(Nodes *r, ASTNode *m, SemDefs *d, int attr)
-{
-	static Nodes *ssabuild(ASTNode *, SemDefs *, int);
-	ASTNode *bl;
-	SemDefs *cd;
-	SemDefs **defs;
-	int ndefs;
-	int def;
-	enum { BLOCK = 64 };
-
-	m->n1 = mkblock(ssabuild(m->n1, d, attr));
-	bl = node(ASTBLOCK);
-	cd = nil;
-	def = 0;
-	defs = nil;
-	ndefs = 0;
 	for(; r != nil; r = r->next){
-		if(r->n->t == ASTCASE || r->n->t == ASTDEFAULT){
-			cd = defsdup(d);
-			bl->nl = nlcat(bl->nl, ssabuild(r->n, d, attr));
-			if(r->n->t == ASTDEFAULT && ++def >= 2) goto err;
-			if(ndefs % BLOCK == 0)
-				defs = erealloc(defs, ndefs * sizeof(SemDefs *), (ndefs + BLOCK) * sizeof(SemDefs *));
-			defs[ndefs++] = cd;
-		}else{
-			if(cd == nil) goto err;
-			bl->nl = nlcat(bl->nl, ssabuild(r->n, cd, attr));
-		}
+		assert(r->n->t == ASTASS && r->n->n1->t == ASTSSA);
+		v = r->n->n1->semv;
+		if(v->sym == s || v->prime == pr)
+			return v;
 	}
-	m->n2 = bl;
-	if(ndefs % BLOCK == 0)
-		defs = erealloc(defs, ndefs * sizeof(SemDefs *), (ndefs + 1) * sizeof(SemDefs *));
-	r = nlcat(nl(m), phi(d, ndefs + (def == 0), defs));
-	free(defs);
-	return r;
-err:
-	error(m, "ssaswitch: phase error");
-	return nl(m);
+	return mkvar(s, pr, ++s->semcidx[pr]);
+}
+
+static void
+phi(SemBlock *b, SemDefs *d, SemDefs *glob)
+{
+	int i;
+	SemDef *dp;
+	ASTNode *m, *mm;
+	Nodes *old;
+	SemVar *v;
+	Nodes *r;
+	
+	old = b->phi == nil ? nil : b->phi->nl;
+	b->phi = node(ASTBLOCK);
+	if(b->nfrom == 0){
+		defsunion(d, glob, 0);
+		return;
+	}
+	for(i = 0; i < b->nfrom; i++)
+		if(b->from[i] != nil)
+			defsunion(d, b->from[i]->defs, 0);
+	for(i = 0; i < SEMHASH; i++)
+		for(dp = d->hash[i]; dp != nil; dp = dp->next){
+			if(dp->ctr < b->nfrom || dp->sv == nil){
+				dp->sv = findphi(old, dp->sym, dp->prime);
+				m = node(ASTPHI);
+				for(i = 0; i < b->nfrom; i++){
+					v = ssaget(b->from[i]->defs, dp->sym, dp->prime);
+					for(r = m->nl; r != nil; r = r->next)
+						if(r->n->t == ASTSSA && v == r->n->semv || r->n->t != ASTSSA && v == nil)
+							break;
+					if(r == nil){
+						if(v != nil)
+							mm = node(ASTSSA, v);
+						else{
+							mm = node(ASTSYMB, dp->sym);
+							if(dp->prime) mm = node(ASTPRIME, mm);
+						}
+						m->nl = nlcat(m->nl, nl(mm));
+					}
+				}
+				m = node(ASTASS, 0, node(ASTSSA, dp->sv), m);
+				b->phi->nl = nlcat(b->phi->nl, nl(m));
+			}	
+		}
 }
 
 static Nodes *
-ssabuild(ASTNode *n, SemDefs *d, int attr)
+ssabuildbl(ASTNode *n, SemDefs *d, int attr)
 {
-	ASTNode *m;
+	ASTNode *m, *mm;
 	Nodes *r;
 	SemVar *sv;
-	SemDefs *ds[2];
-	
+
 	if(n == nil) return nil;
 	m = nodedup(n);
 	switch(n->t){
 	case ASTCINT:
 	case ASTCONST:
-	case ASTDEFAULT:
+	case ASTSEMGOTO:
+	case ASTSSA:
 		break;
-	case ASTDECL:
-		defsym(n->sym);
-		break;
+	case ASTIF:
 	case ASTOP:
-		m->n1 = mkblock(ssabuild(n->n1, d, attr));
-		m->n2 = mkblock(ssabuild(n->n2, d, attr));
-		m->n3 = mkblock(ssabuild(n->n3, d, attr));
-		m->n4 = mkblock(ssabuild(n->n4, d, attr));
+		m->n1 = mkblock(ssabuildbl(n->n1, d, attr));
+		m->n2 = mkblock(ssabuildbl(n->n2, d, attr));
+		m->n3 = mkblock(ssabuildbl(n->n3, d, attr));
+		m->n4 = mkblock(ssabuildbl(n->n4, d, attr));
+		break;
+	case ASTASS:
+		m->n2 = mkblock(ssabuildbl(n->n2, d, attr));
+		m->n1 = lvalhandle(m->n1, d, 0);
 		break;
 	case ASTSYMB:
 		sv = ssaget(d, n->sym, attr);
@@ -321,49 +435,91 @@ ssabuild(ASTNode *n, SemDefs *d, int attr)
 		m = node(ASTSSA, sv);
 		break;
 	case ASTPRIME:
-		m->n1 = mkblock(ssabuild(n->n1, d, attr | 1));
-		if(m->n1->t == ASTSSA){
+		m->n1 = mm = mkblock(ssabuildbl(n->n1, d, attr|1));
+		if(mm->t == ASTSSA){
 			nodeput(m);
-			return nl(m->n1);
-		}
-		break;
-	case ASTASS:
-		m->n2 = mkblock(ssabuild(n->n2, d, attr));
-		m->n1 = lvalhandle(m->n1, d, 0);
-		break;
-	case ASTIF:
-		m->n1 = mkblock(ssabuild(n->n1, d, attr));
-		ds[0] = nil;
-		ds[1] = nil;
-		if(n->n2 != nil){
-			ds[0] = defsdup(d);
-			m->n2 = mkblock(ssabuild(n->n2, ds[0], attr));
-		}
-		if(n->n3 != nil){
-			ds[1] = defsdup(d);
-			m->n3 = mkblock(ssabuild(n->n3, ds[1], attr));
-		}
-		return nlcat(nl(nodededup(n, m)), phi(d, 2, ds));
-	case ASTSWITCH:
-		return ssaswitch(n->n2->nl, m, d, attr);
-	case ASTMODULE:
-		m->nl = nil;
-		for(r = n->nl; r != nil; r = r->next){
-			d = defsnew();
-			fixlastd = d;
-			m->nl = nlcat(m->nl, descend(mkblock(ssabuild(r->n, d, attr)), nil, fixlast));
+			m = mm;
 		}
 		break;
 	case ASTBLOCK:
-	case ASTCASE:
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
-			m->nl = nlcat(m->nl, ssabuild(r->n, d, attr));
-		break;		
+			m->nl = nlcat(m->nl, ssabuildbl(r->n, d, attr));
+		break;
+
 	default:
-		error(n, "ssabuild: unknown %A", n->t);
+		error(n, "ssabuildbl: unknown %A", n->t);
 	}
 	return nl(nodededup(n, m));
+}
+
+static int
+blockcmp(SemBlock *a, SemBlock *b)
+{
+	SemDef *p, *q;
+	int i;
+	
+	if(!nodeeq(a->cont, b->cont, nodeeq) ||
+		!nodeeq(a->jump, b->jump, nodeeq) ||
+		!nodeeq(a->phi, b->phi, nodeeq))
+		return 1;
+	if(a->defs == b->defs) goto deps;
+	if(a->defs == nil || b->defs == nil) return 1;
+	for(i = 0; i < SEMHASH; i++){
+		for(p = a->defs->hash[i], q = b->defs->hash[i]; p != nil && q != nil; p = p->next, q = q->next)
+			if(p->sym != q->sym || p->prime != q->prime || p->sv != q->sv)
+				return 1;
+		if(p != q)
+			return 1;
+	}
+deps:
+	if(a->deps == b->deps) return 0;
+	if(a->deps->n != b->deps->n) return 1;
+	for(i = 0; i < a->deps->n; i++)
+		if(a->deps->p[i] == b->deps->p[i])
+			return 1;
+	return 0;
+}
+
+static SemDefs *fixlastd;
+static Nodes *
+fixlast(ASTNode *n)
+{
+        if(n == nil) return nil;
+        if(n->t != ASTSSA) return nl(n);
+        if(n->semv == ssaget(fixlastd, n->semv->sym, n->semv->prime))
+                n->semv = n->semv->sym->semc[n->semv->prime];
+        return nl(n);
+}
+
+static void
+ssabuild(SemDefs *glob)
+{
+	SemBlock b0;
+	SemBlock *b;
+	SemDefs *d, *gl;
+	int ch;
+
+	do{
+		ch = 0;
+		gl = defsnew();
+		for(b = blocks; b != nil; b = b->next){
+			b0 = *b;
+			d = defsnew();
+			phi(b, d, glob);
+			b->cont = mkblock(ssabuildbl(b->cont, d, 0));
+			b->jump = mkblock(ssabuildbl(b->jump, d, 0));
+			if(b->jump == nil) defsunion(gl, d, 2);
+			b->defs = d;
+			ch += blockcmp(b, &b0);
+		}
+	}while(ch != 0);
+	fixlastd = gl;
+	for(b = blocks; b != nil; b = b->next){
+		b->phi = onlyone(descend(b->phi, nil, fixlast));
+		b->cont = onlyone(descend(b->cont, nil, fixlast));
+		b->jump = onlyone(descend(b->jump, nil, fixlast));
+	}
 }
 
 static void
@@ -442,8 +598,7 @@ depcat(SemVars *a, SemVars *b)
 static SemVars *
 trackdep(ASTNode *n, SemVars *cdep)
 {
-	Nodes *r, *s;
-	SemVars *d0;
+	Nodes *r;
 
 	if(n == nil) return cdep;
 	switch(n->t){
@@ -452,57 +607,68 @@ trackdep(ASTNode *n, SemVars *cdep)
 	case ASTCONST:
 	case ASTDEFAULT:
 		return cdep;
-	case ASTMODULE:
 	case ASTBLOCK:
 		for(r = n->nl; r != nil; r = r->next){
-			cdep->ref++;
-			putdeps(trackdep(r->n, cdep));
+			putdeps(trackdep(r->n, depinc(cdep)));
 		}
 		return cdep;
 	case ASTASS:
 		if(n->n1 == nil || n->n1->t != ASTSSA) return cdep;
 		n->n1->semv->def++;
-		cdep->ref++;
-		n->n1->semv->deps = trackdep(n->n2, cdep);
+		n->n1->semv->deps = trackdep(n->n2, depinc(cdep));
 		return cdep;
 	case ASTOP:
-		cdep->ref++;
-		return depcat(trackdep(n->n1, cdep), trackdep(n->n2, cdep));
+		return depcat(trackdep(n->n1, cdep), trackdep(n->n2, depinc(cdep)));
 	case ASTSSA:
 		return depadd(cdep, n->semv);
 	case ASTPHI:
-		for(r = n->nl; r != nil; r = r->next){
-			cdep->ref++;
-			cdep = depcat(cdep, trackdep(r->n, cdep));
-		}
-		return cdep;
-	case ASTIF:
-		cdep->ref += 2;
-		d0 = depcat(cdep, trackdep(n->n1, cdep));
-		d0->ref++;
-		putdeps(trackdep(n->n2, d0));
-		putdeps(trackdep(n->n3, d0));
-		return cdep;
-	case ASTSWITCH:
-		assert(n->n2 != nil && n->n2->t == ASTBLOCK);
-		cdep->ref += 2;
-		d0 = depcat(cdep, trackdep(n->n1, cdep));
-		for(r = n->n2->nl; r != nil; r = r->next)
-			if(r->n->t == ASTCASE){
-				for(s = n->n1->nl; s != nil; s = s->next){
-					d0->ref++;
-					d0 = depcat(d0, trackdep(n->n1, d0));
-				}
-			}else{
-				cdep->ref++;
-				putdeps(trackdep(r->n, cdep));
-			}
-		putdeps(d0);
+		for(r = n->nl; r != nil; r = r->next)
+			cdep = depcat(cdep, trackdep(r->n, depinc(cdep)));
 		return cdep;
 	default:
 		error(n, "trackdep: unknown %A", n->t);
 		return cdep;
 	}
+}
+
+static void
+depprop(ASTNode *n, SemVars *cdep)
+{
+	if(n == nil){
+		putdeps(cdep);
+		return;
+	}
+	switch(n->t){
+	case ASTSEMGOTO:
+		n->semb->deps = depcat(n->semb->deps, cdep);
+		return;
+	case ASTIF:
+		cdep = trackdep(n->n1, cdep);
+		depprop(n->n2, depinc(cdep));
+		depprop(n->n3, cdep);
+		return;
+	default:
+		error(n, "depprop: unknown %A", n->t);
+	}
+	putdeps(cdep);
+}
+
+static void
+trackdeps(void)
+{
+	int ch;
+	SemBlock *b, b0;
+	
+	do{
+		ch = 0;
+		for(b = blocks; b != nil; b = b->next){
+			b0 = *b;
+			putdeps(trackdep(b->phi, depinc(b->deps)));
+			putdeps(trackdep(b->cont, depinc(b->deps)));
+			depprop(b->jump, depinc(b->deps));
+			ch += blockcmp(&b0, b);
+		}
+	}while(ch != 0);
 }
 
 static void
@@ -735,22 +901,47 @@ tracklive(ASTNode *n, SemVars *live)
 ASTNode *
 semcomp(ASTNode *n)
 {
-	n = onlyone(ssabuild(n, nil, 0));
-	nodeps.ref++; putdeps(trackdep(n, &nodeps));
-	trackcans();
-	trackneed();
-	n = makenext(n);
-	astprint(n);
-	nodeps.ref++; putdeps(tracklive(n, &nodeps));
+	SemDefs *glob;
+
+	blocks = nil;
+	blockslast = &blocks;
+	vars = nil;
+	varslast = &vars;
+	glob = defsnew();
+	blockbuild(n, nil, glob);
+	ssabuild(glob);
+	trackdeps();
+	
 	{
 		SemVar *v;
 		int i;
 		
 		for(v = vars; v != nil; v = v->next){
+			if(v->deps == nil) continue;
 			print("%Σ ", v);
-			for(i = 0; i < v->live->n; i++)
-				print("%Σ,", v->live->p[i]);
+			for(i = 0; i < v->deps->n; i++)
+				print("%Σ,", v->deps->p[i]);
 			print("\n");
+		}
+	}
+	{
+		SemBlock *b;
+		int i;
+		
+		for(b = blocks; b != nil; b = b->next){
+			print("%p:\n", b);
+			for(i = 0; i < b->deps->n; i++)
+				print("%Σ,", b->deps->p[i]);
+			print("\n");
+			if(b->nfrom != 0){
+				print("// from ");
+				for(i = 0; i < b->nfrom; i++)
+					print("%p%s", b->from[i], i+1 == b->nfrom ? "" : ", ");
+				print("\n");
+			}
+			astprint(b->phi);
+			astprint(b->cont);
+			astprint(b->jump);
 		}
 	}
 	return n;

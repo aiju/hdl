@@ -323,6 +323,7 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTSTATE:
 	case ASTDEFAULT:
 	case ASTSSA:
+	case ASTSEMGOTO:
 		break;
 	case ASTASS:
 	case ASTDECL:
@@ -385,6 +386,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTSTATE:
 	case ASTDEFAULT:
 	case ASTSSA:
+	case ASTSEMGOTO:
 		break;
 	case ASTASS:
 	case ASTDECL:
