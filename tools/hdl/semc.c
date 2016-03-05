@@ -56,6 +56,7 @@ struct SemBlock {
 	SemBlock *ipdom;
 	SemDefs *defs;
 	SemVars *deps;
+	SemVars *live;
 };
 
 static SemVars nodeps = {.ref = 1000};
@@ -356,7 +357,7 @@ findphi(Nodes *r, Symbol *s, int pr)
 	for(; r != nil; r = r->next){
 		assert(r->n->t == ASTASS && r->n->n1->t == ASTSSA);
 		v = r->n->n1->semv;
-		if(v->sym == s || v->prime == pr)
+		if(v->sym == s && v->prime == pr)
 			return v;
 	}
 	return mkvar(s, pr, ++s->semcidx[pr]);
@@ -718,6 +719,24 @@ depcat(SemVars *a, SemVars *b)
 	return a;
 }
 
+static SemVars *
+depdecat(SemVars *a, SemVars *b)
+{
+	int i;
+
+	assert(a != nil && a->ref > 0);
+	assert(b != nil && b->ref > 0);
+	if(a == b){
+		putdeps(b);
+		putdeps(a);
+		return &nodeps;
+	}
+	for(i = 0; i < b->n; i++)
+		a = depsub(a, b->p[i]);
+	putdeps(b);
+	return a;
+}
+
 static int
 ptrcmp(void *a, void *b)
 {
@@ -737,6 +756,18 @@ depeq(SemVars *a, SemVars *b)
 		if(a->p[i] != b->p[i])
 			return 0;
 	return 1;
+}
+
+static int
+deptest(SemVars *a, SemVar *b)
+{
+	int i;
+	
+	if(a == nil) return 0;
+	for(i = 0; i < a->n; i++)
+		if(a->p[i] == b)
+			return 1;
+	return 0;
 }
 
 static SemVars *
@@ -773,15 +804,6 @@ trackdep(ASTNode *n, SemVars *cdep)
 		error(n, "trackdep: unknown %A", n->t);
 		return cdep;
 	}
-}
-
-static int
-blockpdom(SemBlock *a, SemBlock *b)
-{
-	for(; b->ipdom != b; b = b->ipdom)
-		if(b == a)
-			return 1;
-	return 0;
 }
 
 static void
@@ -837,8 +859,8 @@ depproc(SemBlock *b, ASTNode *n)
 static void
 trackdeps(void)
 {
-	int ch, i, j;
-	SemBlock *b, *l0, *l;
+	int i;
+	SemBlock *b;
 	
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
@@ -929,56 +951,25 @@ countnext(ASTNode *n)
 	return (n->n1->semv->flags & SVNEEDNX) != 0;
 }
 
-static Nodes *
-makenext1(ASTNode *n)
-{
-	ASTNode *m;
-	Nodes *r;
+static SemBlock **dupl;
 
-	if(n == nil) return nil;
-	m = nodedup(n);
-	switch(n->t){
-	case ASTCINT:
-	case ASTCONST:
-	case ASTDEFAULT:
-		break;
+static Nodes *
+makenext1(ASTNode *m)
+{
+	switch(m->t){
 	case ASTASS:
-		if(n->n1 == nil || n->n1->t != ASTSSA) return nil;
-		if((n->n1->semv->flags & SVNEEDNX) == 0) return nil;
-		m->n1 = mkblock(makenext1(n->n1));
-		m->n2 = mkblock(makenext1(n->n2));
+		if(m->n1 == nil || m->n1->t != ASTSSA) return nil;
 		break;
 	case ASTSSA:
 		m->semv = m->semv->tnext;
+		if(m->semv == nil) return nil;
 		break;
-	case ASTOP:
-		m->n1 = mkblock(makenext1(n->n1));
-		m->n2 = mkblock(makenext1(n->n2));
-		m->n3 = mkblock(makenext1(n->n3));
-		m->n4 = mkblock(makenext1(n->n4));
+	case ASTSEMGOTO:
+		m->semb = dupl[m->semb->idx];
+		assert(m->semb != nil);
 		break;
-	case ASTIF:
-		if(descendsum(n->n2, countnext) + descendsum(n->n3, countnext) == 0)
-			return nil;
-		m->n1 = mkblock(makenext1(n->n1));
-		m->n2 = mkblock(makenext1(n->n2));
-		m->n3 = mkblock(makenext1(n->n3));
-		break;
-	case ASTPHI:		
-	case ASTBLOCK:
-	case ASTCASE:
-		m->nl = nil;
-		for(r = n->nl; r != nil; r = r->next)
-			m->nl = nlcat(m->nl, makenext1(r->n));
-		break;
-	case ASTSWITCH:
-		m->n1 = mkblock(makenext1(n->n1));
-		m->n2 = mkblock(makenext1(n->n2));
-		break;
-	default:
-		error(n, "makenext1: unknown %A", n->t);
 	}
-	return nl(nodededup(n, m));
+	return nl(m);
 }
 
 static Nodes *
@@ -994,25 +985,57 @@ deldefs(ASTNode *n)
 	return nl(n);
 }
 
-static ASTNode *
-makenext(ASTNode *n)
+static void
+makenext(void)
 {
-	Nodes *r;
-	ASTNode *m;
-
-	if(n == nil) return nil;
-	if(n->t != ASTMODULE){
-		error(n, "makenext: unknown %A", n->t);
-		return n;
+	SemBlock *b, *c;
+	BitSet *copy;
+	int i, j, ch;
+	
+	copy = bsnew(nblocks);
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		if(descendsum(b->phi, countnext) + descendsum(b->cont, countnext) > 0)
+			bsadd(copy, i);
 	}
-	m = nodedup(n);
-	m->nl = nil;
-	for(r = n->nl; r != nil; r = r->next){
-		m->nl = nlcat(m->nl, descend(r->n, nil, deldefs));
-		if(descendsum(r->n, countnext) > 0)
-			m->nl = nlcat(m->nl, makenext1(r->n));
+	do{
+		ch = 0;
+		for(i = -1; i = bsiter(copy, i), i >= 0; ){
+			b = blocks[i];
+			for(j = 0; j < b->nto; j++)
+				ch += bsadd(copy, b->to[j]->idx) == 0;
+			for(j = 0; j < b->nfrom; j++)
+				ch += bsadd(copy, b->from[j]->idx) == 0;
+		}
+	}while(ch != 0);
+	dupl = emalloc(nblocks * sizeof(SemBlock *));
+	for(i = -1; i = bsiter(copy, i), i >= 0; )
+		dupl[i] = newblock();
+	for(i = -1; i = bsiter(copy, i), i >= 0; ){
+		b = blocks[i];
+		c = dupl[i];
+		c->nto = b->nto;
+		c->to = emalloc(sizeof(SemBlock *) * c->nto);
+		c->nfrom = b->nfrom;
+		c->from = emalloc(sizeof(SemBlock *) * c->nfrom);
+		for(j = 0; j < b->nto; j++){
+			c->to[j] = dupl[b->to[j]->idx];
+			assert(c->to[j] != nil);
+		}
+		for(j = 0; j < b->nfrom; j++){
+			c->from[j] = dupl[b->from[j]->idx];
+			assert(c->from[j] != nil);
+		}
+		c->phi = mkblock(descend(b->phi, nil, makenext1));
+		c->cont = mkblock(descend(b->cont, nil, makenext1));
+		c->jump = mkblock(descend(b->jump, nil, makenext1));
 	}
-	return nodededup(n, m);
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		b->phi = mkblock(descend(b->phi, nil, deldefs));
+		b->cont = mkblock(descend(b->cont, nil, deldefs));
+	}
+	bsfree(copy);
 }
 
 static void
@@ -1033,50 +1056,111 @@ listarr(Nodes *n, ASTNode ***rp, int *nrp)
 	*nrp = nr;
 }
 
-static SemVars *
-tracklive(ASTNode *n, SemVars *live)
+static void
+tracklive1(ASTNode *n, SemVars **gen, SemVars **kill)
 {
 	Nodes *r;
-	int i;
 	ASTNode **rl;
 	int nrl;
 
-	if(n == nil) return live;
+	if(n == nil) return;
 	switch(n->t){
 	case ASTDECL:
 	case ASTCONST:
 	case ASTCINT:
+	case ASTSEMGOTO:
+	case ASTPHI:
 		break;
 	case ASTBLOCK:
-		listarr(n->nl, &rl, &nrl);
-		for(i = nrl; --i >= 0; )
-			live = tracklive(rl[i], live);
-		free(rl);
-		break;
-	case ASTMODULE:
 		for(r = n->nl; r != nil; r = r->next)
-			live = tracklive(r->n, live);
-		for(r = n->nl; r != nil; r = r->next)
-			live = tracklive(r->n, live);
+			tracklive1(r->n, gen, kill);
 		break;
 	case ASTASS:
-		if(n->n1 == nil || n->n1->t != ASTSSA) return live;
-		live = depsub(live, n->n1->semv);
-		live = tracklive(n->n2, live);
+		if(n->n1 == nil || n->n1->t != ASTSSA) return;
+		tracklive1(n->n2, gen, kill);
+		*kill = depadd(*kill, n->n1->semv);
 		break;
 	case ASTSSA:
-		live = depadd(live, n->semv);
-		live->ref++;
-		n->semv->live = depcat(n->semv->live, live);
+		if(!deptest(*kill, n->semv))
+			*gen = depadd(*gen, n->semv);
 		break;
 	case ASTOP:
-		live = tracklive(n->n1, live);
-		live = tracklive(n->n2, live);
+		tracklive1(n->n1, gen, kill);
+		tracklive1(n->n2, gen, kill);
+		break;
+	case ASTIF:
+		tracklive1(n->n2, gen, kill);
+		tracklive1(n->n3, gen, kill);
+		tracklive1(n->n1, gen, kill);
+		break;
+	case ASTSWITCH:
+		tracklive1(n->n2, gen, kill);
+		tracklive1(n->n1, gen, kill);
 		break;
 	default:
-		error(n, "tracklive: unknown %A", n->t);
+		error(n, "tracklive1: unknown %A", n->t);
 	}
-	return live;
+}
+
+static void
+tracklive(void)
+{
+	SemBlock *b;
+	SemVars *l;
+	int i, j, ch;
+	SemVars **livein, **liveout, **gen, **kill;
+	SemVars *li, *lo, *glob;
+	
+	gen = emalloc(sizeof(SemVars *) * nblocks);
+	kill = emalloc(sizeof(SemVars *) * nblocks);
+	livein = emalloc(sizeof(SemVars *) * nblocks);
+	liveout = emalloc(sizeof(SemVars *) * nblocks);
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		nodeps.ref += 4;
+		gen[i] = &nodeps;
+		kill[i] = &nodeps;
+		livein[i] = &nodeps;
+		liveout[i] = &nodeps;
+		tracklive1(b->phi, &gen[i], &kill[i]);
+		tracklive1(b->cont, &gen[i], &kill[i]);
+		tracklive1(b->jump, &gen[i], &kill[i]);
+	}	
+	do{
+		ch = 0;
+		glob = depinc(&nodeps);
+		for(i = 0; i < nblocks; i++)
+			if(blocks[i]->nfrom == 0)
+				glob = depcat(glob, depinc(livein[i]));
+		for(i = 0; i < nblocks; i++){
+			b = blocks[i];
+			li = livein[i];
+			lo = liveout[i];
+			liveout[i] = depinc(&nodeps);
+			for(j = 0; j < b->nto; j++)
+				liveout[i] = depcat(liveout[i], depinc(livein[b->to[j]->idx]));
+			if(b->nto == 0)
+				liveout[i] = depcat(liveout[i], depinc(glob));
+			livein[i] = depdecat(depinc(liveout[i]), depinc(kill[i]));
+			livein[i] = depcat(livein[i], depinc(gen[i]));
+			ch += depeq(li, livein[i]) == 0;
+			ch += depeq(lo, liveout[i]) == 0;
+			putdeps(li);
+			putdeps(lo);
+		}
+		putdeps(glob);
+	}while(ch != 0);
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		b->live = liveout[i];
+		putdeps(livein[i]);
+		putdeps(gen[i]);
+		putdeps(kill[i]);
+	}
+	free(gen);
+	free(kill);
+	free(livein);
+	free(liveout);
 }
 
 ASTNode *
@@ -1095,6 +1179,10 @@ semcomp(ASTNode *n)
 	reorder();
 	calcdom();
 	trackdeps();
+	trackcans();
+	trackneed();
+	makenext();
+	tracklive();
 	
 	{
 		SemVar *v;
@@ -1115,9 +1203,8 @@ semcomp(ASTNode *n)
 		for(j = 0; j < nblocks; j++){
 			b = blocks[j];
 			print("%p:\n", b);
-			print("\t%p\n", b->ipdom);
-			for(i = 0; i < b->deps->n; i++)
-				print("%Σ,", b->deps->p[i]);
+			for(i = 0; i < b->live->n; i++)
+				print("%Σ,", b->live->p[i]);
 			print("\n");
 			if(b->nfrom != 0){
 				print("// from ");
