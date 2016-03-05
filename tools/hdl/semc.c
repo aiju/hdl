@@ -53,7 +53,7 @@ struct SemBlock {
 	ASTNode *phi;
 	ASTNode *cont;
 	ASTNode *jump;
-	SemBlock *idom;
+	SemBlock *ipdom;
 	SemDefs *defs;
 	SemVars *deps;
 };
@@ -610,11 +610,11 @@ dominter(SemBlock *a, SemBlock *b)
 	if(b == nil) return a;
 	while(a != b){
 		print("%d %d\n", a->idx, b->idx);
-		while(a != nil && a->idx < b->idx)
-			a = a->idom;
+		while(a != nil && a->idx > b->idx)
+			a = a->ipdom;
 		assert(a != nil);
-		while(b != nil && b->idx < a->idx)
-			b = b->idom;
+		while(b != nil && b->idx > a->idx)
+			b = b->ipdom;
 		assert(b != nil);
 	}
 	return a;
@@ -628,19 +628,19 @@ calcdom(void)
 	SemBlock *b, *n;
 	
 	for(i = 0; i < nblocks; i++)
-		if(blocks[i]->nfrom == 0)
-			blocks[i]->idom = blocks[i];
+		if(blocks[i]->nto == 0)
+			blocks[i]->ipdom = blocks[i];
 	do{
 		ch = 0;
-		for(i = 0; i < nblocks; i++){
+		for(i = nblocks; --i >= 0; ){
 			b = blocks[i];
-			if(b->nfrom == 0)
+			if(b->nto == 0)
 				continue;
 			n = nil;
-			for(j = 0; j < b->nfrom; j++)
-				n = dominter(n, b->from[j]->idom);
-			ch += b->idom != n;
-			b->idom = n;
+			for(j = 0; j < b->nto; j++)
+				n = dominter(n, b->to[j]->ipdom);
+			ch += b->ipdom != n;
+			b->ipdom = n;
 		}
 	}while(ch != 0);
 }
@@ -776,61 +776,75 @@ trackdep(ASTNode *n, SemVars *cdep)
 }
 
 static int
-blockdom(SemBlock *a, SemBlock *b)
+blockpdom(SemBlock *a, SemBlock *b)
 {
-	for(; b->idom != b; b = b->idom)
+	for(; b->ipdom != b; b = b->ipdom)
 		if(b == a)
 			return 1;
 	return 0;
 }
 
-static int
-depprop(SemBlock *d, SemBlock *s)
+static void
+depprop(SemBlock *t, SemBlock *b, SemVars *v)
 {
-	ASTNode *n;
-	SemVars *l, *l0;
-	int i, rc;
-	
-	for(i = 0; i < s->nto; i++)
-		if(!blockdom(s->to[i], d))
-			break;
-	if(i == s->nto)
-		return 0;
-	n = s->jump;
-	l = depinc(s->deps);
-	if(n != nil)
-		switch(n->t){
-		case ASTIF:
-			l = trackdep(n->n1, l);
-			break;
-		case ASTSWITCH:
-			l = trackdep(n->n1, l);
-			break;
-		default:
-			error(n, "depprop: unknown %A", n->t);
-		}
-	l0 = d->deps;
-	d->deps = l;
-	rc = !depeq(l0, l);
-	putdeps(l0);
-	return rc;
+	int i;
+
+	if(b == nil || b == t){
+		putdeps(v);
+		return;
+	}
+	b->deps = depcat(b->deps, depinc(v));
+	for(i = 0; i < b->nto; i++)
+		depprop(t, b->to[i], depinc(v));
+	putdeps(v);
+}
+
+static void
+depproc(SemBlock *b, ASTNode *n)
+{
+	SemVars *v;
+	Nodes *r, *s;
+
+	if(n == nil) return;
+	switch(n->t){
+	case ASTIF:
+		v = trackdep(n->n1, depinc(&nodeps));
+		depprop(b->ipdom, b->to[0], depinc(v));
+		depprop(b->ipdom, b->to[1], v);
+		break;
+	case ASTSWITCH:
+		v = trackdep(n->n1, depinc(&nodeps));
+		for(r = n->n2->nl; r != nil; r = r->next)
+			switch(r->n->t){
+			case ASTSEMGOTO:
+				depprop(b->ipdom, r->n->semb, depinc(v));
+				break;
+			case ASTCASE:
+				for(s = r->n->nl; s != nil; s = s->next)
+					v = trackdep(s->n, v);
+				break;
+			case ASTDEFAULT:
+				break;
+			default:
+				error(r->n, "depproc: unknown %A", n->t);
+			}
+		break;
+	default:
+		error(n, "depproc: unknown %A", n->t);
+	}
 }
 
 static void
 trackdeps(void)
 {
-	int ch, i;
-	SemBlock *b;
+	int ch, i, j;
+	SemBlock *b, *l0, *l;
 	
-	do{
-		ch = 0;
-		for(i = 0; i < nblocks; i++){
-			b = blocks[i];
-			if(b->idom == b)
-				continue;
-			ch += depprop(b, b->idom);
-		}
-	}while(ch != 0);
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		if(b->nto <= 1) continue;
+		depproc(b, b->jump);
+	}
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
 		putdeps(trackdep(b->phi, depinc(b->deps)));
@@ -1101,7 +1115,7 @@ semcomp(ASTNode *n)
 		for(j = 0; j < nblocks; j++){
 			b = blocks[j];
 			print("%p:\n", b);
-			print("\t%p\n", b->idom);
+			print("\t%p\n", b->ipdom);
 			for(i = 0; i < b->deps->n; i++)
 				print("%Σ,", b->deps->p[i]);
 			print("\n");
