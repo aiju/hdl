@@ -371,7 +371,6 @@ phi(SemBlock *b, SemDefs *d, SemDefs *glob)
 	ASTNode *m, *mm;
 	Nodes *old;
 	SemVar *v;
-	Nodes *r;
 	
 	old = b->phi == nil ? nil : b->phi->nl;
 	b->phi = node(ASTBLOCK);
@@ -389,18 +388,13 @@ phi(SemBlock *b, SemDefs *d, SemDefs *glob)
 				m = node(ASTPHI);
 				for(i = 0; i < b->nfrom; i++){
 					v = ssaget(b->from[i]->defs, dp->sym, dp->prime);
-					for(r = m->nl; r != nil; r = r->next)
-						if(r->n->t == ASTSSA && v == r->n->semv || r->n->t != ASTSSA && v == nil)
-							break;
-					if(r == nil){
-						if(v != nil)
-							mm = node(ASTSSA, v);
-						else{
-							mm = node(ASTSYMB, dp->sym);
-							if(dp->prime) mm = node(ASTPRIME, mm);
-						}
-						m->nl = nlcat(m->nl, nl(mm));
+					if(v != nil)
+						mm = node(ASTSSA, v);
+					else{
+						mm = node(ASTSYMB, dp->sym);
+						if(dp->prime) mm = node(ASTPRIME, mm);
 					}
+					m->nl = nlcat(m->nl, nl(mm));
 				}
 				m = node(ASTASS, 0, node(ASTSSA, dp->sv), m);
 				b->phi->nl = nlcat(b->phi->nl, nl(m));
@@ -1060,8 +1054,6 @@ static void
 tracklive1(ASTNode *n, SemVars **gen, SemVars **kill)
 {
 	Nodes *r;
-	ASTNode **rl;
-	int nrl;
 
 	if(n == nil) return;
 	switch(n->t){
@@ -1102,14 +1094,78 @@ tracklive1(ASTNode *n, SemVars **gen, SemVars **kill)
 	}
 }
 
+
+
+static SemVars *
+addphis(SemVars *live, SemBlock *t, SemBlock *f)
+{
+	int i, j;
+	Nodes *r, *s;
+	
+	for(i = 0; i < t->nfrom; i++)
+		if(t->from[i] == f)
+			break;
+	assert(i < t->nfrom);
+	if(t->phi == nil) return live;
+	assert(t->phi->t == ASTBLOCK);
+	for(r = t->phi->nl; r != nil; r = r->next){
+		assert(r->n->t == ASTASS && r->n->n2->t == ASTPHI);
+		for(s = r->n->n2->nl, j = 0; s != nil && j != i; s = s->next, j++)
+			;
+		assert(s != nil);
+		if(s->n->t == ASTSSA)
+			live = depadd(live, s->n->semv);
+	}
+	return live;
+}
+
+static SemVars *
+proplive(ASTNode *n, SemVars *live)
+{
+	int nrl, i;
+	ASTNode **rl;
+
+	if(n == nil) return live;
+	switch(n->t){
+	case ASTCONST:
+	case ASTCINT:
+	case ASTSEMGOTO:
+		return live;
+	case ASTSSA:
+		n->semv->live = depcat(n->semv->live, depinc(live));
+		live = depadd(live, n->semv);
+		return live;
+	case ASTASS:
+		if(n->n1 == nil || n->n1->t != ASTSSA) return live;
+		live = depsub(live, n->n1->semv);
+		return proplive(n->n2, live);
+	case ASTOP:
+		live = proplive(n->n1, live);
+		return proplive(n->n2, live);
+	case ASTIF:
+		return proplive(n->n1, live);
+	case ASTSWITCH:
+		live = proplive(n->n2, live);
+		return proplive(n->n1, live);
+	case ASTBLOCK:
+		listarr(n->nl, &rl, &nrl);
+		for(i = nrl; --i >= 0; )
+			live = proplive(rl[i], live);
+		free(rl);
+		return live;
+	default:
+		error(n, "proplive: unknown %A", n->t);
+		return live;
+	}
+}
+
 static void
 tracklive(void)
 {
 	SemBlock *b;
-	SemVars *l;
 	int i, j, ch;
 	SemVars **livein, **liveout, **gen, **kill;
-	SemVars *li, *lo, *glob;
+	SemVars *l, *li, *lo, *glob;
 	
 	gen = emalloc(sizeof(SemVars *) * nblocks);
 	kill = emalloc(sizeof(SemVars *) * nblocks);
@@ -1137,8 +1193,10 @@ tracklive(void)
 			li = livein[i];
 			lo = liveout[i];
 			liveout[i] = depinc(&nodeps);
-			for(j = 0; j < b->nto; j++)
+			for(j = 0; j < b->nto; j++){
 				liveout[i] = depcat(liveout[i], depinc(livein[b->to[j]->idx]));
+				liveout[i] = addphis(liveout[i], b->to[j], b);
+			}
 			if(b->nto == 0)
 				liveout[i] = depcat(liveout[i], depinc(glob));
 			livein[i] = depdecat(depinc(liveout[i]), depinc(kill[i]));
@@ -1152,6 +1210,10 @@ tracklive(void)
 	}while(ch != 0);
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
+		for(j = 0; j < liveout[i]->n; j++)
+			liveout[i]->p[j]->live = depcat(liveout[i]->p[j]->live, depinc(liveout[i]));
+		l = proplive(b->jump, depinc(liveout[i]));
+		putdeps(proplive(b->cont, l));
 		b->live = liveout[i];
 		putdeps(livein[i]);
 		putdeps(gen[i]);
@@ -1189,10 +1251,10 @@ semcomp(ASTNode *n)
 		int i;
 		
 		for(v = vars; v != nil; v = v->next){
-			if(v->deps == nil) continue;
+			if(v->live == nil) continue;
 			print("%Σ ", v);
-			for(i = 0; i < v->deps->n; i++)
-				print("%Σ,", v->deps->p[i]);
+			for(i = 0; i < v->live->n; i++)
+				print("%Σ,", v->live->p[i]);
 			print("\n");
 		}
 	}
