@@ -60,6 +60,24 @@ getsym(SymTab *st, int hier, char *n)
 	return makesym(st, n);
 }
 
+void
+addsym(SymTab *st, Symbol *s)
+{
+	int h;
+	Symbol **p;
+	
+	h = hash(s->name) % SYMHASH;
+	for(p = &st->sym[h]; *p != nil; p = &(*p)->next)
+		if(strcmp((*p)->name, s->name) == 0)
+			break;
+	if(*p != nil)
+		s->next = (*p)->next;
+	else
+		s->next = nil;
+	*p = s;
+	s->st = st;
+}
+
 ASTNode *
 newscope(SymTab *sc, int t, Symbol *s)
 {

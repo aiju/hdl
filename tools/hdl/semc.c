@@ -16,7 +16,7 @@ struct SemVar {
 	int prime;
 	int idx;
 	
-	SemVar *next;
+	int gidx;
 	
 	int def;
 	enum {
@@ -60,10 +60,11 @@ struct SemBlock {
 };
 
 static SemVars nodeps = {.ref = 1000};
-static SemVar *vars, **varslast;
+enum { VARBLOCK = 64 };
+static SemVar **vars;
 enum { BLOCKSBLOCK = 16 };
 static SemBlock **blocks;
-int nblocks;
+static int nvars, nblocks;
 
 static SemVars *
 depinc(SemVars *v)
@@ -111,8 +112,10 @@ mkvar(Symbol *s, int p, int i)
 	v->prime = p;
 	v->idx = i;
 	v->live = depinc(&nodeps);
-	*varslast = v;
-	varslast = &v->next;
+	if(nvars % SEMVARSBLOCK == 0)
+		vars = erealloc(vars, sizeof(SemVar *), nvars, SEMVARSBLOCK);
+	v->gidx = nvars;
+	vars[nvars++] = v;
 	return v;
 }
 
@@ -186,29 +189,6 @@ semvfmt(Fmt *f)
 	return fmtprint(f, "%s%s$%d%s", v->sym->name, v->prime ? "'" : "", v->idx, (v->flags & SVCANNX) != 0 ? "!" : ".");
 }
 
-int
-ssaprint(Fmt *f, ASTNode *n)
-{
-	Nodes *r;
-	int rc;
-
-	switch(n->t){
-	case ASTSSA:
-		return fmtprint(f, "%Σ", n->semv);
-	case ASTPHI:
-		rc = fmtprint(f, "φ(");
-		for(r = n->nl; r != nil; r = r->next){
-			rc += ssaprint(f, r->n);
-			if(r->next != nil)
-				rc += fmtstrcpy(f, ", ");
-		}
-		rc += fmtprint(f, ")");
-		return rc;
-	default:
-		error(n, "ssaprint: unknown %A", n->t);
-		return 0;
-	}
-}
 
 static void
 defsym(Symbol *s, SemDefs *glob)
@@ -872,14 +852,17 @@ static void
 trackcans(void)
 {
 	SemVar *v;
-	int ch, i, n;
+	int ch, i, j, n;
 	
-	for(v = vars; v != nil; v = v->next)
+	for(i = 0; i < nvars; i++){
+		v = vars[i];
 		if(v->def && v->idx == 0 && v->prime)
 			v->sym->semc[0]->flags |= SVCANNX;
+	}
 	do{
 		ch = 0;
-		for(v = vars; v != nil; v = v->next){
+		for(j = 0; j < nvars; j++){
+			v = vars[j];
 			if(v->deps == nil) continue;
 			n = SVCANNX;
 			for(i = 0; i < v->deps->n; i++)
@@ -894,9 +877,10 @@ static void
 trackneed(void)
 {
 	SemVar *v;
-	int ch, i, o;
+	int ch, i, j, o;
 
-	for(v = vars; v != nil; v = v->next)
+	for(j = 0; j < nvars; j++){
+		v = vars[j];
 		if(v->idx == 0 && v->prime){
 			if(v->sym->semc[0]->def != 0 && v->sym->semc[1]->def != 0){
 				error(v->sym, "'%s' both primed and unprimed defined", v->sym->name);
@@ -917,9 +901,11 @@ trackneed(void)
 					v->sym->semc[0]->flags |= SVREG;
 			}
 		}
+	}
 	do{
 		ch = 0;
-		for(v = vars; v != nil; v = v->next){
+		for(j = 0; j < nvars; j++){
+			v = vars[j];
 			if((v->flags & SVNEEDNX) == 0) continue;
 			if(v->deps == nil) continue;
 			for(i = 0; i < v->deps->n; i++){
@@ -929,7 +915,8 @@ trackneed(void)
 			}
 		}
 	}while(ch > 0);
-	for(v = vars; v != nil; v = v->next){
+	for(j = 0; j < nvars; j++){
+		v = vars[j];
 		if((v->flags & SVREG) != 0)
 			v->tnext = v->sym->semc[1];
 		else if((v->flags & SVNEEDNX) != 0) 
@@ -1225,6 +1212,87 @@ tracklive(void)
 	free(liveout);
 }
 
+static Symbol **targv;
+
+static Nodes *
+dessa1(ASTNode *n)
+{
+	if(n->t == ASTSSA)
+		return nl(node(ASTSYMB, targv[n->semv->gidx]));
+	return nl(n);
+}
+
+static void
+delphi(SemBlock *b)
+{
+	Nodes *r, *s;
+	int i, j;
+	
+	if(b->phi == nil) return;
+	assert(b->phi->t == ASTBLOCK);
+	for(r = b->phi->nl; r != nil; r = r->next){
+		assert(r->n != nil && r->n->t == ASTASS && r->n->n2 != nil && r->n->n2->t == ASTPHI);
+		for(i = 0, s = r->n->n2->nl; i < b->nfrom && s != nil; i++, s = s->next)
+			if(!nodeeq(r->n->n1, s->n, nodeeq)){
+				assert(b->from[i]->nto == 1);
+				assert(b->from[i]->cont != nil && b->from[i]->cont->t == ASTBLOCK);
+				b->from[i]->cont = nodedup(b->from[i]->cont);
+				b->from[i]->cont->nl = nlcat(b->from[i]->cont->nl, nl(node(ASTASS, OPNOP, r->n->n1, s->n)));
+			}
+		assert(i == b->nfrom && s == nil);
+	}
+	b->phi = nil;
+}
+
+static void
+dessa(void)
+{
+	SymTab *st;
+	Symbol *s;
+	SemVar *v, *w, *u;
+	SemBlock *b;
+	char *n;
+	int i, j, k;
+	
+	st = emalloc(sizeof(SymTab));
+	targv = emalloc(sizeof(Symbol *) * nvars);
+	for(i = 0; i < nvars; i++){
+		v = vars[i];
+		for(j = 0; j < i; j++){
+			w = vars[j];
+			if(w->sym != v->sym || w->prime != v->prime) continue;
+			for(k = 0; k < i; k++){
+				if(targv[k] != targv[j]) continue;
+				if(deptest(vars[k]->live, v)) break;
+			}
+			if(k == i) break;
+		}
+		if(j < i){
+			targv[i] = targv[j];
+			continue;
+		}
+		j = 0;
+		do{
+			n = smprint(j == 0 ? "%s%s" : "%s%s_%d", v->sym->name, v->prime ? "_nxt" : "", j);
+			j++;
+			s = getsym(st, 0, n);
+			free(n);
+		}while(s->t != SYMNONE);
+		s->t = SYMVAR;
+		s->type = v->sym->type;
+		targv[i] = s;
+	}
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		b->phi = mkblock(descend(b->phi, nil, dessa1));
+		b->cont = mkblock(descend(b->cont, nil, dessa1));
+		b->jump = mkblock(descend(b->jump, nil, dessa1));
+	}
+	for(i = 0; i < nblocks; i++)
+		delphi(blocks[i]);
+	free(targv);
+}
+
 ASTNode *
 semcomp(ASTNode *n)
 {
@@ -1233,7 +1301,7 @@ semcomp(ASTNode *n)
 	blocks = nil;
 	nblocks = 0;
 	vars = nil;
-	varslast = &vars;
+	nvars = 0;
 	glob = defsnew();
 	blockbuild(n, nil, glob);
 	ssabuild(glob);
@@ -1245,12 +1313,14 @@ semcomp(ASTNode *n)
 	trackneed();
 	makenext();
 	tracklive();
+	dessa();
 	
 	{
 		SemVar *v;
-		int i;
+		int i, j;
 		
-		for(v = vars; v != nil; v = v->next){
+		for(j = 0; j < nvars; j++){
+			v = vars[j];
 			if(v->live == nil) continue;
 			print("%Σ ", v);
 			for(i = 0; i < v->live->n; i++)

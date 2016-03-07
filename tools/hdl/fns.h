@@ -77,3 +77,4 @@ BitSet* bsgrow(BitSet *, int);
 BitSet* bsdup(BitSet *);
 #define bsfree free
 void bscntgr(BitSet *, BitSet *, int *, int *);
+void addsym(SymTab *, Symbol *);

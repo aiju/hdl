@@ -618,7 +618,6 @@ eastprint(Fmt *f, ASTNode *n, int env)
 	int rc;
 	OpData *d;
 	Nodes *mp;
-	extern int ssaprint(Fmt *, ASTNode *);
 
 	if(n == nil)
 		return fmtstrcpy(f, "<nil>");
@@ -731,8 +730,16 @@ eastprint(Fmt *f, ASTNode *n, int env)
 		eastprint(f, n->n1, env); 
 		break;
 	case ASTSSA:
+		return fmtprint(f, "%Σ", n->semv);
 	case ASTPHI:
-		return ssaprint(f, n);
+		rc = fmtprint(f, "φ(");
+		for(mp = n->nl; mp != nil; mp = mp->next){
+			eastprint(f, mp->n, 2);
+			if(mp->next != nil)
+				rc += fmtstrcpy(f, ", ");
+		}
+		rc += fmtprint(f, ")");
+		return rc;
 	default:
 		error(n, "eastprint: unknown %A", n->t);
 	}
