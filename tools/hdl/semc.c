@@ -216,18 +216,6 @@ newblock(void)
 	return s;
 }
 
-static ASTNode *
-semgoto(SemBlock *fr, SemBlock *to)
-{
-	ASTNode *n;
-	
-	n = node(ASTSEMGOTO, to);
-	if((to->nfrom % FROMBLOCK) == 0)
-		to->from = erealloc(to->from, sizeof(SemBlock *), to->nfrom, FROMBLOCK);
-	to->from[to->nfrom++] = fr;
-	return n;
-}
-
 static SemBlock *
 blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob)
 {
@@ -247,13 +235,13 @@ blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob)
 		s2 = n->n2 != nil ? newblock() : nil;
 		s3 = newblock();
 		m = nodedup(n);
-		m->n2 = semgoto(sb, s1 != nil ? s1 : s3);
-		m->n3 = semgoto(sb, s2 != nil ? s2 : s3);
+		m->n2 = node(ASTSEMGOTO, s1 != nil ? s1 : s3);
+		m->n3 = node(ASTSEMGOTO, s2 != nil ? s2 : s3);
 		sb->jump = m;
 		s1 = blockbuild(n->n2, s1, glob);
 		s2 = blockbuild(n->n3, s2, glob);
-		if(s1 != nil) s1->jump = semgoto(s1, s3);
-		if(s2 != nil) s2->jump = semgoto(s2, s3);
+		if(s1 != nil) s1->jump = node(ASTSEMGOTO, s3);
+		if(s2 != nil) s2->jump = node(ASTSEMGOTO, s3);
 		return s3;
 	case ASTBLOCK:
 		for(r = n->nl; r != nil; r = r->next)
@@ -283,19 +271,59 @@ blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob)
 			if(r->n->t == ASTCASE || r->n->t == ASTDEFAULT){
 				if(r->n->t == ASTDEFAULT)
 					def++;
-				if(s1 != nil) s1->jump = semgoto(s1, s2);
+				if(s1 != nil) s1->jump = node(ASTSEMGOTO, s2);
 				s1 = newblock();
-				m->n2->nl = nlcat(m->n2->nl, nls(r->n, semgoto(sb, s1), nil));
+				m->n2->nl = nlcat(m->n2->nl, nls(r->n, node(ASTSEMGOTO, s1), nil));
 			}else
 				s1 = blockbuild(r->n, s1, glob);
 		}
-		if(s1 != nil) s1->jump = semgoto(s1, s2);
+		if(s1 != nil) s1->jump = node(ASTSEMGOTO, s2);
 		if(!def)
-			m->n2->nl = nlcat(m->n2->nl, nls(node(ASTDEFAULT), semgoto(sb, s2), nil));
+			m->n2->nl = nlcat(m->n2->nl, nls(node(ASTDEFAULT), node(ASTSEMGOTO, s2), nil));
 		return s2;
 	default:
 		error(n, "blockbuild: unknown %A", n->t);
 		return nil;
+	}
+}
+
+static SemBlock *fromtobl;
+static int
+calcfromtobl(ASTNode *n)
+{
+	SemBlock *b, *c;
+	
+	if(n == nil || n->t != ASTSEMGOTO) return 0;
+	b = fromtobl;
+	c = n->semb;
+	assert(c != nil);
+	if(b->nto % FROMBLOCK == 0)
+		b->to = erealloc(b->to, sizeof(SemBlock *), b->nto, FROMBLOCK);
+	b->to[b->nto++] = c;
+	if(c->nfrom % FROMBLOCK == 0)
+		c->from = erealloc(c->from, sizeof(SemBlock *), c->nfrom, FROMBLOCK);
+	c->from[c->nfrom++] = b;
+	return 0;
+}
+
+static void
+calcfromto(void)
+{
+	SemBlock *b;
+	int i;
+	
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		free(b->to);
+		b->to = nil;
+		free(b->from);
+		b->from = nil;
+		b->nto = 0;
+		b->nfrom = 0;
+	}
+	for(i = 0; i < nblocks; i++){
+		fromtobl = b = blocks[i];
+		descendsum(b->jump, calcfromtobl);
 	}
 }
 
@@ -499,49 +527,6 @@ ssabuild(SemDefs *glob)
 }
 
 static void
-calctobl(ASTNode *n, SemBlock *b)
-{
-	Nodes *r;
-
-	if(n == nil) return;
-	switch(n->t){
-	case ASTCASE:
-	case ASTDEFAULT:
-		break;
-	case ASTSEMGOTO:
-		if(b->nto % FROMBLOCK == 0)
-			b->to = erealloc(b->to, sizeof(SemBlock *), b->nto, FROMBLOCK);
-		b->to[b->nto++] = n->semb;
-		break;
-	case ASTIF:
-		calctobl(n->n2, b);
-		calctobl(n->n3, b);
-		break;
-	case ASTSWITCH:
-		calctobl(n->n2, b);
-		break;
-	case ASTBLOCK:
-		for(r = n->nl; r != nil; r = r->next)
-			calctobl(r->n, b);
-		break;
-	default:
-		error(n, "calctobl: unknown %A", n->t);
-	}
-}
-
-static void
-calcto(void)
-{
-	SemBlock *b;
-	int i;
-	
-	for(i = 0; i < nblocks; i++){
-		b = blocks[i];
-		calctobl(b->jump, b);
-	}
-}
-
-static void
 reorderdfw(int *idx, int i, int *ctr)
 {
 	SemBlock *b;
@@ -569,7 +554,7 @@ reorder(void)
 	for(i = nblocks; --i >= 0; )
 		if(idx[i] < 0)
 			reorderdfw(idx, i, &c);
-	bl = emalloc(sizeof(SemBlock *));
+	bl = emalloc(sizeof(SemBlock *) * -(-nblocks & -BLOCKSBLOCK));
 	for(i = 0; i < nblocks; i++){
 		bl[i] = blocks[idx[i]];
 		bl[i]->idx = i;
@@ -1226,7 +1211,7 @@ static void
 delphi(SemBlock *b)
 {
 	Nodes *r, *s;
-	int i, j;
+	int i;
 	
 	if(b->phi == nil) return;
 	assert(b->phi->t == ASTBLOCK);
@@ -1249,7 +1234,7 @@ dessa(void)
 {
 	SymTab *st;
 	Symbol *s;
-	SemVar *v, *w, *u;
+	SemVar *v, *w;
 	SemBlock *b;
 	char *n;
 	int i, j, k;
@@ -1293,6 +1278,111 @@ dessa(void)
 	free(targv);
 }
 
+static BitSet *delbl;
+
+static Nodes *
+blocksub(ASTNode *n)
+{
+	SemBlock *t;
+
+	if(n->t != ASTSEMGOTO) return nl(n);
+	t = n->semb;
+	assert(t != nil);
+	if(t->nfrom != 1) return nl(n);
+	bsadd(delbl, t->idx);
+	return nlcat(unmkblock(t->cont), unmkblock(t->jump));
+}
+
+static void
+delblocks(BitSet *bs)
+{
+	SemBlock **nb;
+	int i, j, nr;
+	
+	nr = bscnt(bs);
+	if(nr == 0) return;
+	nb = emalloc(sizeof(SemBlock *) * -(-(nblocks + nr) & -BLOCKSBLOCK));
+	for(i = 0, j = 0; i < nblocks; i++)
+		if(!bstest(bs, i))
+			nb[j++] = blocks[i];
+	for(i = 0; i < j; i++)
+		nb[i]->idx = i;
+	free(blocks);
+	blocks = nb;
+	nblocks -= nr;
+}
+
+static ASTNode *
+getlast(ASTNode *n)
+{
+	Nodes *r;
+	
+	if(n == nil || n->t != ASTBLOCK || n->nl == nil) return n;
+	for(r = n->nl; r->next != nil; r = r->next)
+		;
+	return r->n;
+}
+
+static ASTNode *
+dellast(ASTNode *n)
+{
+	ASTNode *m;
+	Nodes *r;
+	
+	if(n == nil || n->t != ASTBLOCK || n->nl == nil) return nil;
+	m = nodedup(n);
+	m->nl = nil;
+	for(r = n->nl; r->next != nil; r = r->next)
+		m->nl = nlcat(m->nl, nl(r->n));
+	return m;
+}
+
+static Nodes *
+iffix(ASTNode *n)
+{
+	ASTNode *m1, *m2;
+	if(n->t != ASTIF) return nl(n);
+	m1 = getlast(n->n2);
+	m2 = getlast(n->n3);
+	if(m1 == nil || m2 == nil || m1->t != ASTSEMGOTO || m2->t != ASTSEMGOTO || m1->semb != m2->semb) return nl(n);
+	n->n2 = dellast(n->n2);
+	n->n3 = dellast(n->n3);
+	return nlcat(nl(n), nl(m1));
+}
+
+static void
+deblock(void)
+{
+	SemBlock *b;
+	ASTNode *n;
+	int i, ch;
+	
+	delbl = bsnew(nblocks);
+	for(;;){
+		ch = 0;
+		for(i = nblocks; --i >= 0; ){
+			b = blocks[i];
+			n = mkblock(descend(b->jump, nil, blocksub));
+			if(n != b->jump)
+				ch++;
+			b->jump = n;
+		}
+		if(ch == 0) break;
+		delblocks(delbl);
+		bsreset(delbl);
+		calcfromto();
+		for(i = nblocks; --i >= 0; ){
+			b = blocks[i];
+			n = mkblock(descend(b->jump, nil, iffix));
+			if(n != b->jump)
+				ch++;
+			b->jump = n;
+		}
+		if(ch == 0) break;
+		calcfromto();
+	}
+}
+
 ASTNode *
 semcomp(ASTNode *n)
 {
@@ -1304,8 +1394,8 @@ semcomp(ASTNode *n)
 	nvars = 0;
 	glob = defsnew();
 	blockbuild(n, nil, glob);
+	calcfromto();
 	ssabuild(glob);
-	calcto();
 	reorder();
 	calcdom();
 	trackdeps();
@@ -1314,6 +1404,8 @@ semcomp(ASTNode *n)
 	makenext();
 	tracklive();
 	dessa();
+	deblock();
+	
 	
 	{
 		SemVar *v;
@@ -1335,9 +1427,6 @@ semcomp(ASTNode *n)
 		for(j = 0; j < nblocks; j++){
 			b = blocks[j];
 			print("%p:\n", b);
-			for(i = 0; i < b->live->n; i++)
-				print("%Σ,", b->live->p[i]);
-			print("\n");
 			if(b->nfrom != 0){
 				print("// from ");
 				for(i = 0; i < b->nfrom; i++)

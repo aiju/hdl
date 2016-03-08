@@ -42,6 +42,7 @@ void nlput(Nodes *);
 ASTNode *fsmcompile(ASTNode *);
 Nodes *nls(ASTNode *, ...);
 ASTNode *mkblock(Nodes *);
+Nodes *unmkblock(ASTNode *);
 int descendsum(ASTNode *, int (*)(ASTNode *));
 void nlprint(Nodes *, int);
 Nodes *nldup(Nodes *);

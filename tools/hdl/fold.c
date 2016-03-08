@@ -302,6 +302,14 @@ mkblock(Nodes *p)
 }
 
 Nodes *
+unmkblock(ASTNode *n)
+{
+	if(n == nil) return nil;
+	if(n->t == ASTBLOCK) return n->nl;
+	return nl(n);
+}
+
+Nodes *
 descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 {
 	ASTNode *m;
