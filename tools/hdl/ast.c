@@ -39,6 +39,7 @@ static char *astname[] = {
 	[ASTSSA] "ASTSSA",
 	[ASTPHI] "ASTPHI",
 	[ASTSEMGOTO] "ASTSEMGOTO",
+	[ASTALWAYS] "ASTALWAYS",
 };
 
 static char *symtname[] = {
@@ -181,6 +182,7 @@ node(int t, ...)
 		break;
 	case ASTDOWHILE:
 	case ASTWHILE:
+	case ASTALWAYS:
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		break;

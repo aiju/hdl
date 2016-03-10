@@ -103,6 +103,7 @@ struct OpData {
 enum {
 	ASTINVAL,
 	ASTABORT,
+	ASTALWAYS,
 	ASTASS,
 	ASTBLOCK,
 	ASTBREAK,

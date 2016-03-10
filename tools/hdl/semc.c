@@ -1229,17 +1229,18 @@ delphi(SemBlock *b)
 	b->phi = nil;
 }
 
+static SymTab *newst;
+
 static void
 dessa(void)
 {
-	SymTab *st;
 	Symbol *s;
 	SemVar *v, *w;
 	SemBlock *b;
 	char *n;
 	int i, j, k;
 	
-	st = emalloc(sizeof(SymTab));
+	newst = emalloc(sizeof(SymTab));
 	targv = emalloc(sizeof(Symbol *) * nvars);
 	for(i = 0; i < nvars; i++){
 		v = vars[i];
@@ -1260,7 +1261,7 @@ dessa(void)
 		do{
 			n = smprint(j == 0 ? "%s%s" : "%s%s_%d", v->sym->name, v->prime ? "_nxt" : "", j);
 			j++;
-			s = getsym(st, 0, n);
+			s = getsym(newst, 0, n);
 			free(n);
 		}while(s->t != SYMNONE);
 		s->t = SYMVAR;
@@ -1350,12 +1351,18 @@ iffix(ASTNode *n)
 	return nlcat(nl(n), nl(m1));
 }
 
+static int
+countsemgoto(ASTNode *n)
+{
+	return n != nil && n->t == ASTSEMGOTO;
+}
+
 static void
 deblock(void)
 {
 	SemBlock *b;
 	ASTNode *n;
-	int i, ch;
+	int i, j, ch;
 	
 	delbl = bsnew(nblocks);
 	for(;;){
@@ -1381,6 +1388,60 @@ deblock(void)
 		if(ch == 0) break;
 		calcfromto();
 	}
+	for(i = nblocks; --i >= 0; ){
+		b = blocks[i];
+		j = descendsum(b->cont, countsemgoto) + descendsum(b->jump, countsemgoto);
+		if(j > 0){
+			error(b->cont, "can't resolve goto");
+			astprint(b->cont);
+			astprint(b->jump);
+		}
+	}
+}
+
+static ASTNode *
+makeast(ASTNode *n)
+{
+	ASTNode *e;
+	Nodes *r;
+	ASTNode *m;
+	SemBlock *b;
+	Symbol *s;
+	int i;
+	
+	m = nodedup(n);
+	m->nl = nil;
+	for(i = 0; i < SYMHASH; i++)
+		for(s = newst->sym[i]; s != nil; s = s->next)
+			m->nl = nlcat(m->nl, nl(node(ASTDECL, s, nil)));
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		e = mkblock(nlcat(unmkblock(b->cont), unmkblock(b->jump)));
+		if(e != nil)
+			m->nl = nlcat(m->nl, nl(e));
+	}
+	return m;
+}
+
+static void
+printblocks(void)
+{
+	SemBlock *b;
+	int i, j;
+	
+	for(j = 0; j < nblocks; j++){
+		b = blocks[j];
+		print("%p:\n", b);
+		if(b->nfrom != 0){
+			print("// from ");
+			for(i = 0; i < b->nfrom; i++)
+				print("%p%s", b->from[i], i+1 == b->nfrom ? "" : ", ");
+			print("\n");
+		}
+		astprint(b->phi);
+		astprint(b->cont);
+		astprint(b->jump);
+	}
 }
 
 ASTNode *
@@ -1405,40 +1466,7 @@ semcomp(ASTNode *n)
 	tracklive();
 	dessa();
 	deblock();
-	
-	
-	{
-		SemVar *v;
-		int i, j;
-		
-		for(j = 0; j < nvars; j++){
-			v = vars[j];
-			if(v->live == nil) continue;
-			print("%Σ ", v);
-			for(i = 0; i < v->live->n; i++)
-				print("%Σ,", v->live->p[i]);
-			print("\n");
-		}
-	}
-	{
-		SemBlock *b;
-		int i, j;
-		
-		for(j = 0; j < nblocks; j++){
-			b = blocks[j];
-			print("%p:\n", b);
-			if(b->nfrom != 0){
-				print("// from ");
-				for(i = 0; i < b->nfrom; i++)
-					print("%p%s", b->from[i], i+1 == b->nfrom ? "" : ", ");
-				print("\n");
-			}
-			astprint(b->phi);
-			astprint(b->cont);
-			astprint(b->jump);
-		}
-	}
-	return n;
+	return makeast(n);
 }
 
 void
