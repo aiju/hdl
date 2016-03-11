@@ -1233,7 +1233,7 @@ countref(void)
 	}
 	for(i = 0; i < nvars; i++){
 		v = vars[i];
-		if((v->flags & SVREG) != 0)
+		if((v->flags & (SVREG|SVPORT)) != 0)
 			v->ref++;
 		if(v->sym->clock != nil && v->sym->clock->t == ASTSYMB && v->sym->clock->sym->semc[0] != nil)
 			v->sym->clock->sym->semc[0]->ref++;

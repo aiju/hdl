@@ -361,6 +361,8 @@ typconc1(ASTNode *n, FieldR **fp)
 				f->sym->type = type(TYPBITV, f->sz, 0);
 			if(f->cnt != nil)
 				f->sym->type = type(TYPVECTOR, f->sym->type, f->cnt);
+			f->sym->opt = n->sym->opt;
+			f->sym->clock = n->sym->clock;
 			r = nlcat(r, nl(node(ASTDECL, f->sym, nil)));
 		}
 		return r;
