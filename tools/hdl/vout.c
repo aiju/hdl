@@ -107,11 +107,20 @@ trackvaruse(ASTNode *n, int env)
 	}
 }
 
+static Nodes *
+catgat(ASTNode *n)
+{
+	if(n == nil) return nil;
+	if(n->t != ASTOP || n->op != OPCAT) return nl(n);
+	return nlcat(catgat(n->n1), catgat(n->n2));
+}
+
 static int
 vereprint(Fmt *f, ASTNode *n, int env)
 {
 	int rc;
 	OpData *d;
+	Nodes *r;
 
 	rc = 0;
 	if(n == nil){
@@ -128,6 +137,19 @@ vereprint(Fmt *f, ASTNode *n, int env)
 	case ASTOP:
 		d = getvopdata(n->op);
 		if(d == nil || d->name == nil){
+			if(n->op == OPCAT){
+				r = catgat(n);
+				rc += fmtrune(f, '{');
+				for(; r != nil; r = r->next){
+					rc += vereprint(f, r->n, 0);
+					if(r->next != nil)
+						rc += fmtstrcpy(f, ", ");
+				}
+				rc += fmtrune(f, '}');
+				return rc;
+			}
+			if(n->op == OPREPL)
+				return fmtprint(f, "{%N{%N}}", n->n1, n->n2);
 			d = getopdata(n->op);
 			if(d == nil)
 				error(n, "vereprint: unknown operator %d", n->op);

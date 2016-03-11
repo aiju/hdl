@@ -985,7 +985,7 @@ condcheck(ASTNode *n)
 		error(n, "%T invalid as condition", n->type);
 }
 
-ASTNode *
+static ASTNode *
 implicitcast(ASTNode *n, Type *t)
 {
 	if(n == nil || n->type == nil || t == nil || n->type == t)
@@ -1022,7 +1022,7 @@ implicitcast(ASTNode *n, Type *t)
 	return n;
 }
 
-Type *
+static Type *
 typemax(Type *a, Type *b)
 {
 	if(a == nil) return b;
@@ -1044,12 +1044,49 @@ typemax(Type *a, Type *b)
 	return type(TYPBITV, nodemax(a->sz, b->sz), a->sign || b->sign);
 }
 
+static Type *
+typeadd(Type *a, Type *b)
+{
+	if(a == nil) return b;
+	if(b == nil) return a;
+	if(a->t != TYPBIT && a->t != TYPBITV || b->t != TYPBIT && b->t != TYPBITV){
+		error(nil, "typeadd: (%T,%T) not implemented", a, b);
+		return nil;
+	}
+	if(a->sz == nil || b->sz == nil){
+		error(nil, "typeadd: unsized expression in concatenation");
+		return nil;
+	}
+	return type(TYPBITV, nodeadd(a->sz, b->sz), 0);
+}
+
 static Symbol *
 fixsymb(Symbol *s)
 {
 	if(s->t == SYMNONE)
 		return getsym(s->st, 1, s->name);
 	return s;
+}
+
+static Type *
+typerepl(Line *l, ASTNode *n, Type *t)
+{
+	int t1;
+
+	if(t == nil) return nil;
+	n = implicitcast(n, type(TYPINT));
+	if(n == nil) return nil;
+	if(t->t == TYPSTRING)
+		return t;
+	if(t->t != TYPBIT && t->t != TYPBITV){
+		error(l, "'%T' invalid in replication", t);
+		return nil;
+	}
+	if(t->sz == nil){
+		error(l, "unsized value in replication");
+		return nil;
+	}
+	return type(TYPBITV, nodemul(t->sz, n), 0);
 }
 
 #define insist(x) if(x){}else{error(n, "x"); return;}
@@ -1142,6 +1179,9 @@ typecheck(ASTNode *n, Type *ctxt)
 		}
 		if((d->flags & OPDSPECIAL) != 0){
 			switch(n->op){
+			case OPREPL:
+				n->type = typerepl(n, n->n1, n->n2->type);
+				return;
 			default:
 				error(n, "typecheck: unknown %s", d->name);
 			}
@@ -1177,6 +1217,8 @@ typecheck(ASTNode *n, Type *ctxt)
 			n->type = typemax(n->n1->type, n->n2->type);
 		else if((d->flags & OPDUNARY) != 0)
 			n->type = n->n1->type;
+		else if((d->flags & OPDWADD) != 0)
+			n->type = typeadd(n->n1->type, n->n2->type);
 		else
 			error(n->n1, "don't know how to determine output type of %s", d->name);
 		break;
