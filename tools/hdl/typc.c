@@ -430,6 +430,9 @@ typconc1(ASTNode *n, FieldR **fp)
 	case ASTBLOCK:
 	case ASTMODULE:
 	case ASTLITERAL:
+		m->ports = nil;
+		for(r = n->ports; r != nil; r = r->next)
+			m->ports = nlcat(m->ports, typconc1(r->n, nil));
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, typconc1(r->n, nil));

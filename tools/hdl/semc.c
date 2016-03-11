@@ -24,6 +24,7 @@ struct SemVar {
 		SVNEEDNX = 2,
 		SVDELDEF = 4,
 		SVREG = 8,
+		SVPORT = 16,
 	} flags;
 	SemVars *deps;
 	SemVars *live;
@@ -201,6 +202,7 @@ defsym(Symbol *s, SemDefs *glob)
 		s->semc[i] = mkvar(s, i, 0);
 		defsadd(glob, s->semc[i], 0);
 	}
+	s->semc[0]->flags |= SVPORT;
 }
 
 static SemBlock *
@@ -251,7 +253,9 @@ blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob)
 		return sb;
 	case ASTMODULE:
 		assert(sb == nil);
-		
+		for(r = n->ports; r != nil; r = r->next)
+			if(r->n->t == ASTDECL)
+				defsym(r->n->sym, glob);
 		for(r = n->nl; r != nil; r = r->next){
 			if(r->n->t == ASTDECL){
 				defsym(r->n->sym, glob);
@@ -489,11 +493,16 @@ static SemDefs *fixlastd;
 static Nodes *
 fixlast(ASTNode *n)
 {
-        if(n == nil) return nil;
-        if(n->t != ASTSSA) return nl(n);
-        if(n->semv == ssaget(fixlastd, n->semv->sym, n->semv->prime))
-                n->semv = n->semv->sym->semc[n->semv->prime];
-        return nl(n);
+	SemVar *m;
+
+	if(n == nil) return nil;
+	if(n->t != ASTSSA) return nl(n);
+	if(n->semv == ssaget(fixlastd, n->semv->sym, n->semv->prime)){
+		m = n->semv->sym->semc[n->semv->prime];
+		if(m != nil)
+			n->semv = m;
+	}
+	return nl(n);
 }
 
 static void
@@ -744,12 +753,12 @@ trackdep(ASTNode *n, SemVars *cdep)
 	case ASTDEFAULT:
 		return cdep;
 	case ASTBLOCK:
-		for(r = n->nl; r != nil; r = r->next){
+		for(r = n->nl; r != nil; r = r->next)
 			putdeps(trackdep(r->n, depinc(cdep)));
-		}
 		return cdep;
 	case ASTASS:
 		if(n->n1 == nil || n->n1->t != ASTSSA) return cdep;
+		assert(n->n1->semv != nil);
 		n->n1->semv->def++;
 		n->n1->semv->deps = trackdep(n->n2, depinc(cdep));
 		return cdep;
@@ -1299,6 +1308,8 @@ dessa(void)
 		s->t = SYMVAR;
 		s->type = v->sym->type;
 		s->clock = v->sym->clock;
+		if(v == v->sym->semc[0])
+			s->opt = v->sym->opt & (OPTIN | OPTOUT);
 		s->semc[0] = v;
 		v->targv = s;
 	}
@@ -1442,10 +1453,19 @@ makeast(ASTNode *n)
 	int i;
 	
 	m = nodedup(n);
+	m->ports = nil;
+	for(p = n->ports; p != nil; p = p->next)
+		if(p->n->t == ASTDECL){
+			s = p->n->sym;
+			s = s->semc[0]->targv;
+			assert(s != nil);
+			m->ports = nlcat(m->ports, nl(node(ASTDECL, s, nil)));
+		}
 	m->nl = nil;
 	for(i = 0; i < SYMHASH; i++)
 		for(s = newst->sym[i]; s != nil; s = s->next)
-			m->nl = nlcat(m->nl, nl(node(ASTDECL, s, nil)));
+			if((s->opt & (OPTIN|OPTOUT)) == 0)
+				m->nl = nlcat(m->nl, nl(node(ASTDECL, s, nil)));
 	c = nil;
 	for(i = 0; i < SYMHASH; i++)
 		for(s = newst->sym[i]; s != nil; s = s->next){

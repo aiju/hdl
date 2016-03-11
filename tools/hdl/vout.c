@@ -202,13 +202,15 @@ vdecl(Fmt *f, Symbol *s)
 	case TYPBITV: sz = t->sz; break;
 	default: error(s, "Verilog does not support %T", t); return 0;
 	}
+	if((s->opt & OPTIN) != 0) rc += fmtstrcpy(f, "input ");
+	if((s->opt & OPTOUT) != 0) rc += fmtstrcpy(f, "output ");	
 	switch(s->opt & (OPTVWIRE|OPTVREG)){
 	case OPTVWIRE|OPTVREG: error(s, "'%s' both Verilog wire and reg", s->name); return 0;
 	case OPTVREG: rc += fmtstrcpy(f, "reg "); break;
 	default: rc += fmtstrcpy(f, "wire "); break;
 	}
 	if(sz != nil) rc += fmtprint(f, "[%n:0] ", nodeaddi(sz, -1));
-	rc += fmtprint(f, "%s;\n", s->name);
+	rc += fmtstrcpy(f, s->name);
 	return rc;
 }
 
@@ -223,9 +225,15 @@ veriprint(Fmt *f, ASTNode *n, int indent, int env)
 	case ASTMODULE:
 		if(env != ENVGLOBAL) enverror(n, env);
 		rc += fmtprint(f, "%Imodule %s(\n", indent, n->sym->name);
+		for(r = n->ports; r != nil; r = r->next){
+			assert(r->n->t == ASTDECL);
+			rc += fmtprint(f, "%I", indent + 1);
+			rc += vdecl(f, r->n->sym);
+			rc += fmtprint(f, "%s\n", r->next != nil ? "," : "");
+		}
 		rc += fmtprint(f, "%I);\n", indent);
 		for(r = n->nl; r != nil; r = r->next)
-			veriprint(f, r->n, indent + 1, ENVMODULE);
+			rc += veriprint(f, r->n, indent + 1, ENVMODULE);
 		rc += fmtprint(f, "%Iendmodule\n", indent);
 		break;
 	case ASTASS:
@@ -259,6 +267,7 @@ veriprint(Fmt *f, ASTNode *n, int indent, int env)
 	case ASTDECL:
 		rc += fmtprint(f, "%I", indent);
 		rc += vdecl(f, n->sym);
+		rc += fmtstrcpy(f, ";\n");
 		break;
 	default:
 		error(n, "veriprint: unknown %A", n->t);

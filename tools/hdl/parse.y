@@ -32,8 +32,8 @@
 %token <cons> LNUMB
 
 %type <n> stat1 lval expr cexpr optcexpr module var trigger
-%type <n> primary varspec litexpr packdef optpackdef
-%type <ns> stats stat globdef vars triggers elist litexprs litexprs1
+%type <n> primary varspec litexpr packdef optpackdef arg argspec
+%type <ns> stats stat globdef vars triggers elist litexprs litexprs1 args args1 optargs
 %type <ti> type type0 type1 typew opttypews typevector
 %type <sym> symb
 
@@ -65,15 +65,19 @@ program:
 globdef: module { $$ = nl($1); }
 	| type ';' { $$ = nil; }
 
-module: LMODULE symb '(' { $<n>$ = newscope(scope, ASTMODULE, $2); } args ')' '{' stats '}' { $$ = $<n>4; $$->nl = $stats; }
+module: LMODULE symb '(' { $<n>$ = newscope(scope, ASTMODULE, $2); } args ')' '{' stats '}' { $$ = $<n>4; $$->ports = $5; $$->nl = $stats; }
 
-optargs: | '(' args ')';
-args: | args1 | args1 ','
-args1: arg | args1 ',' arg
+optargs: { $$ = nil; } | '(' args ')' { $$ = $2; };
+args: { $$ = nil; } | args1 | args1 ','
+args1: arg { $$ = nl($1); } | args1 ',' arg { $$ = nlcat($1, nl($3)); }
 
 arg:
-	type { curtype = $1.t; curopt = $1.i; } symb
-	| symb
+	type { curtype = $1.t; curopt = $1.i; } argspec { $$ = vardecl(scope, $3, curopt, nil, curtype, curclock != nil ? curclock->n : nil); }
+	| argspec { $$ = vardecl(scope, $1, curopt, nil, curtype, curclock != nil ? curclock->n : nil); }
+
+argspec:
+	LSYMB { $$ = node(ASTSYMB, $1); }
+	| argspec '[' cexpr ']' { $$ = node(ASTIDX, 0, $1, $3, nil); }
 	
 type: typevector
 	| opttypews LENUM '{' { enumstart($1.t); } enumvals '}' { $$.t = enumend(); $$.i = $1.i; }

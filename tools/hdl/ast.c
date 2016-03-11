@@ -277,8 +277,8 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTTERN:
 	case ASTWHILE:
 		return a->op == b->op && eq(a->n1, b->n1, eq) && eq(a->n2, b->n2, eq) && eq(a->n3, b->n3, eq) && eq(a->n4, b->n4, eq) && a->sym == b->sym && a->st == b->st;
-	case ASTFSM:
 	case ASTMODULE:
+	case ASTFSM:
 	case ASTBLOCK:
 	case ASTCASE:
 	case ASTLITERAL:
@@ -286,6 +286,10 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 		if(a->sym != b->sym)
 			return 0;
 		for(mp = a->nl, np = b->nl; mp != np && mp != nil && np != nil; mp = mp->next, np = np->next)
+			if(!eq(mp->n, np->n, eq))
+				return 0;
+		if(mp != np) return 0;
+		for(mp = a->ports, np = b->ports; mp != np && mp != nil && np != nil; mp = mp->next, np = np->next)
 			if(!eq(mp->n, np->n, eq))
 				return 0;
 		return mp == np;
@@ -777,6 +781,24 @@ blockprint(Fmt *f, ASTNode *n, int indent)
 }
 
 static int
+iastdecl(Fmt *f, ASTNode *n, int indent)
+{
+	int rc;
+	
+	rc = 0;
+	if(n->sym->t == SYMTYPE) rc += fmtprint(f, "typedef ");
+	if((n->sym->opt & OPTIN) != 0) rc += fmtprint(f, "input ");
+	if((n->sym->opt & OPTOUT) != 0) rc += fmtprint(f, "output ");
+	if((n->sym->opt & OPTWIRE) != 0) rc += fmtprint(f, "wire ");
+	if((n->sym->opt & OPTREG) != 0) rc += fmtprint(f, "reg ");
+	if((n->sym->opt & OPTSIGNED) != 0) rc += fmtprint(f, "signed ");
+	rc += fmtprint(f, "%#.*T %s", indent, n->sym->type, n->sym->name);
+	if(n->n1 != nil)
+		rc += fmtprint(f, " = %n", n->n1);
+	return rc;
+}
+
+static int
 iastprint(Fmt *f, ASTNode *n, int indent)
 {
 	int rc;
@@ -790,6 +812,12 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 	switch(n->t){
 	case ASTMODULE:
 		rc += fmtprint(f, "%Imodule %s(\n", indent, n->sym->name);
+		for(mp = n->ports; mp != nil; mp = mp->next){
+			assert(mp->n->t == ASTDECL);
+			rc += fmtprint(f, "%I", indent + 1);
+			rc += iastdecl(f, mp->n, indent);
+			rc += fmtprint(f, ",\n");
+		}
 		rc += fmtprint(f, "%I) {\n", indent);
 		for(mp = n->nl; mp != nil; mp = mp->next)
 			rc += iastprint(f, mp->n, indent + 1);
@@ -797,15 +825,7 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		break;
 	case ASTDECL:
 		rc += fmtprint(f, "%I", indent);
-		if(n->sym->t == SYMTYPE) rc += fmtprint(f, "typedef ");
-		if((n->sym->opt & OPTIN) != 0) rc += fmtprint(f, "input ");
-		if((n->sym->opt & OPTOUT) != 0) rc += fmtprint(f, "output ");
-		if((n->sym->opt & OPTWIRE) != 0) rc += fmtprint(f, "wire ");
-		if((n->sym->opt & OPTREG) != 0) rc += fmtprint(f, "reg ");
-		if((n->sym->opt & OPTSIGNED) != 0) rc += fmtprint(f, "signed ");
-		rc += fmtprint(f, "%#.*T %s", indent, n->sym->type, n->sym->name);
-		if(n->n1 != nil)
-			rc += fmtprint(f, " = %n", n->n1);
+		rc += iastdecl(f, n, indent);
 		rc += fmtstrcpy(f, ";\n");
 		break;
 	case ASTBLOCK:
@@ -1051,6 +1071,8 @@ typecheck(ASTNode *n, Type *ctxt)
 	case ASTMODULE:
 	case ASTBLOCK:
 	case ASTFSM:
+		for(mp = n->ports; mp != nil; mp = mp->next)
+			typecheck(mp->n, nil);
 		for(mp = n->nl; mp != nil; mp = mp->next)
 			typecheck(mp->n, nil);
 		break;
