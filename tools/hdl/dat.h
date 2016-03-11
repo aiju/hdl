@@ -212,6 +212,8 @@ enum {
 	OPTCLOCK = 128,
 	OPTTEMP = 256,
 	OPTCONST = 512,
+	OPTVWIRE = 1024,
+	OPTVREG = 2048,
 };
 
 enum {
@@ -242,6 +244,7 @@ extern int nerror;
 #pragma varargck type "L" int
 #pragma varargck type "T" Type *
 #pragma varargck type "n" ASTNode *
+#pragma varargck type "N" ASTNode *
 #pragma varargck type "C" Const *
 #pragma varargck type "σ" int
 #pragma varargck type "Σ" SemVar *

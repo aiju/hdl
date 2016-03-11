@@ -12,6 +12,7 @@ OFILES=\
 	typc.$O \
 	semc.$O \
 	set.$O \
+	vout.$O \
 
 BIN=/$objtype/bin
 

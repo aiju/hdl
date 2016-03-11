@@ -78,7 +78,7 @@ compile(Nodes *np)
 		if(nerror != 0) return;
 		n = semcomp(n);
 		if(nerror != 0) return;
-		astprint(n);
+		verilog(n);
 	}
 }
 
@@ -92,13 +92,14 @@ void
 main(int argc, char **argv)
 {
 	typedef void init(void);
-	extern init lexinit, astinit, foldinit, semvinit;
+	extern init lexinit, astinit, foldinit, semvinit, voutinit;
 
 	fmtinstall('B', mpfmt);
 	lexinit();
 	astinit();
 	foldinit();
 	semvinit();
+	voutinit();
 
 	ARGBEGIN {
 	default:
