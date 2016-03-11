@@ -1071,8 +1071,6 @@ fixsymb(Symbol *s)
 static Type *
 typerepl(Line *l, ASTNode *n, Type *t)
 {
-	int t1;
-
 	if(t == nil) return nil;
 	n = implicitcast(n, type(TYPINT));
 	if(n == nil) return nil;
@@ -1090,6 +1088,81 @@ typerepl(Line *l, ASTNode *n, Type *t)
 }
 
 #define insist(x) if(x){}else{error(n, "x"); return;}
+
+static void
+litcheck(ASTNode *n, Type *ctxt)
+{
+	ASTNode *m, *z, *curn;
+	Nodes *mp;
+	Symbol *cur, *s;
+	Type *ce;
+
+	if(ctxt->t == TYPSTRUCT){
+		cur = ctxt->vals;
+		for(mp = n->nl; mp != nil; mp = mp->next){
+			m = mp->n;
+			insist(m->t == ASTLITELEM);
+			switch(m->op){
+			case LITFIELD:
+				s = getsym(ctxt->st, 0, m->n2->sym->name);
+				if(s->t == SYMNONE){
+					error(n, "'%s' not a member of '%T'", m->n2->sym->name, ctxt);
+					break;
+				}
+				typecheck(m->n1, s->type);
+				cur = s->typenext;
+				break;
+			case LITUNORD:
+				if(cur == nil){
+					error(n, "out of struct fields");
+					break;
+				}
+				m->op = LITFIELD;
+				m->n2 = node(ASTSYMB, cur);
+				typecheck(m->n1, cur->type);
+				cur = cur->typenext;
+				break;
+			default:
+				error(m, "%L not valid in struct literal", m->op);
+			}
+		}
+	}else{
+		curn = node(ASTCINT, 0);
+		ce = ctxt->t == TYPBITV ? type(TYPBIT, ctxt->sign) : ctxt->elem;
+		for(mp = n->nl; mp != nil; mp = mp->next){
+			m = mp->n;
+			insist(m->t == ASTLITELEM);
+			switch(m->op){
+			case LITIDX:
+				typecheck(m->n1, ce);
+				curn = nodeaddi(m->n2, 1);
+				break;
+			case LITUNORD:
+				if(curn == nil){
+					error(n, "unordered invalid here");
+					break;
+				}
+				m->op = LITIDX;
+				m->n2 = curn;
+				typecheck(m->n1, ce);
+				curn = nodeaddi(curn, 1);
+				break;
+			case LITELSE:
+				typecheck(m->n1, ce);
+				curn = nil;
+				break;
+			case LITRANGE:
+				z = nodewidth(m->n2, m->n3);
+				typecheck(m->n1, type(TYPVECTOR, ce, z));
+				curn = nodeaddi(m->n2, 1);
+				break;
+			default:
+				error(m, "%L not valid in array literal", m->op);
+			}
+		}
+	}
+}
+
 void
 typecheck(ASTNode *n, Type *ctxt)
 {
@@ -1098,8 +1171,6 @@ typecheck(ASTNode *n, Type *ctxt)
 	int t1, t2;
 	int sgn;
 	Symbol *s;
-	Symbol *cur;
-	ASTNode *m, *curn;
 
 	if(n == nil)
 		return;
@@ -1309,63 +1380,12 @@ typecheck(ASTNode *n, Type *ctxt)
 		n->type = s->type;
 		break;
 	case ASTLITERAL:
-		if(ctxt == nil)
+		if(ctxt == nil){
 			error(n, "can't identify literal type");
-		n->type = ctxt;
-		if(ctxt->t == TYPSTRUCT){
-			cur = ctxt->vals;
-			for(mp = n->nl; mp != nil; mp = mp->next){
-				m = mp->n;
-				insist(m->t == ASTLITELEM);
-				switch(m->op){
-				case LITFIELD:
-					s = getsym(ctxt->st, 0, m->n2->sym->name);
-					if(s->t == SYMNONE){
-						error(n, "'%s' not a member of '%T'", m->n2->sym->name, ctxt);
-						break;
-					}
-					typecheck(m->n1, s->type);
-					cur = s->typenext;
-					break;
-				case LITUNORD:
-					if(cur == nil){
-						error(n, "out of struct fields");
-						break;
-					}
-					m->op = LITFIELD;
-					m->n2 = node(ASTSYMB, cur);
-					typecheck(m->n1, cur->type);
-					cur = cur->typenext;
-					break;
-				default:
-					error(m, "%L not valid in struct literal", m->op);
-				}
-			}
-		}else{
-			curn = node(ASTCINT, 0);
-			for(mp = n->nl; mp != nil; mp = mp->next){
-				m = mp->n;
-				insist(m->t == ASTLITELEM);
-				switch(m->op){
-				case LITIDX:
-					typecheck(m->n1, ctxt->elem);
-					curn = nodeaddi(m->n2, 1);
-					break;
-				case LITUNORD:
-					if(curn == nil){
-						error(n, "unordered invalid here");
-						break;
-					}
-					m->op = LITIDX;
-					m->n2 = curn;
-					typecheck(m->n1, ctxt->elem);
-					curn = nodeaddi(curn, 1);
-					break;
-				default:
-					error(m, "%L not valid in struct literal", m->op);
-				}
-			}
+			return;
 		}
+		n->type = ctxt;
+		litcheck(n, ctxt);
 		break;
 	default:
 		error(n, "typecheck: unknown %A", n->t);
