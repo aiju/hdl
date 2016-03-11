@@ -889,6 +889,8 @@ trackneed(void)
 				}else
 					v->sym->semc[0]->flags |= SVNEEDNX | SVDELDEF | SVREG;
 			}
+			if((v->sym->opt & (OPTOUT|OPTWIRE)) == OPTOUT && v->sym->semc[0]->def != 0 && (v->sym->semc[0]->flags & SVCANNX) != 0)
+				v->sym->semc[0]->flags |= SVNEEDNX | SVDELDEF | SVREG;
 			if(v->sym->semc[1]->def != 0){
 				if((v->sym->opt & OPTWIRE) != 0){
 					error(v->sym, "'%s' cannot be wire", v->sym->name);
