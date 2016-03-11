@@ -9,7 +9,7 @@ Nodes *nlcat(Nodes *, Nodes *);
 ASTNode *newscope(SymTab *, int, Symbol *);
 void scopeup(void);
 Symbol *decl(SymTab *, Symbol *, int, int, ASTNode *, Type *);
-ASTNode *vardecl(SymTab *, ASTNode *, int, ASTNode *, Type *);
+ASTNode *vardecl(SymTab *, ASTNode *, int, ASTNode *, Type *, ASTNode *);
 Symbol *getsym(SymTab *, int, char *);
 ASTNode *fsmstate(Symbol *);
 void fsmstart(ASTNode *);

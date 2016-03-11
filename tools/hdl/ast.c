@@ -40,6 +40,7 @@ static char *astname[] = {
 	[ASTPHI] "ASTPHI",
 	[ASTSEMGOTO] "ASTSEMGOTO",
 	[ASTALWAYS] "ASTALWAYS",
+	[ASTDASS] "ASTDASS",
 };
 
 static char *symtname[] = {
@@ -183,6 +184,7 @@ node(int t, ...)
 	case ASTDOWHILE:
 	case ASTWHILE:
 	case ASTALWAYS:
+	case ASTDASS:
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		break;
@@ -888,6 +890,13 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		break;
 	case ASTSEMGOTO:
 		rc += fmtprint(f, "%Igoto %p;\n", indent, n->semb);
+		break;
+	case ASTALWAYS:
+		rc += fmtprint(f, "%Ialways(%n)", indent, n->n1);
+		rc += blockprint(f, n->n2, indent);
+		break;
+	case ASTDASS:
+		rc += fmtprint(f, "%I%n <= %n;\n", indent, n->n1, n->n2);
 		break;
 	default:
 		error(n, "iastprint: unknown %A", n->t);

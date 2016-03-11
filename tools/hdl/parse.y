@@ -8,6 +8,7 @@
 
 	static Type *curtype;
 	static int curopt;
+	static Nodes *curclock;
 
 %}
 
@@ -128,6 +129,8 @@ packdef:
 	LOPACK symb { $$ = node(ASTSYMB, $2); }
 	| LOPACK symb '[' cexpr ':' cexpr ']' { $$ = node(ASTIDX, 0, node(ASTSYMB, $2), $4, $6, nil); }
 
+clock: '<' LSYMB '>' { curclock = nlcat(nl(node(ASTSYMB, $2)), curclock); }
+
 stats: { $$ = nil; } | stats stat { $$ = nlcat($1, $2); }
 
 stat:
@@ -146,6 +149,8 @@ stat:
 	| symb ':' { $$ = nl(fsmstate($1)); }
 	| LDEFAULT ':' { $$ = nl(node(ASTDEFAULT, nil)); }
 	| type { curtype = $1.t; curopt = $1.i; } vars ';' { $$ = $3; }
+	| type { curtype = $1.t; curopt = $1.i; } clock vars ';' { curclock = curclock->next; $$ = $4; }
+	| clock '{' stats '}' = { curclock = curclock->next; $$ = $3; }
 	| '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats { scopeup(); } '}' { $<n>2->nl = $3; $$ = nl($<n>2); }
 	| LSYMB '{' { $<n>$ = newscope(scope, ASTBLOCK, $1); } stats { scopeup(); } '}' { $<n>3->nl = $4; $$ = nl($<n>3); }
 	| LFSM symb '{' { $<n>$ = newscope(scope, ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $<n>4->nl = $5; $$ = nl($<n>4); }
@@ -184,8 +189,8 @@ vars:
 	| vars ',' var { $$ = nlcat($1, nl($3)); }
 
 var:
-	varspec { $$ = vardecl(scope, $1, curopt, nil, curtype); }
-	| varspec '=' cexpr { $$ = vardecl(scope, $1, curopt, $3, curtype); }
+	varspec { $$ = vardecl(scope, $1, curopt, nil, curtype, curclock != nil ? curclock->n : nil); }
+	| varspec '=' cexpr { $$ = vardecl(scope, $1, curopt, $3, curtype, curclock != nil ? curclock->n : nil); }
 
 varspec:
 	symb { $$ = node(ASTSYMB, $1); }

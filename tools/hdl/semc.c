@@ -18,7 +18,7 @@ struct SemVar {
 	
 	int gidx;
 	
-	int def;
+	int def, ref;
 	enum {
 		SVCANNX = 1,
 		SVNEEDNX = 2,
@@ -28,6 +28,8 @@ struct SemVar {
 	SemVars *deps;
 	SemVars *live;
 	SemVar *tnext;
+	
+	Symbol *targv;
 };
 struct SemVars {
 	SemVar **p;
@@ -1197,13 +1199,41 @@ tracklive(void)
 	free(liveout);
 }
 
-static Symbol **targv;
+static int
+countref1(ASTNode *n)
+{
+	if(n != nil && n->t == ASTSSA)
+		n->semv->ref++;
+	return 0;
+}
+
+static void
+countref(void)
+{
+	int i;
+	SemBlock *b;
+	SemVar *v;
+	
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		descendsum(b->phi, countref1);
+		descendsum(b->cont, countref1);
+		descendsum(b->jump, countref1);
+	}
+	for(i = 0; i < nvars; i++){
+		v = vars[i];
+		if((v->flags & SVREG) != 0)
+			v->ref++;
+		if(v->sym->clock != nil && v->sym->clock->t == ASTSYMB && v->sym->clock->sym->semc[0] != nil)
+			v->sym->clock->sym->semc[0]->ref++;
+	}
+}
 
 static Nodes *
 dessa1(ASTNode *n)
 {
 	if(n->t == ASTSSA)
-		return nl(node(ASTSYMB, targv[n->semv->gidx]));
+		return nl(node(ASTSYMB, n->semv->targv));
 	return nl(n);
 }
 
@@ -1241,20 +1271,22 @@ dessa(void)
 	int i, j, k;
 	
 	newst = emalloc(sizeof(SymTab));
-	targv = emalloc(sizeof(Symbol *) * nvars);
 	for(i = 0; i < nvars; i++){
 		v = vars[i];
+		if(v->ref == 0)
+			continue;
+		SET(w);
 		for(j = 0; j < i; j++){
 			w = vars[j];
-			if(w->sym != v->sym || w->prime != v->prime) continue;
+			if(w->sym != v->sym || w->prime != v->prime || w->targv == nil) continue;
 			for(k = 0; k < i; k++){
-				if(targv[k] != targv[j]) continue;
+				if(vars[k]->targv != w->targv) continue;
 				if(deptest(vars[k]->live, v)) break;
 			}
 			if(k == i) break;
 		}
 		if(j < i){
-			targv[i] = targv[j];
+			v->targv = w->targv;
 			continue;
 		}
 		j = 0;
@@ -1266,7 +1298,9 @@ dessa(void)
 		}while(s->t != SYMNONE);
 		s->t = SYMVAR;
 		s->type = v->sym->type;
-		targv[i] = s;
+		s->clock = v->sym->clock;
+		s->semc[0] = v;
+		v->targv = s;
 	}
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
@@ -1276,7 +1310,6 @@ dessa(void)
 	}
 	for(i = 0; i < nblocks; i++)
 		delphi(blocks[i]);
-	free(targv);
 }
 
 static BitSet *delbl;
@@ -1402,10 +1435,9 @@ deblock(void)
 static ASTNode *
 makeast(ASTNode *n)
 {
-	ASTNode *e;
-	Nodes *r;
-	ASTNode *m;
+	ASTNode *e, *bp, *m;
 	SemBlock *b;
+	Nodes *c, *p;
 	Symbol *s;
 	int i;
 	
@@ -1414,6 +1446,27 @@ makeast(ASTNode *n)
 	for(i = 0; i < SYMHASH; i++)
 		for(s = newst->sym[i]; s != nil; s = s->next)
 			m->nl = nlcat(m->nl, nl(node(ASTDECL, s, nil)));
+	c = nil;
+	for(i = 0; i < SYMHASH; i++)
+		for(s = newst->sym[i]; s != nil; s = s->next){
+			if(s->semc[0] == nil || (s->semc[0]->flags & SVREG) == 0)
+				continue;
+			if(s->semc[0]->tnext == nil || s->semc[0]->tnext->targv == nil || s->clock == nil){
+				error(s, "'%s' makeast: phase error", s->name);
+				continue;
+			}
+			e = node(ASTDASS, node(ASTSYMB, s), node(ASTSYMB, s->semc[0]->tnext->targv));
+			for(p = c; p != nil; p = p->next)
+				if(nodeeq(p->n->n1, s->clock, nodeeq))
+					break;
+			if(p == nil){
+				bp = node(ASTBLOCK);
+				bp->nl = nl(e);
+				c = nlcat(c, nl(node(ASTALWAYS, s->clock, bp)));
+			}else
+				p->n->n2->nl = nlcat(p->n->n2->nl, nl(e));
+		}
+	m->nl = nlcat(m->nl, c);
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
 		e = mkblock(nlcat(unmkblock(b->cont), unmkblock(b->jump)));
@@ -1464,6 +1517,7 @@ semcomp(ASTNode *n)
 	trackneed();
 	makenext();
 	tracklive();
+	countref();
 	dessa();
 	deblock();
 	return makeast(n);

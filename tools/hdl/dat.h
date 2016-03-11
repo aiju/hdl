@@ -53,6 +53,8 @@ struct Symbol {
 	SymTab *st;
 	Symbol *next, *typenext;
 	ASTNode *pack;
+	ASTNode *clock;
+	
 	void *typc;
 	
 	SemVar *semc[2];
@@ -111,6 +113,7 @@ enum {
 	ASTCINT,
 	ASTCONST,
 	ASTCONTINUE,
+	ASTDASS,
 	ASTDECL,
 	ASTDEFAULT,
 	ASTDISABLE,

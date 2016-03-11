@@ -198,8 +198,33 @@ structend(Type *t0, int i0, Type **tp, int *ip, Symbol *sym)
 	free(s);
 }
 
+static Symbol *
+findclock(Symbol *s)
+{
+	SymTab *st;
+	int i;
+	Symbol *t;
+	Symbol *cl;
+	int ncl;
+	
+	cl = nil;
+	ncl = 0;
+	for(st = s->st; st != nil; st = st->up)
+		for(i = 0; i < SYMHASH; i++)
+			for(t = st->sym[i]; t != nil; t = t->next)
+				if(t->t == SYMVAR && (t->opt & OPTCLOCK) != 0){
+					cl = t;
+					ncl++;
+				}
+	if(ncl != 1){
+		error(s, "'%s' no clock", s->name);
+		return nil;
+	}
+	return cl;
+}
+
 ASTNode *
-vardecl(SymTab *st, ASTNode *ns, int opt, ASTNode *n, Type *ty)
+vardecl(SymTab *st, ASTNode *ns, int opt, ASTNode *n, Type *ty, ASTNode *clock)
 {
 	Symbol *s;
 	ASTNode *nv;
@@ -229,6 +254,9 @@ vardecl(SymTab *st, ASTNode *ns, int opt, ASTNode *n, Type *ty)
 	if(curstruct != nil){
 		*curstruct->last = s;
 		curstruct->last = &s->typenext;
+	}else if((opt & OPTCLOCK) == 0){
+		if(clock == nil) clock = node(ASTSYMB, findclock(s));
+		s->clock = clock;
 	}
 	return node(ASTDECL, s, n);
 }
