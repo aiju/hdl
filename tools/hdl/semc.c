@@ -220,8 +220,42 @@ newblock(void)
 	return s;
 }
 
+typedef struct TBlock TBlock;
+struct TBlock {
+	Symbol *sym;
+	SemBlock *ex;
+	TBlock *up;
+};
+
+static TBlock *
+newtblock(Symbol *s, TBlock *l)
+{
+	TBlock *m;
+	
+	if(s == nil) return l;
+	m = emalloc(sizeof(TBlock));
+	m->sym = s;
+	m->up = l;
+	return m;
+}
+
 static SemBlock *
-blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob)
+gettblock(Line *l, TBlock *t, Symbol *s)
+{
+	for(; t != nil; t = t->up)
+		if(t->sym == s)
+			break;
+	if(t == nil){
+		error(l, "'%s' undeclared", s->name);
+		return nil;
+	}
+	if(t->ex == nil)
+		t->ex = newblock();
+	return t->ex;
+}
+
+static SemBlock *
+blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob, TBlock *tb)
 {
 	Nodes *r;
 	SemBlock *s1, *s2, *s3;
@@ -242,14 +276,24 @@ blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob)
 		m->n2 = node(ASTSEMGOTO, s1 != nil ? s1 : s3);
 		m->n3 = node(ASTSEMGOTO, s2 != nil ? s2 : s3);
 		sb->jump = m;
-		s1 = blockbuild(n->n2, s1, glob);
-		s2 = blockbuild(n->n3, s2, glob);
+		s1 = blockbuild(n->n2, s1, glob, tb);
+		s2 = blockbuild(n->n3, s2, glob, tb);
 		if(s1 != nil) s1->jump = node(ASTSEMGOTO, s3);
 		if(s2 != nil) s2->jump = node(ASTSEMGOTO, s3);
 		return s3;
 	case ASTBLOCK:
+		tb = newtblock(n->sym, tb);
 		for(r = n->nl; r != nil; r = r->next)
-			sb = blockbuild(r->n, sb, glob);
+			sb = blockbuild(r->n, sb, glob, tb);
+		if(n->sym != nil){
+			if(tb->ex != nil){
+				s1 = tb->ex;
+				sb->jump = node(ASTSEMGOTO, s1);
+				free(tb);
+				return s1;
+			}
+			free(tb);
+		}
 		return sb;
 	case ASTMODULE:
 		assert(sb == nil);
@@ -262,7 +306,7 @@ blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob)
 				continue;
 			}
 			assert(r->n->t != ASTMODULE);
-			blockbuild(r->n, newblock(), nil);
+			blockbuild(r->n, newblock(), nil, tb);
 		}
 		return nil;
 	case ASTSWITCH:
@@ -281,15 +325,19 @@ blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob)
 				s1 = newblock();
 				m->n2->nl = nlcat(m->n2->nl, nls(r->n, node(ASTSEMGOTO, s1), nil));
 			}else
-				s1 = blockbuild(r->n, s1, glob);
+				s1 = blockbuild(r->n, s1, glob, tb);
 		}
 		if(s1 != nil) s1->jump = node(ASTSEMGOTO, s2);
 		if(!def)
 			m->n2->nl = nlcat(m->n2->nl, nls(node(ASTDEFAULT), node(ASTSEMGOTO, s2), nil));
 		return s2;
+	case ASTDISABLE:
+		s1 = gettblock(n, tb, n->sym);
+		sb->jump = node(ASTSEMGOTO, s1);
+		return s1;
 	default:
 		error(n, "blockbuild: unknown %A", n->t);
-		return nil;
+		return sb;
 	}
 }
 
@@ -624,7 +672,6 @@ dominter(SemBlock *a, SemBlock *b)
 	if(a == nil) return b;
 	if(b == nil) return a;
 	while(a != b){
-		print("%d %d\n", a->idx, b->idx);
 		while(a != nil && a->idx > b->idx)
 			a = a->ipdom;
 		assert(a != nil);
@@ -1546,8 +1593,8 @@ deblock(void)
 		j = descendsum(b->cont, countsemgoto) + descendsum(b->jump, countsemgoto);
 		if(j > 0){
 			error(b->cont, "can't resolve goto");
-			astprint(b->cont);
-			astprint(b->jump);
+			astprint(b->cont, 0);
+			astprint(b->jump, 0);
 		}
 	}
 }
@@ -1631,14 +1678,14 @@ printblocks(void)
 		b = blocks[j];
 		print("%p:\n", b);
 		if(b->nfrom != 0){
-			print("// from ");
+			print("\t// from ");
 			for(i = 0; i < b->nfrom; i++)
 				print("%p%s", b->from[i], i+1 == b->nfrom ? "" : ", ");
 			print("\n");
 		}
-		astprint(b->phi);
-		astprint(b->cont);
-		astprint(b->jump);
+		astprint(b->phi, 1);
+		astprint(b->cont, 1);
+		astprint(b->jump, 1);
 	}
 }
 
@@ -1702,7 +1749,7 @@ semcomp(ASTNode *n)
 	vars = nil;
 	nvars = 0;
 	glob = defsnew();
-	blockbuild(n, nil, glob);
+	blockbuild(n, nil, glob, nil);
 	calcfromto();
 	if(critedge() > 0)
 		calcfromto();

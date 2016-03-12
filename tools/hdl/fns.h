@@ -20,7 +20,7 @@ void enumstart(Type *);
 Type *enumend(void);
 void enumdecl(Symbol *, ASTNode *);
 void checksym(Symbol *);
-void astprint(ASTNode *);
+void astprint(ASTNode *, int);
 void consparse(Const *, char *);
 void typecheck(ASTNode *, Type *);
 void typefinal(Type *, int, Type **, int *);

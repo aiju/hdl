@@ -927,13 +927,13 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 }
 
 void
-astprint(ASTNode *n)
+astprint(ASTNode *n, int indent)
 {
 	Fmt f;
 	char buf[256];
 
 	fmtfdinit(&f, 1, buf, sizeof buf);
-	iastprint(&f, n, 0);
+	iastprint(&f, n, indent);
 	fmtfdflush(&f);
 }
 

@@ -349,6 +349,7 @@ typconc1(ASTNode *n, FieldR **fp)
 	case ASTCINT:
 	case ASTCONST:
 	case ASTDEFAULT:
+	case ASTDISABLE:
 		break;
 	case ASTDECL:
 		r = nil;
