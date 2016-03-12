@@ -1689,6 +1689,15 @@ printblocks(void)
 	}
 }
 
+static ASTNode *
+unblock(ASTNode *n)
+{
+	if(n == nil) return nil;
+	if(n->t != ASTBLOCK) return n;
+	if(n->nl != nil && n->nl->next == nil) return n->nl->n;
+	return n;
+}
+
 static Nodes *
 delempty(ASTNode *n)
 {
@@ -1702,6 +1711,8 @@ delempty(ASTNode *n)
 		if(n->nl == nil) return nil;
 		break;
 	case ASTIF:
+		n->n2 = unblock(n->n2);
+		n->n3 = unblock(n->n3);
 		if(n->n2 == nil && n->n3 == nil) return nil;
 		break;
 	case ASTSWITCH:

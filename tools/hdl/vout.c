@@ -200,7 +200,7 @@ verbprint(Fmt *f, ASTNode *n, int indent, int env)
 		return fmtprint(f, " begin\n%Iend\n", indent);
 	if(n->t != ASTBLOCK){
 		rc = fmtrune(f, '\n');
-		return rc + veriprint(f, n, indent, env);
+		return rc + veriprint(f, n, indent + 1, env);
 	}
 	rc = fmtprint(f, " begin\n");
 	for(r = n->nl; r != nil; r = r->next)
