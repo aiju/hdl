@@ -333,6 +333,38 @@ calcfromto(void)
 	}
 }
 
+static SemBlock *gotosubold, *gotosubnew;
+static Nodes *
+gotosub(ASTNode *n)
+{
+	if(n->t == ASTSEMGOTO && n->semb == gotosubold)
+		return nl(node(ASTSEMGOTO, gotosubnew));
+	return nl(n);
+}
+
+static int
+critedge(void)
+{
+	SemBlock *b, *c;
+	int i, j, rc;
+	
+	rc = 0;
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		if(b->nto <= 1) continue;
+		for(j = 0; j < b->nto; j++)
+			if(b->to[j]->nfrom > 1){
+				c = newblock();
+				c->jump = node(ASTSEMGOTO, b->to[j]);
+				gotosubold = b->to[j];
+				gotosubnew = c;
+				b->jump = mkblock(descend(b->jump, nil, gotosub));
+				rc++;
+			}
+	}
+	return rc;
+}
+
 static ASTNode *
 lvalhandle(ASTNode *n, SemDefs *d, int attr)
 {
@@ -1546,12 +1578,10 @@ makeast(ASTNode *n)
 	c = nil;
 	for(i = 0; i < SYMHASH; i++)
 		for(s = newst->sym[i]; s != nil; s = s->next){
-			if(s->semc[0] == nil || (s->semc[0]->flags & SVREG) == 0)
-				continue;
-			if(s->semc[0]->tnext == nil || s->semc[0]->tnext->targv == nil || s->clock == nil){
-				error(s, "'%s' makeast: phase error", s->name);
-				continue;
-			}
+			if(s->semc[0] == nil || (s->semc[0]->flags & SVREG) == 0) continue;
+			if(s->semc[0]->tnext == nil){ error(s, "'%s' makeast: tnext == nil", s->name); continue; }
+			if(s->semc[0]->tnext->targv == nil){ error(s, "'%s' makeast: tnext->targv == nil", s->name); continue; }
+			if(s->clock == nil){ error(s, "'%s' makeast: no clock", s->name); continue; }
 			e = node(ASTDASS, node(ASTSYMB, s), node(ASTSYMB, s->semc[0]->tnext->targv));
 			for(p = c; p != nil; p = p->next)
 				if(nodeeq(p->n->n1, s->clock, nodeeq))
@@ -1674,6 +1704,8 @@ semcomp(ASTNode *n)
 	glob = defsnew();
 	blockbuild(n, nil, glob);
 	calcfromto();
+	if(critedge() > 0)
+		calcfromto();
 	reorder();
 	ssabuild(glob);
 	calcdom();
