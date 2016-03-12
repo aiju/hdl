@@ -380,7 +380,7 @@ findphi(Nodes *r, Symbol *s, int pr)
 static void
 phi(SemBlock *b, SemDefs *d, SemDefs *glob)
 {
-	int i;
+	int i, j;
 	SemDef *dp;
 	ASTNode *m, *mm;
 	Nodes *old;
@@ -400,8 +400,8 @@ phi(SemBlock *b, SemDefs *d, SemDefs *glob)
 			if(dp->ctr < b->nfrom || dp->sv == nil){
 				dp->sv = findphi(old, dp->sym, dp->prime);
 				m = node(ASTPHI);
-				for(i = 0; i < b->nfrom; i++){
-					v = ssaget(b->from[i]->defs, dp->sym, dp->prime);
+				for(j = 0; j < b->nfrom; j++){
+					v = ssaget(b->from[j]->defs, dp->sym, dp->prime);
 					if(v != nil && v == v->sym->semc[v->prime])
 						if(!v->prime){
 							error(v->sym, "'%s' phi: phase error", v->sym->name);
@@ -419,7 +419,7 @@ phi(SemBlock *b, SemDefs *d, SemDefs *glob)
 				}
 				m = node(ASTASS, 0, node(ASTSSA, dp->sv), m);
 				b->phi->nl = nlcat(b->phi->nl, nl(m));
-			}	
+			}
 		}
 }
 
@@ -554,6 +554,7 @@ reorderdfw(int *idx, int i, int *ctr)
 	int j, k;
 	
 	b = blocks[i];
+	idx[i] = nblocks;
 	for(j = 0; j < b->nto; j++){
 		k = b->to[j]->idx;
 		if(idx[k] < 0)
@@ -573,12 +574,13 @@ reorder(void)
 	memset(idx, -1, sizeof(int) * nblocks);
 	c = nblocks;
 	for(i = nblocks; --i >= 0; )
-		if(idx[i] < 0)
+		if(blocks[i]->nfrom == 0)
 			reorderdfw(idx, i, &c);
 	bl = emalloc(sizeof(SemBlock *) * -(-nblocks & -BLOCKSBLOCK));
 	for(i = 0; i < nblocks; i++){
-		bl[i] = blocks[idx[i]];
-		bl[i]->idx = i;
+		assert(idx[i] >= 0 && idx[i] < nblocks);
+		bl[idx[i]] = blocks[i];
+		bl[idx[i]]->idx = idx[i];
 	}
 	free(blocks);
 	blocks = bl;
@@ -1672,8 +1674,8 @@ semcomp(ASTNode *n)
 	glob = defsnew();
 	blockbuild(n, nil, glob);
 	calcfromto();
-	ssabuild(glob);
 	reorder();
+	ssabuild(glob);
 	calcdom();
 	trackdeps();
 	trackcans();
