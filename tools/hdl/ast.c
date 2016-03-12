@@ -255,9 +255,11 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	switch(a->t){
 	case ASTINVAL:
 	case ASTABORT:
+	case ASTALWAYS:
 	case ASTASS:
 	case ASTBREAK:
 	case ASTCONTINUE:
+	case ASTDASS:
 	case ASTDECL:
 	case ASTDEFAULT:
 	case ASTDISABLE:

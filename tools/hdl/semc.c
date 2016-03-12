@@ -1116,46 +1116,65 @@ addphis(SemVars *live, SemBlock *t, SemBlock *f)
 	return live;
 }
 
-static SemVars *
-proplive(ASTNode *n, SemVars *live)
+static Nodes *
+proplive(ASTNode *n, SemVars **live)
 {
-	int nrl, i;
+	ASTNode *m;
+	int nrl, i, del;
+	Nodes *r;
 	ASTNode **rl;
 
-	if(n == nil) return live;
+	if(n == nil) return nil;
+	m = nodedup(n);
+	del = 0;
 	switch(n->t){
 	case ASTCONST:
 	case ASTCINT:
 	case ASTSEMGOTO:
 	case ASTDEFAULT:
-		return live;
+		break;
 	case ASTSSA:
-		n->semv->live = depcat(n->semv->live, depinc(live));
-		live = depadd(live, n->semv);
-		return live;
+		n->semv->live = depcat(n->semv->live, depinc(*live));
+		*live = depadd(*live, n->semv);
+		break;
 	case ASTASS:
-		if(n->n1 == nil || n->n1->t != ASTSSA) return live;
-		live = depsub(live, n->n1->semv);
-		return proplive(n->n2, live);
+		if(n->n1 == nil || n->n1->t != ASTSSA) break;
+		if(deptest(*live, n->n1->semv) == 0) del = 1;
+		*live = depsub(*live, n->n1->semv);
+		m->n2 = mkblock(proplive(n->n2, live));
+		if(del){
+			nodeput(m);
+			return nil;
+		}
+		break;
 	case ASTOP:
-		live = proplive(n->n1, live);
-		return proplive(n->n2, live);
+		m->n1 = mkblock(proplive(n->n1, live));
+		m->n2 = mkblock(proplive(n->n2, live));
+		break;
 	case ASTIF:
-		return proplive(n->n1, live);
+		m->n1 = mkblock(proplive(n->n1, live));
+		break;
 	case ASTSWITCH:
-		live = proplive(n->n2, live);
-		return proplive(n->n1, live);
-	case ASTBLOCK:
+		m->n2 = mkblock(proplive(n->n2, live));
+		m->n1 = mkblock(proplive(n->n1, live));
+		break;
 	case ASTCASE:
+		m->nl = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			m->nl = nlcat(m->nl, proplive(r->n, live));
+		break;
+	case ASTBLOCK:
+		m->nl = nil;
 		listarr(n->nl, &rl, &nrl);
 		for(i = nrl; --i >= 0; )
-			live = proplive(rl[i], live);
+			m->nl = nlcat(proplive(rl[i], live), m->nl);
 		free(rl);
-		return live;
+		break;
 	default:
 		error(n, "proplive: unknown %A", n->t);
-		return live;
+		break;
 	}
+	return nl(nodededup(n, m));
 }
 
 static void
@@ -1164,7 +1183,8 @@ tracklive(void)
 	SemBlock *b;
 	int i, j, ch;
 	SemVars **livein, **liveout, **gen, **kill;
-	SemVars *l, *li, *lo, *glob;
+	SemVars *l, *li, *lo, *glob, *outs;
+	SemVar *v;
 	
 	gen = emalloc(sizeof(SemVars *) * nblocks);
 	kill = emalloc(sizeof(SemVars *) * nblocks);
@@ -1180,10 +1200,18 @@ tracklive(void)
 		tracklive1(b->phi, &gen[i], &kill[i]);
 		tracklive1(b->cont, &gen[i], &kill[i]);
 		tracklive1(b->jump, &gen[i], &kill[i]);
-	}	
+	}
+	outs = depinc(&nodeps);
+	for(i = 0; i < nvars; i++){
+		v = vars[i];
+		if((v->flags & SVPORT) != 0 && (v->sym->opt & OPTOUT) != 0)
+			outs = depadd(outs, v);
+		if(v == v->sym->semc[1] && (v->sym->semc[0]->flags & SVREG) != 0)
+			outs = depadd(outs, v);
+	}
 	do{
 		ch = 0;
-		glob = depinc(&nodeps);
+		glob = depinc(outs);
 		for(i = 0; i < nblocks; i++)
 			if(blocks[i]->nfrom == 0)
 				glob = depcat(glob, depinc(livein[i]));
@@ -1211,8 +1239,10 @@ tracklive(void)
 		b = blocks[i];
 		for(j = 0; j < liveout[i]->n; j++)
 			liveout[i]->p[j]->live = depcat(liveout[i]->p[j]->live, depinc(liveout[i]));
-		l = proplive(b->jump, depinc(liveout[i]));
-		putdeps(proplive(b->cont, l));
+		l = depinc(liveout[i]);
+		b->jump = mkblock(proplive(b->jump, &l));
+		b->cont = mkblock(proplive(b->cont, &l));
+		putdeps(l);
 		b->live = liveout[i];
 		putdeps(livein[i]);
 		putdeps(gen[i]);
@@ -1222,6 +1252,7 @@ tracklive(void)
 	free(kill);
 	free(livein);
 	free(liveout);
+	putdeps(outs);
 }
 
 static int
@@ -1543,6 +1574,22 @@ makeast(ASTNode *n)
 }
 
 static void
+printlive(void)
+{
+	SemVar *v;
+	int i, j;
+	
+	for(i = 0; i < nvars; i++){
+		v = vars[i];
+		if(v->live == nil || v->live->n == 0) continue;
+		print("%Σ ", v);
+		for(j = 0; j < v->live->n; j++)
+			print("%Σ,", v->live->p[j]);
+		print("\n");
+	}
+}
+
+static void
 printblocks(void)
 {
 	SemBlock *b;
@@ -1561,6 +1608,56 @@ printblocks(void)
 		astprint(b->cont);
 		astprint(b->jump);
 	}
+}
+
+static Nodes *
+delempty(ASTNode *n)
+{
+	ASTNode *m;
+	ASTNode **rl;
+	Nodes *r, *s;
+	int i, nrl;
+
+	switch(n->t){
+	case ASTBLOCK:
+		if(n->nl == nil) return nil;
+		break;
+	case ASTIF:
+		if(n->n2 == nil && n->n3 == nil) return nil;
+		break;
+	case ASTSWITCH:
+		listarr(n->n2->nl, &rl, &nrl);
+		m = node(ASTBLOCK);
+		m->nl = nil;
+		for(i = nrl; --i >= 0; )
+			if(rl[i] != nil && rl[i]->t != ASTDEFAULT && rl[i]->t != ASTCASE)
+				break;
+		for(; i >= 0; i--)
+			m->nl = nlcat(nl(rl[i]), m->nl);
+		free(rl);
+		if(m->nl == nil){
+			nodeput(m);
+			return nil;
+		}
+		n->n2 = nodededup(n->n2, m);
+		break;
+	case ASTMODULE:
+		r = n->nl;
+		n->nl = nil;
+		for(; r != nil; r = r->next){
+			if(r->n->t == ASTBLOCK){
+				for(s = r->n->nl; s != nil; s = s->next)
+					if(s->n->t != ASTASS)
+						break;
+				if(s == nil){
+					n->nl = nlcat(n->nl, r->n->nl);
+					continue;
+				}
+			}
+			n->nl = nlcat(n->nl, nl(r->n));
+		}
+	}
+	return nl(n);
 }
 
 ASTNode *
@@ -1586,7 +1683,9 @@ semcomp(ASTNode *n)
 	countref();
 	dessa();
 	deblock();
-	return makeast(n);
+	n = makeast(n);
+	n = mkblock(descend(n, nil, delempty));
+	return n;
 }
 
 void
