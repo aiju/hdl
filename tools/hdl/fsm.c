@@ -63,6 +63,7 @@ fsmstart(ASTNode *n)
 		error(nil, "nested fsm");
 	curfsm = n;
 	lastlab = nil;
+	n->sym->clock = node(ASTSYMB, findclock(n->sym));
 }
 
 void

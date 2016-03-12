@@ -198,7 +198,7 @@ structend(Type *t0, int i0, Type **tp, int *ip, Symbol *sym)
 	free(s);
 }
 
-static Symbol *
+Symbol *
 findclock(Symbol *s)
 {
 	SymTab *st;

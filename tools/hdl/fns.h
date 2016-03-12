@@ -80,3 +80,4 @@ BitSet* bsdup(BitSet *);
 void bscntgr(BitSet *, BitSet *, int *, int *);
 void addsym(SymTab *, Symbol *);
 void verilog(ASTNode *);
+Symbol *findclock(Symbol *);
