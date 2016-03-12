@@ -68,6 +68,7 @@ trackvaruse(ASTNode *n, int env)
 	switch(n->t){
 	case ASTCINT:
 	case ASTDECL:
+	case ASTDEFAULT:
 		break;
 	case ASTSYMB:
 		if((env & ENVLVAL) != 0){
@@ -86,6 +87,10 @@ trackvaruse(ASTNode *n, int env)
 		for(r = n->nl; r != nil; r = r->next)
 			trackvaruse(r->n, ENVALWAYS);
 		break;
+	case ASTCASE:
+		for(r = n->nl; r != nil; r = r->next)
+			trackvaruse(r->n, env);
+		break;
 	case ASTASS:
 	case ASTDASS:
 		trackvaruse(n->n1, env|ENVLVAL);
@@ -98,6 +103,7 @@ trackvaruse(ASTNode *n, int env)
 	case ASTOP:
 	case ASTIF:
 	case ASTWHILE:
+	case ASTSWITCH:
 		trackvaruse(n->n1, env);
 		trackvaruse(n->n2, env);
 		trackvaruse(n->n3, env);
@@ -182,12 +188,13 @@ vexprfmt(Fmt *f)
 	return vereprint(f, va_arg(f->args, ASTNode *), 0);
 }
 
+static int veriprint(Fmt *, ASTNode *, int, int);
+
 static int
 verbprint(Fmt *f, ASTNode *n, int indent, int env)
 {
 	int rc;
 	Nodes *r;
-	static int veriprint(Fmt *, ASTNode *, int, int);
 
 	if(n == nil)
 		return fmtprint(f, " begin\n%Iend\n", indent);
@@ -233,6 +240,51 @@ vdecl(Fmt *f, Symbol *s)
 	}
 	if(sz != nil) rc += fmtprint(f, "[%n:0] ", nodeaddi(sz, -1));
 	rc += fmtstrcpy(f, s->name);
+	return rc;
+}
+
+static int
+vswitch(Fmt *f, ASTNode *n, int indent, int env)
+{
+	int rc, open;
+	Nodes *r, *s;
+	
+	rc = fmtprint(f, "%Icase(%n)\n", indent, n->n1);
+	assert(n->n2 != nil && n->n2->t == ASTBLOCK);
+	open = 0;
+	for(r = n->n2->nl; r != nil; r = r->next)
+		switch(r->n->t){
+		case ASTCASE:
+			if(open < 0) rc += fmtprint(f, "begin\n%Iend\n", indent);
+			if(open > 0) rc += fmtprint(f, "%Iend\n", indent);
+			rc += fmtprint(f, "%I", indent);
+			assert(r->n->nl != nil);
+			for(s = r->n->nl; s != nil; s = s->next)
+				rc += fmtprint(f, "%N%s", s->n, s->next != nil ? ", " : ": ");
+			open = -1;
+			break;
+		case ASTDEFAULT:
+			if(open < 0) rc += fmtprint(f, "begin\n%Iend\n", indent);
+			if(open > 0) rc += fmtprint(f, "%Iend\n", indent);
+			rc += fmtprint(f, "%Idefault: ", indent);
+			open = -1;
+			break;
+		default:
+			if(!open) error(n, "statement before case in switch()");
+			if(open < 0){
+				if((r->next != nil && r->next->n->t != ASTCASE && r->next->n->t != ASTDEFAULT)){
+					rc += fmtstrcpy(f, "begin\n");
+					open = 1;
+				}else{
+					rc += fmtstrcpy(f, "\n");
+					open = 0;
+				}
+			}
+			veriprint(f, r->n, indent + 1, env);
+		}
+	if(open>0) rc += fmtprint(f, "%Iend\n", indent);
+	if(open<0) rc += fmtprint(f, "begin\n%Iend\n", indent);
+	rc += fmtprint(f, "%Iendcase\n", indent);
 	return rc;
 }
 
@@ -285,6 +337,10 @@ veriprint(Fmt *f, ASTNode *n, int indent, int env)
 			rc += fmtprint(f, "%Ielse", indent);
 			rc += verbprint(f, n->n3, indent, env);
 		}
+		break;
+	case ASTSWITCH:
+		if(env != ENVALWAYS) enverror(n, env);
+		rc += vswitch(f, n, indent, env);
 		break;
 	case ASTDECL:
 		rc += fmtprint(f, "%I", indent);
