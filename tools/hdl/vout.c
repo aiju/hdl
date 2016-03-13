@@ -104,6 +104,7 @@ trackvaruse(ASTNode *n, int env)
 	case ASTIF:
 	case ASTWHILE:
 	case ASTSWITCH:
+	case ASTTERN:
 		trackvaruse(n->n1, env);
 		trackvaruse(n->n2, env);
 		trackvaruse(n->n3, env);
@@ -174,6 +175,17 @@ vereprint(Fmt *f, ASTNode *n, int env)
 		rc += fmtprint(f, " %s ", d->name);
 		rc += vereprint(f, n->n2, d->prec + (d->flags & OPDRIGHT) == 0);
 		if(env > d->prec)
+			rc += fmtrune(f, ')');
+		break;
+	case ASTTERN:
+		if(env > 0)
+			rc += fmtrune(f, '(');
+		rc += vereprint(f, n->n1, 0);
+		rc += fmtstrcpy(f, " ? ");
+		rc += vereprint(f, n->n2, 0);
+		rc += fmtstrcpy(f, " : ");
+		rc += vereprint(f, n->n3, 0);
+		if(env > 0)
 			rc += fmtrune(f, ')');
 		break;
 	default:

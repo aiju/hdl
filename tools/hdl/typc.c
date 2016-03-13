@@ -406,6 +406,14 @@ typconc1(ASTNode *n, FieldR **fp)
 		m->n2 = mkblock(typconc1(n->n2, &f2));
 		m->n2 = fieldval(m->n2, f2);
 		break;
+	case ASTTERN:
+		m->n1 = mkblock(typconc1(n->n1, &f1));
+		m->n1 = fieldval(m->n1, f1);
+		m->n2 = mkblock(typconc1(n->n2, &f2));
+		m->n2 = fieldval(m->n2, f2);
+		m->n3 = mkblock(typconc1(n->n3, &f3));
+		m->n3 = fieldval(m->n3, f3);
+		break;
 	case ASTLITELEM:
 		m->n1 = mkblock(typconc1(n->n1, &f1));
 		m->n1 = fieldval(m->n1, f1);
