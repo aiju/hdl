@@ -1703,7 +1703,7 @@ delempty(ASTNode *n)
 {
 	ASTNode *m;
 	ASTNode **rl;
-	Nodes *r, *s;
+	Nodes *r, *s, *t;
 	int i, nrl;
 
 	switch(n->t){
@@ -1736,15 +1736,18 @@ delempty(ASTNode *n)
 		n->nl = nil;
 		for(; r != nil; r = r->next){
 			if(r->n->t == ASTBLOCK){
-				for(s = r->n->nl; s != nil; s = s->next)
+				for(s = r->n->nl; s != nil; s = s->next){
 					if(s->n->t != ASTASS)
-						break;
-				if(s == nil){
-					n->nl = nlcat(n->nl, r->n->nl);
-					continue;
+						goto nope;
+					for(t = r->n->nl; t != s; t = t->next)
+						if(nodeeq(s->n->n1, t->n->n1, nodeeq))
+							goto nope;
 				}
+				n->nl = nlcat(n->nl, r->n->nl);
 			}
-			n->nl = nlcat(n->nl, nl(r->n));
+			else
+			nope:
+				n->nl = nlcat(n->nl, nl(r->n));
 		}
 	}
 	return nl(n);
