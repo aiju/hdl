@@ -139,12 +139,14 @@ node(int t, ...)
 	setmalloctag(n, getcallerpc(&t));
 	switch(t){
 	case ASTMODULE:
-	case ASTBLOCK:
 	case ASTDEFAULT:
 	case ASTFSM:
 	case ASTSTATE:
 	case ASTABORT:
 	case ASTPHI:
+		break;
+	case ASTBLOCK:
+		n->nl = va_arg(va, Nodes *);
 		break;
 	case ASTDECL:
 		n->sym = va_arg(va, Symbol *);

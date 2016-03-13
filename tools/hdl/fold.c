@@ -296,8 +296,7 @@ mkblock(Nodes *p)
 		nlput(p);
 		return n;
 	}
-	n = node(ASTBLOCK);
-	n->nl = p;
+	n = node(ASTBLOCK, p);
 	return n;
 }
 

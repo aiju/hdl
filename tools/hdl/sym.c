@@ -85,7 +85,7 @@ newscope(SymTab *sc, int t, Symbol *s)
 	int symt;
 	SymTab *st;
 	
-	n = node(t);
+	n = node(t, nil);
 	st = emalloc(sizeof(SymTab));
 	n->st = st;
 	if(s != nil){

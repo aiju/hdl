@@ -211,7 +211,7 @@ newblock(void)
 	SemBlock *s;
 	
 	s = emalloc(sizeof(SemBlock));
-	s->cont = node(ASTBLOCK);
+	s->cont = node(ASTBLOCK, nil);
 	s->deps = depinc(&nodeps);
 	if((nblocks % BLOCKSBLOCK) == 0)
 		blocks = erealloc(blocks, sizeof(SemBlock *), nblocks, BLOCKSBLOCK);
@@ -467,7 +467,7 @@ phi(SemBlock *b, SemDefs *d, SemDefs *glob)
 	SemVar *v;
 	
 	old = b->phi == nil ? nil : b->phi->nl;
-	b->phi = node(ASTBLOCK);
+	b->phi = node(ASTBLOCK, nil);
 	if(b->nfrom == 0){
 		defsunion(d, glob, 0);
 		return;
@@ -1552,7 +1552,7 @@ iffix(ASTNode *n)
 					return nl(n);
 			}
 		if(m1 == nil) return nl(n);
-		m = node(ASTBLOCK);
+		m = node(ASTBLOCK, nil);
 		for(r = n->n2->nl; r != nil; r = r->next){
 			p = r->n;
 			if(r->next == nil || r->next->n->t == ASTCASE || r->next->n->t == ASTDEFAULT)
@@ -1649,8 +1649,7 @@ makeast(ASTNode *n)
 				if(nodeeq(p->n->n1, s->clock, nodeeq))
 					break;
 			if(p == nil){
-				bp = node(ASTBLOCK);
-				bp->nl = nl(e);
+				bp = node(ASTBLOCK, nl(e));
 				c = nlcat(c, nl(node(ASTALWAYS, s->clock, bp)));
 			}else
 				p->n->n2->nl = nlcat(p->n->n2->nl, nl(e));
@@ -1659,10 +1658,8 @@ makeast(ASTNode *n)
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
 		p = nlcat(unmkblock(b->cont), unmkblock(b->jump));
-		e = node(ASTBLOCK);
-		e->nl = p;
-		if(e != nil)
-			m->nl = nlcat(m->nl, nl(e));
+		e = node(ASTBLOCK, p);
+		m->nl = nlcat(m->nl, nl(e));
 	}
 	return m;
 }
@@ -1732,8 +1729,7 @@ delempty(ASTNode *n)
 		break;
 	case ASTSWITCH:
 		listarr(n->n2->nl, &rl, &nrl);
-		m = node(ASTBLOCK);
-		m->nl = nil;
+		m = node(ASTBLOCK, nil);
 		for(i = nrl; --i >= 0; )
 			if(rl[i] != nil && rl[i]->t != ASTDEFAULT && rl[i]->t != ASTCASE)
 				break;

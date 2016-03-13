@@ -595,8 +595,7 @@ findfsm(ASTNode *n)
 	}
 	
 	bl = node(ASTSWITCH, node(ASTSYMB, n->sym), bl);
-	bm = node(ASTBLOCK);
-	bm->nl = nlcat(def, nl(bl));
+	bm = node(ASTBLOCK, nlcat(def, nl(bl)));
 	
 	n->sym->t = SYMVAR;
 	n->sym->type = fsmenum();
