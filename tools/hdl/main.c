@@ -61,6 +61,38 @@ warn(Line *l, char *fmt, ...)
 	va_end(va);
 }
 
+static Nodes *
+miscfix1(ASTNode *n)
+{
+	ASTNode *m;
+
+	switch(n->t){
+	case ASTDECL:
+		if(n->sym->t == SYMVAR && n->n1 != nil){
+			m = n->n1;
+			n->n1 = nil;
+			return nls(n, node(ASTASS, OPNOP, node(ASTSYMB, n->sym), m), nil);
+		}
+		return nl(n);
+	case ASTASS:
+		if(n->op != OPNOP){
+			m = node(ASTOP, n->op, n->n1, n->n2);
+			n->n2 = m;
+			n->op = OPNOP;
+			return nl(n);
+		}
+		return nl(n);
+	default:
+		return nl(n);
+	}
+}
+
+static ASTNode *
+miscfix(ASTNode *n)
+{
+	return mkblock(descend(n, nil, miscfix1));
+}
+
 void
 compile(Nodes *np)
 {
@@ -68,6 +100,7 @@ compile(Nodes *np)
 
 	for(; np != nil; np = np->next){
 		n = np->n;
+		n = miscfix(n);
 		typecheck(n, nil);
 		if(nerror != 0) return;
 		n = constfold(n);
