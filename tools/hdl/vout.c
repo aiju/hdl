@@ -349,7 +349,7 @@ veriprint(Fmt *f, ASTNode *n, int indent, int env)
 		if(env != ENVALWAYS) enverror(n, env);
 		rc += fmtprint(f, "%Iif(%n)", indent, n->n1);
 		rc += verbprint(f, n->n2, indent, env);
-		if(n->n2 != nil){
+		if(n->n3 != nil){
 			rc += fmtprint(f, "%Ielse", indent);
 			rc += verbprint(f, n->n3, indent, env);
 		}
