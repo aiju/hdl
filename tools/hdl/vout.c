@@ -67,6 +67,7 @@ trackvaruse(ASTNode *n, int env)
 	if(n == nil) return;
 	switch(n->t){
 	case ASTCINT:
+	case ASTCONST:
 	case ASTDECL:
 	case ASTDEFAULT:
 		break;
@@ -140,6 +141,9 @@ vereprint(Fmt *f, ASTNode *n, int env)
 		break;
 	case ASTCINT:
 		rc += fmtprint(f, "%d", n->i);
+		break;
+	case ASTCONST:
+		rc += fmtprint(f, "%C", &n->cons);
 		break;
 	case ASTOP:
 		d = getvopdata(n->op);
