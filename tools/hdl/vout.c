@@ -305,6 +305,29 @@ vswitch(Fmt *f, ASTNode *n, int indent, int env)
 }
 
 static int
+hasdangle(ASTNode *n)
+{
+	switch(n->t){
+	case ASTBLOCK:
+	case ASTASS:
+		return 0;
+	case ASTIF:
+		return n->n3 == nil || hasdangle(n->n3);
+	default:
+		error(n, "hasdangle: unknown %A", n->t);
+		return 1;
+	}
+}
+
+ASTNode *
+dangle(ASTNode *n, ASTNode *m)
+{
+	if(m != nil && hasdangle(n))
+		return node(ASTBLOCK, nl(n));
+	return n;
+}
+
+static int
 veriprint(Fmt *f, ASTNode *n, int indent, int env)
 {
 	int rc;
@@ -348,7 +371,7 @@ veriprint(Fmt *f, ASTNode *n, int indent, int env)
 	case ASTIF:
 		if(env != ENVALWAYS) enverror(n, env);
 		rc += fmtprint(f, "%Iif(%n)", indent, n->n1);
-		rc += verbprint(f, n->n2, indent, env);
+		rc += verbprint(f, dangle(n->n2, n->n3), indent, env);
 		if(n->n3 != nil){
 			rc += fmtprint(f, "%Ielse", indent);
 			rc += verbprint(f, n->n3, indent, env);

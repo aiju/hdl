@@ -841,7 +841,7 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		break;
 	case ASTIF:
 		rc += fmtprint(f, "%Iif(%n)", indent, n->n1);
-		rc += blockprint(f, n->n2, indent);
+		rc += blockprint(f, dangle(n->n2, n->n3), indent);
 		if(n->n3 != nil){
 			rc += fmtprint(f, "%Ielse", indent);
 			rc += blockprint(f, n->n3, indent);
