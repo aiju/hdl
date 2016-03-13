@@ -1247,7 +1247,7 @@ typecheck(ASTNode *n, Type *ctxt)
 		if((d->flags & OPDBITONLY) != 0){
 			if(t1 >= 0 && t1 != TYPBIT) goto t1fail;
 			if(t2 >= 0 && t2 != TYPBIT) goto t2fail;
-			n->type = type(TYPBIT);
+			n->type = type(TYPBIT, 0);
 			return;
 		}
 		if((d->flags & OPDSPECIAL) != 0){
