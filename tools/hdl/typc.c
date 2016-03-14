@@ -448,6 +448,12 @@ typconc1(ASTNode *n, FieldR **fp)
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, typconc1(r->n, nil));
 		break;
+	case ASTINITIAL:
+		m->nl = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			m->nl = nlcat(m->nl, nl(fieldval(mkblock(typconc1(r->n, &f1)), f1)));
+		m->n1 = mkblock(typconc1(m->n1, nil));
+		break;
 	default:
 		error(n, "typconc1: unknown %A", n->t);
 	}

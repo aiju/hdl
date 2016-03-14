@@ -8,9 +8,29 @@
 typedef struct SemDef SemDef;
 typedef struct SemVars SemVars;
 typedef struct SemDefs SemDefs;
+typedef struct SemInit SemInit;
+typedef struct SemTrigger SemTrigger;
 
 enum { SEMHASH = 32 };
 
+struct SemInit {
+	enum {
+		SINONE,
+		SIINVAL,
+		SIDEF,
+		SIASYNC,
+		SISYNC,
+	} type;
+	SemVar *var;
+	ASTNode *trigger;
+	ASTNode *val;
+	SemInit *vnext, *tnext;
+};
+struct SemTrigger {
+	ASTNode *trigger;
+	SemInit *first, **last;
+	SemTrigger *next;
+};
 struct SemVar {
 	Symbol *sym;
 	int prime;
@@ -29,7 +49,8 @@ struct SemVar {
 	SemVars *deps;
 	SemVars *live;
 	SemVar *tnext;
-	
+	SemInit *init;
+	int nsinits;
 	Symbol *targv;
 };
 struct SemVars {
@@ -68,6 +89,7 @@ static SemVar **vars;
 enum { BLOCKSBLOCK = 16 };
 static SemBlock **blocks;
 static int nvars, nblocks;
+static Nodes *initbl;
 
 static SemVars *
 depinc(SemVars *v)
@@ -106,14 +128,14 @@ defsdup(SemDefs *d)
 }
 
 static SemVar *
-mkvar(Symbol *s, int p, int i)
+mkvar(Symbol *s, int p)
 {
 	SemVar *v;
 	
 	v = emalloc(sizeof(SemVar));
 	v->sym = s;
 	v->prime = p;
-	v->idx = i;
+	v->idx = v->sym->semcidx[p]++;
 	v->live = depinc(&nodeps);
 	if(nvars % SEMVARSBLOCK == 0)
 		vars = erealloc(vars, sizeof(SemVar *), nvars, SEMVARSBLOCK);
@@ -199,7 +221,7 @@ defsym(Symbol *s, SemDefs *glob)
 	int i;
 	
 	for(i = 0; i < 2; i++){
-		s->semc[i] = mkvar(s, i, 0);
+		s->semc[i] = mkvar(s, i);
 		defsadd(glob, s->semc[i], 0);
 	}
 	s->semc[0]->flags |= SVPORT;
@@ -303,6 +325,10 @@ blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob, TBlock *tb)
 		for(r = n->nl; r != nil; r = r->next){
 			if(r->n->t == ASTDECL){
 				defsym(r->n->sym, glob);
+				continue;
+			}
+			if(r->n->t == ASTINITIAL){
+				initbl = nlcat(initbl, nl(r->n));
 				continue;
 			}
 			assert(r->n->t != ASTMODULE);
@@ -422,7 +448,7 @@ lvalhandle(ASTNode *n, SemDefs *d, int attr)
 	if(n == nil) return nil;
 	switch(n->t){
 	case ASTSYMB:
-		v = mkvar(n->sym, attr, ++n->sym->semcidx[attr]);
+		v = mkvar(n->sym, attr);
 		defsadd(d, v, 1);
 		return node(ASTSSA, v);
 	case ASTPRIME:
@@ -454,7 +480,7 @@ findphi(Nodes *r, Symbol *s, int pr)
 		if(v->sym == s && v->prime == pr)
 			return v;
 	}
-	return mkvar(s, pr, ++s->semcidx[pr]);
+	return mkvar(s, pr);
 }
 
 static void
@@ -1014,7 +1040,7 @@ trackneed(void)
 		if((v->flags & SVREG) != 0)
 			v->tnext = v->sym->semc[1];
 		else if((v->flags & SVNEEDNX) != 0) 
-			v->tnext = mkvar(v->sym, 1, ++v->sym->semcidx[1]);
+			v->tnext = mkvar(v->sym, 1);
 	}
 }
 
@@ -1113,6 +1139,286 @@ makenext(void)
 	bsfree(copy);
 }
 
+static int
+initjoin(int a, int b)
+{
+	if(a == b) return a;
+	if(a == SINONE) return b;
+	if(b == SINONE) return a;
+	return SIINVAL;
+}
+
+static int
+inittype(ASTNode *n)
+{
+	if(n == nil) return SINONE;
+	switch(n->t){
+	case ASTCINT:
+	case ASTCONST:
+		return SINONE;
+	case ASTDEFAULT:
+		return SIDEF;
+	case ASTSYMB:
+		if(n->sym == nil || n->sym->clock == nil)
+			return SIINVAL;
+		switch(n->sym->clock->t){
+		case ASTASYNC:
+			return SIASYNC;
+		default:
+			return SISYNC;
+		}
+	case ASTOP:
+		return initjoin(inittype(n->n1), inittype(n->n2));
+	case ASTTERN:
+		return initjoin(initjoin(inittype(n->n1), inittype(n->n2)), inittype(n->n3));
+	default:
+		error(n, "exprtype: unknown %A", n->t);
+		return SIINVAL;
+	}
+}
+
+static void
+initial1(ASTNode *n, Nodes *tr, SemDefs *glob)
+{
+	Nodes *r;
+	SemVar *v;
+	SemInit *si, **p;
+	int t;
+
+	if(n == nil) return;
+	switch(n->t){
+	case ASTASS:
+		assert(n->n1 != nil);
+		if(n->n1->t != ASTSYMB){
+			error(n, "initial1: unknown lval %A", n->n1->t);
+			return;
+		}
+		assert(n->n1->sym != nil);
+		v = n->n1->sym->semc[0];
+		assert(v != nil);
+		if((v->flags & SVREG) == 0){
+			warn(n, "'%s' initial assignment ignored", v->sym->name);
+			break;
+		}
+		for(r = tr; r != nil; r = r->next){
+			t = inittype(r->n);
+			if(t == SIINVAL || t == SINONE) continue;
+			for(p = &v->init; *p != nil; p = &(*p)->vnext)
+				if(nodeeq((*p)->trigger, r->n, nodeeq)){
+					error(n, "'%s' conflicting initial value", v->sym->name);
+					break;
+				}
+			if(*p != nil) continue;
+			si = emalloc(sizeof(SemInit));
+			si->trigger = onlyone(ssabuildbl(r->n, glob, 0));
+			si->type = t;
+			si->var = v;
+			si->val = n->n2;
+			*p = si;
+		}
+		break;
+	case ASTBLOCK:
+		for(r = n->nl; r != nil; r = r->next)
+			initial1(r->n, tr, glob);
+		break;
+	default:
+		error(n, "initial1: unknown %A", n->t);
+	}
+}
+
+static void
+initial(SemDefs *glob)
+{
+	Nodes *r, *s;
+	int t;
+	
+	for(r = initbl; r != nil; r = r->next){
+		for(s = r->n->nl; s != nil; s = s->next){
+			t = inittype(s->n);
+			if(t == SIINVAL || t == SINONE)
+				error(s->n, "'%n' not a valid trigger", s->n);
+		}
+		initial1(r->n->n1, r->n->nl, glob);
+	}
+}
+
+static BitSet *sinitvisit;
+static SemDefs *sinitvars;
+static SemTrigger *sinits;
+
+static Nodes *
+sinitblock(ASTNode *n)
+{
+	SemVar *v, *nv;
+	SemInit *s;
+
+	if(n->t != ASTASS || n->n1->t != ASTSSA) return nl(n);
+	v = n->n1->semv;
+	if(v != v->sym->semc[1]) return nl(n);
+	for(s = v->sym->semc[0]->init; s != nil; s = s->vnext)
+		if(s->type == SISYNC)
+			break;
+	if(s == nil) return nl(n);
+	nv = mkvar(v->sym, v->prime);
+	n->n1 = node(ASTSSA, nv);
+	defsadd(sinitvars, nv, 1);
+	return nl(n);
+}
+
+static void
+sinitsearch(SemBlock *b)
+{
+	int i;
+
+	if(bsadd(sinitvisit, b->idx)) return;
+	b->phi = mkblock(descend(b->phi, nil, sinitblock));
+	b->cont = mkblock(descend(b->cont, nil, sinitblock));
+	for(i = 0; i < b->nfrom; i++)
+		sinitsearch(b->from[i]);
+}
+
+static int
+sinitcmp(void *va, void *vb)
+{
+	SemInit *a, *b;
+	
+	a = *(SemInit**)va; b = *(SemInit**)vb;
+	if(nodeeq(a->trigger, b->trigger, nodeeq)) return 0;
+	return a - b;
+}
+
+static void
+sinitgather(void)
+{
+	int i;
+	SemInit *si;
+	SemTrigger **tp;
+	SemDef *d;
+	enum { BLOCK = 64 };
+
+	sinits = nil;
+	for(i = 0; i < SEMHASH; i++)
+		for(d = sinitvars->hash[i]; d != nil; d = d->next)
+			for(si = d->sym->semc[0]->init; si != nil; si = si->vnext)
+				if(si->type == SISYNC){
+					for(tp = &sinits; *tp != nil; tp = &(*tp)->next)
+						if(nodeeq((*tp)->trigger, si->trigger, nodeeq))
+							break;
+					if(*tp == nil){
+						*tp = emalloc(sizeof(SemTrigger));
+						(*tp)->trigger = si->trigger;
+						(*tp)->last = &(*tp)->first;
+					}
+					si->tnext = nil;
+					*(*tp)->last = si;
+					(*tp)->last = &si->tnext;
+					si->var->nsinits++;
+				}
+}
+
+static void
+mkftlist(SemBlock *b, int to, ...)
+{
+	SemBlock *c, ***p;
+	int *n;
+	va_list va;
+	
+	va_start(va, to);
+	p = to ? &b->to : &b->from;
+	n = to ? &b->nto : &b->nfrom;
+	while(c = va_arg(va, SemBlock *), c != nil){
+		if((*n % BLOCKSBLOCK) == 0)
+			*p = erealloc(*p, sizeof(SemBlock *), *n, BLOCKSBLOCK);
+		(*p)[(*n)++] = c;
+	}
+	va_end(va);
+}
+
+static void
+sinitbuild(SemBlock *b)
+{
+	SemBlock *yes, *no, *then;
+	SemInit *si;
+	ASTNode *p;
+	SemVar *nv, *v;
+	SemTrigger *t;
+	
+	for(t = sinits; t != nil; t = t->next){
+		yes = newblock();
+		no = newblock();
+		then = newblock();
+		yes->cont = node(ASTBLOCK, nil);
+		then->phi = node(ASTBLOCK, nil);
+		b->jump = node(ASTIF, t->trigger, node(ASTSEMGOTO, yes), node(ASTSEMGOTO, no));
+		yes->jump = node(ASTSEMGOTO, then);
+		no->jump = node(ASTSEMGOTO, then);
+		mkftlist(b, 1, yes, no, nil);
+		mkftlist(yes, 0, b, nil);
+		mkftlist(yes, 1, then, nil);
+		mkftlist(no, 0, b, nil);
+		mkftlist(no, 1, then, nil);
+		mkftlist(then, 0, yes, no, nil);
+		for(si = t->first; si != nil; si = si->tnext){
+			v = mkvar(si->var->sym, 1);
+			if(--si->var->nsinits > 0)
+				nv = mkvar(si->var->sym, 1);
+			else
+				nv = si->var->sym->semc[1];
+			yes->cont->nl = nlcat(yes->cont->nl, nl(node(ASTASS, OPNOP, node(ASTSSA, v), si->val)));
+			p = node(ASTPHI);
+			p->nl = nls(node(ASTSSA, v), node(ASTSSA, ssaget(sinitvars, v->sym, 1)), nil);
+			then->phi->nl = nlcat(then->phi->nl, nl(node(ASTASS, OPNOP, node(ASTSSA, nv), p)));
+			defsadd(sinitvars, nv, 1);
+		}
+		b = then;
+	}
+}
+
+static int
+syncinit(void)
+{
+	int i, rc, nb;
+	SemBlock *b;
+	
+	nb = nblocks;
+	sinitvisit = bsnew(nb);
+	rc = 0;
+	for(i = 0; i < nb; i++){
+		b = blocks[i];
+		if(b->nto != 0) continue;
+		bsreset(sinitvisit);
+		sinitvars = defsnew();
+		sinitsearch(b);
+		sinitgather();
+		sinitbuild(b);
+		rc += sinits != nil;
+		free(sinitvars);
+	}
+	return rc;
+}
+
+static Nodes *
+initdef(void)
+{
+	int i;
+	SemInit *si;
+	SemVar *v;
+	Nodes *r;
+	
+	r = nil;
+	for(i = 0; i < nvars; i++){
+		v = vars[i];
+		for(si = v->init; si != nil; si = si->vnext)
+			if(si->type == SIDEF)
+				break;
+		if(si == nil) continue;
+		r = nlcat(r, nl(node(ASTASS, OPNOP, node(ASTSYMB, v->sym), si->val)));
+	}
+	if(r != nil)
+		return nl(node(ASTINITIAL, nil, node(ASTBLOCK, r)));
+	return nil;
+}
+
 static void
 listarr(Nodes *n, ASTNode ***rp, int *nrp)
 {
@@ -1181,8 +1487,6 @@ tracklive1(ASTNode *n, SemVars **gen, SemVars **kill)
 		error(n, "tracklive1: unknown %A", n->t);
 	}
 }
-
-
 
 static SemVars *
 addphis(SemVars *live, SemBlock *t, SemBlock *f)
@@ -1661,6 +1965,7 @@ makeast(ASTNode *n)
 		e = node(ASTBLOCK, p);
 		m->nl = nlcat(m->nl, nl(e));
 	}
+	m->nl = nlcat(m->nl, initdef());
 	return m;
 }
 
@@ -1785,6 +2090,9 @@ semcomp(ASTNode *n)
 	trackcans();
 	trackneed();
 	makenext();
+	initial(glob);
+	syncinit();
+	printblocks();
 	tracklive();
 	countref();
 	dessa();

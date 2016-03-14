@@ -101,6 +101,9 @@ trackvaruse(ASTNode *n, int env)
 		trackvaruse(n->n1, ENVALWAYS);
 		trackvaruse(n->n2, ENVALWAYS);
 		break;
+	case ASTINITIAL:
+		trackvaruse(n->n1, ENVALWAYS);
+		break;
 	case ASTOP:
 	case ASTIF:
 	case ASTWHILE:
@@ -310,9 +313,19 @@ hasdangle(ASTNode *n)
 	switch(n->t){
 	case ASTBLOCK:
 	case ASTASS:
+	case ASTSEMGOTO:
+	case ASTGOTO:
+	case ASTDISABLE:
+	case ASTBREAK:
+	case ASTCONTINUE:
+	case ASTDOWHILE:
 		return 0;
 	case ASTIF:
 		return n->n3 == nil || hasdangle(n->n3);
+	case ASTWHILE:
+		return hasdangle(n->n2);
+	case ASTFOR:
+		return hasdangle(n->n4);
 	default:
 		error(n, "hasdangle: unknown %A", n->t);
 		return 1;
@@ -362,6 +375,11 @@ veriprint(Fmt *f, ASTNode *n, int indent, int env)
 		if(env != ENVMODULE) enverror(n, env);
 		rc += fmtprint(f, "%Ialways @(posedge %N)", indent, n->n1);
 		rc += verbprint(f, n->n2, indent, ENVALWAYS);
+		break;
+	case ASTINITIAL:
+		if(env != ENVMODULE) enverror(n, env);
+		rc += fmtprint(f, "%Iinitial", indent);
+		rc += verbprint(f, n->n1, indent, ENVALWAYS);
 		break;
 	case ASTBLOCK:
 		if(env != ENVMODULE && env != ENVALWAYS) enverror(n, env);

@@ -352,18 +352,24 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 		m->n3 = mkblock(descend(m->n3, pre, mod));
 		m->n4 = mkblock(descend(m->n4, pre, mod));
 		break;
-	case ASTBLOCK:
 	case ASTMODULE:
+		m->ports = nil;
+		for(r = n->ports; r != nil; r = r->next)
+			m->ports = nlcat(m->ports, descend(r->n, pre, mod));
+	case ASTBLOCK:
 	case ASTFSM:
 	case ASTCASE:
 	case ASTLITERAL:
 	case ASTPHI:
-		m->ports = nil;
-		for(r = n->ports; r != nil; r = r->next)
-			m->ports = nlcat(m->ports, descend(r->n, pre, mod));
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, descend(r->n, pre, mod));
+		break;
+	case ASTINITIAL:
+		m->nl = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			m->nl = nlcat(m->nl, descend(r->n, pre, mod));		
+		m->n1 = mkblock(descend(m->n1, pre, mod));
 		break;
 	default:
 		error(n, "descend: unknown %A", n->t);
@@ -430,9 +436,11 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 		for(r = n->nl; r != nil; r = r->next)
 			rc += descendsum(r->n, eval);
 		break;
-	case ASTINVAL:
 	case ASTINITIAL:
-	case ASTMEMB:
+		for(r = n->nl; r != nil; r = r->next)
+			rc += descendsum(r->n, eval);
+		rc += descendsum(n->n1, eval);
+		break;
 	default:
 		error(n, "descendsum: unknown %A", n->t);
 		break;

@@ -41,6 +41,7 @@ static char *astname[] = {
 	[ASTSEMGOTO] "ASTSEMGOTO",
 	[ASTALWAYS] "ASTALWAYS",
 	[ASTDASS] "ASTDASS",
+	[ASTASYNC] "ASTASYNC",
 };
 
 static char *symtname[] = {
@@ -169,10 +170,13 @@ node(int t, ...)
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		break;
-	case ASTINITIAL:
 	case ASTSWITCH:
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
+		break;
+	case ASTINITIAL:
+		n->nl = va_arg(va, Nodes *);
+		n->n1 = va_arg(va, ASTNode *);
 		break;
 	case ASTBREAK:
 	case ASTCONTINUE:
@@ -1390,6 +1394,13 @@ typecheck(ASTNode *n, Type *ctxt)
 		}
 		n->type = ctxt;
 		litcheck(n, ctxt);
+		break;
+	case ASTINITIAL:
+		for(mp = n->nl; mp != nil; mp = mp->next){
+			typecheck(mp->n, nil);
+			mp->n = implicitcast(mp->n, type(TYPBIT, 0));
+		}
+		typecheck(n->n1, nil);
 		break;
 	default:
 		error(n, "typecheck: unknown %A", n->t);
