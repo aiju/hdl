@@ -1414,6 +1414,7 @@ defaultval(Type *t)
 	Const c;
 
 	switch(t->t){
+	case TYPBIT:
 	case TYPBITV:
 		memset(&c, 0, sizeof(Const));
 		c.n = itomp(0, nil);
