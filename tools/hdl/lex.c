@@ -149,7 +149,7 @@ loop:
 		return '/';
 	}
 	if(isdigit(c) || c == '\''){
-		for(p = buf, *p++ = c; c = lexgetc(), isalnum(c) || c == '\''; )
+		for(p = buf, *p++ = c; c = lexgetc(), isalnum(c) || c == '\'' || c == '_'; )
 			if(c != '_' && p < buf + sizeof buf - 1)
 				*p++ = c;
 		*p = 0;

@@ -93,6 +93,7 @@ consparse(Const *c, char *s)
 		sz = strtol(s, &p, 10);
 		if(*p != '\'')
 			goto snope;
+		s = p;
 	}else
 		sz = 0;
 	s++;
@@ -106,9 +107,8 @@ consparse(Const *c, char *s)
 	case 'o': case 'O': b = 8; break;
 	case 'b': case 'B': b = 2; break;
 	default:
-		b = 0;
-		i = 0;
-		goto nope;
+		error(nil, "'%c' invalid base specifier", *s);
+		goto out;
 	}
 	s++;
 	if(s[1] == 0 && (s[0] == 'x' || s[0] == 'X' || s[0] == 'z' || s[0] == 'Z' || s[0] == '?'))
@@ -167,6 +167,10 @@ consparse(Const *c, char *s)
 	return;
 nope:
 	error(nil, "'%c' in %s number", s[i], b == 8 ? "octal": b == 16 ? "hexadecimal" : b == 2 ? "binary" : "decimal");
+out:
+	c->n = mpnew(0);
+	c->x = mpnew(0);
+	c->sz = 0;
 }
 
 int
