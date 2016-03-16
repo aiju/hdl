@@ -109,6 +109,7 @@ trackvaruse(ASTNode *n, int env)
 	case ASTWHILE:
 	case ASTSWITCH:
 	case ASTTERN:
+	case ASTIDX:
 		trackvaruse(n->n1, env);
 		trackvaruse(n->n2, env);
 		trackvaruse(n->n3, env);
@@ -194,6 +195,20 @@ vereprint(Fmt *f, ASTNode *n, int env)
 		rc += vereprint(f, n->n3, 0);
 		if(env > 0)
 			rc += fmtrune(f, ')');
+		break;
+	case ASTIDX:
+		rc += vereprint(f, n->n1, 15);
+		rc += fmtrune(f, '[');
+		rc += vereprint(f, n->n2, 0);
+		switch(n->op){
+		case 0: break;
+		case 1: rc += fmtrune(f, ':'); break;
+		case 2: rc += fmtstrcpy(f, " +: "); break;
+		case 3: rc += fmtstrcpy(f, " -: "); break;
+		default: error(n, "vereprint: index op %d does not exist", n->op);
+		}
+		rc += vereprint(f, n->n3, 0);
+		rc += fmtrune(f, ']');
 		break;
 	default:
 		error(n, "vereprint: unknown %A", n->t);

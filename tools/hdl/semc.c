@@ -554,6 +554,7 @@ ssabuildbl(ASTNode *n, SemDefs *d, int attr)
 	case ASTOP:
 	case ASTTERN:
 	case ASTSWITCH:
+	case ASTIDX:
 		m->n1 = mkblock(ssabuildbl(n->n1, d, attr));
 		m->n2 = mkblock(ssabuildbl(n->n2, d, attr));
 		m->n3 = mkblock(ssabuildbl(n->n3, d, attr));
@@ -889,6 +890,7 @@ trackdep(ASTNode *n, SemVars *cdep)
 		cdep->ref++;
 		return depcat(trackdep(n->n1, cdep), trackdep(n->n2, cdep));
 	case ASTTERN:
+	case ASTIDX:
 		cdep->ref += 2;
 		return depcat(depcat(trackdep(n->n1, cdep), trackdep(n->n2, cdep)), trackdep(n->n3, cdep));
 	case ASTSSA:
@@ -1475,10 +1477,11 @@ tracklive1(ASTNode *n, SemVars **gen, SemVars **kill)
 		tracklive1(n->n2, gen, kill);
 		break;
 	case ASTTERN:
+	case ASTIDX:
 		tracklive1(n->n1, gen, kill);
 		tracklive1(n->n2, gen, kill);
 		tracklive1(n->n3, gen, kill);
-		break;	
+		break;
 	case ASTIF:
 		tracklive1(n->n2, gen, kill);
 		tracklive1(n->n3, gen, kill);
@@ -1552,6 +1555,7 @@ proplive(ASTNode *n, SemVars **live)
 		m->n2 = mkblock(proplive(n->n2, live));
 		break;
 	case ASTTERN:
+	case ASTIDX:
 		m->n1 = mkblock(proplive(n->n1, live));
 		m->n2 = mkblock(proplive(n->n2, live));
 		m->n3 = mkblock(proplive(n->n3, live));
