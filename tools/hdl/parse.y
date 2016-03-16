@@ -22,7 +22,7 @@
 
 %token LMODULE LINPUT LOUTPUT LBIT LIF LELSE LCLOCK LWHILE LDO LFOR LBREAK LINTEGER
 %token LCONTINUE LGOTO LFSM LDEFAULT LREAL LSTRING LENUM LSTRUCT LWIRE LREG LTYPEDEF
-%token LINITIAL LSIGNED LSWITCH LCASE LCONST
+%token LINITIAL LSIGNED LSWITCH LCASE LCONST LSWITCHZ
 
 %token LOINC LODEC LOEXP LOLSL LOLSR LOASR LOEQ LOEQS LONE LONES LOLE LOGE LOLOR LOLAND LOPACK
 %token LOADDEQ LOSUBEQ LOMULEQ LODIVEQ LOMODEQ LOLSLEQ LOLSREQ LOASREQ LOANDEQ LOOREQ LOXOREQ LOEXPEQ
@@ -159,7 +159,8 @@ stat:
 	| LSYMB '{' { $<n>$ = newscope(scope, ASTBLOCK, $1); } stats { scopeup(); } '}' { $<n>3->nl = $4; $$ = nl($<n>3); }
 	| LFSM symb '{' { $<n>$ = newscope(scope, ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $<n>4->nl = $5; $$ = nl($<n>4); }
 	| LINITIAL '(' triggers ecomma ')' stat { $$ = nl(node(ASTINITIAL, $3, mkblock($6))); }
-	| LSWITCH '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, $3, $<n>6)); }
+	| LSWITCH '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, 0, $3, $<n>6)); }
+	| LSWITCHZ '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, 1, $3, $<n>6)); }
 	| LCASE elist ':' { $$ = nl(node(ASTCASE, $2)); }
 	| stat1 ';' { $$ = nl($1); }
 	| globdef

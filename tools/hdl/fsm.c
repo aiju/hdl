@@ -594,7 +594,7 @@ findfsm(ASTNode *n)
 		bl->nl = nlcat(bl->nl, nl(simpdisable(bm, fsmlabel)));
 	}
 	
-	bl = node(ASTSWITCH, node(ASTSYMB, n->sym), bl);
+	bl = node(ASTSWITCH, 0, node(ASTSYMB, n->sym), bl);
 	bm = node(ASTBLOCK, nlcat(def, nl(bl)));
 	
 	n->sym->t = SYMVAR;

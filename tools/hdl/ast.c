@@ -171,6 +171,7 @@ node(int t, ...)
 		n->n2 = va_arg(va, ASTNode *);
 		break;
 	case ASTSWITCH:
+		n->op = va_arg(va, int);
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		break;

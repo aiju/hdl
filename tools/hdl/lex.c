@@ -46,6 +46,7 @@ static Keyword kwtable[] = {
 	"string", LSTRING,
 	"struct", LSTRUCT,
 	"switch", LSWITCH,
+	"switchz", LSWITCHZ,
 	"typedef", LTYPEDEF,
 	"while", LWHILE,
 	"wire", LWIRE,

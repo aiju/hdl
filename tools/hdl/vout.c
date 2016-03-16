@@ -268,7 +268,8 @@ vswitch(Fmt *f, ASTNode *n, int indent, int env)
 	int rc, open;
 	Nodes *r, *s;
 	
-	rc = fmtprint(f, "%Icase(%n)\n", indent, n->n1);
+	assert((unsigned)n->op <= 1);
+	rc = fmtprint(f, "%I%s(%n)\n", indent, n->op != 0 ? "casez" : "case", n->n1);
 	assert(n->n2 != nil && n->n2->t == ASTBLOCK);
 	open = 0;
 	for(r = n->n2->nl; r != nil; r = r->next)
