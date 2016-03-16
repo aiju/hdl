@@ -591,6 +591,7 @@ findfsm(ASTNode *n)
 			if(m != nil)
 				bm->nl = nlcat(bm->nl, descend(m, nil, gotofix));
 		}
+		scopeup();
 		bl->nl = nlcat(bl->nl, nl(simpdisable(bm, fsmlabel)));
 	}
 	
@@ -600,6 +601,7 @@ findfsm(ASTNode *n)
 	n->sym->t = SYMVAR;
 	n->sym->type = fsmenum();
 	bl = node(ASTDECL, n->sym, nil);
+	scopeup();
 	return nls(bl, bm, nil);
 }
 

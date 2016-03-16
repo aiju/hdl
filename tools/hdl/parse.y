@@ -65,7 +65,7 @@ program:
 globdef: module { $$ = nl($1); }
 	| type ';' { $$ = nil; }
 
-module: LMODULE symb '(' { $<n>$ = newscope(scope, ASTMODULE, $2); } args ')' '{' stats '}' { $$ = $<n>4; $$->ports = $5; $$->nl = $stats; }
+module: LMODULE symb '(' { $<n>$ = newscope(scope, ASTMODULE, $2); } args ')' '{' stats '}' { scopeup(); $$ = $<n>4; $$->ports = $5; $$->nl = $stats; }
 
 optargs: { $$ = nil; } | '(' args ')' { $$ = $2; };
 args: { $$ = nil; } | args1 | args1 ','
@@ -157,10 +157,10 @@ stat:
 	| clock '{' stats '}' = { curclock = curclock->next; $$ = $3; }
 	| '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats { scopeup(); } '}' { $<n>2->nl = $3; $$ = nl($<n>2); }
 	| LSYMB '{' { $<n>$ = newscope(scope, ASTBLOCK, $1); } stats { scopeup(); } '}' { $<n>3->nl = $4; $$ = nl($<n>3); }
-	| LFSM symb '{' { $<n>$ = newscope(scope, ASTFSM, $2); fsmstart($<n>$); } stats '}' { fsmend(); $<n>4->nl = $5; $$ = nl($<n>4); }
+	| LFSM symb '{' { $<n>$ = newscope(scope, ASTFSM, $2); fsmstart($<n>$); } stats '}' { scopeup(); fsmend(); $<n>4->nl = $5; $$ = nl($<n>4); }
 	| LINITIAL '(' triggers ecomma ')' stat { $$ = nl(node(ASTINITIAL, $3, mkblock($6))); }
-	| LSWITCH '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, 0, $3, $<n>6)); }
-	| LSWITCHZ '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, 1, $3, $<n>6)); }
+	| LSWITCH '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { scopeup(); $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, 0, $3, $<n>6)); }
+	| LSWITCHZ '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { scopeup(); $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, 1, $3, $<n>6)); }
 	| LCASE elist ':' { $$ = nl(node(ASTCASE, $2)); }
 	| stat1 ';' { $$ = nl($1); }
 	| globdef
