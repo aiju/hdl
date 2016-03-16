@@ -222,9 +222,11 @@ defsym(Symbol *s, SemDefs *glob)
 	
 	for(i = 0; i < 2; i++){
 		s->semc[i] = mkvar(s, i);
-		defsadd(glob, s->semc[i], 0);
+		if(glob != nil)
+			defsadd(glob, s->semc[i], 0);
 	}
-	s->semc[0]->flags |= SVPORT;
+	if((s->opt & (OPTIN|OPTOUT)) != 0)
+		s->semc[0]->flags |= SVPORT;
 }
 
 static SemBlock *
@@ -316,6 +318,9 @@ blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob, TBlock *tb)
 			}
 			free(tb);
 		}
+		return sb;
+	case ASTDECL:
+		defsym(n->sym, glob);
 		return sb;
 	case ASTMODULE:
 		assert(sb == nil);
@@ -2092,7 +2097,6 @@ semcomp(ASTNode *n)
 	makenext();
 	initial(glob);
 	syncinit();
-	printblocks();
 	tracklive();
 	countref();
 	dessa();
