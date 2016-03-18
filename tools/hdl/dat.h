@@ -59,7 +59,7 @@ struct Symbol {
 	
 	SemVar *semc[2];
 	int semcidx[2];
-	int multiwhine;
+	int whine, multiwhine;
 	
 	Line;
 };

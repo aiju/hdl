@@ -44,7 +44,7 @@ looksym(SymTab *st, int hier, char *n)
 	h = hash(n) % SYMHASH;
 	for(; st != nil; st = hier ? st->up : nil)
 		for(s = st->sym[h]; s != nil; s = s->next)
-			if(strcmp(s->name, n) == 0 && s->t != SYMNONE)
+			if(strcmp(s->name, n) == 0)
 				return s;
 	return nil;
 }
@@ -281,6 +281,6 @@ defpackdef(ASTNode *p)
 void
 checksym(Symbol *s)
 {
-	if(s->t == SYMNONE)
+	if(s->t == SYMNONE && s->whine++ < 5)
 		error(nil, "'%s' undeclared", s->name);
 }
