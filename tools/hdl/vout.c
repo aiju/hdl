@@ -207,7 +207,8 @@ vereprint(Fmt *f, ASTNode *n, int env)
 		case 3: rc += fmtstrcpy(f, " -: "); break;
 		default: error(n, "vereprint: index op %d does not exist", n->op);
 		}
-		rc += vereprint(f, n->n3, 0);
+		if(n->op != 0)
+			rc += vereprint(f, n->n3, 0);
 		rc += fmtrune(f, ']');
 		break;
 	default:
