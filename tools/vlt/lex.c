@@ -252,7 +252,7 @@ pleave(PiecePos *p)
 }
 
 static int
-lexgetc(void)
+llexgetc(void)
 {
 	int c, i;
 
@@ -294,6 +294,16 @@ lexgetc(void)
 		fileup();
 	}
 	return c;
+}
+
+static int
+lexgetc(void)
+{
+	int rc;
+	
+	rc = llexgetc();
+	print("%d %c\n", rc, rc);
+	return rc;
 }
 
 static void
@@ -570,6 +580,7 @@ piecescopy(Macro *m, Piece *p, Piece **args, int nargs)
 		memcpy(pp->args, args, sizeof(Piece *) * nargs);
 		pp->pa = emalloc(sizeof(PiecePos));
 		pp->pa->up = pp;
+		pp->pa->ungetch = -1;
 	}
 	pp->up = pstack;
 	pstack = pp;
