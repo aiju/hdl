@@ -252,7 +252,7 @@ pleave(PiecePos *p)
 }
 
 static int
-llexgetc(void)
+lexgetc(void)
 {
 	int c, i;
 
@@ -294,16 +294,6 @@ llexgetc(void)
 		fileup();
 	}
 	return c;
-}
-
-static int
-lexgetc(void)
-{
-	int rc;
-	
-	rc = llexgetc();
-	print("%d %c\n", rc, rc);
-	return rc;
 }
 
 static void
