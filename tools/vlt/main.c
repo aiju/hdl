@@ -99,7 +99,7 @@ strmark(char *s)
 }
 
 int
-clog2(uint n)
+flog2(uint n)
 {
 	int r;
 	static int l[16] = {0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3};
@@ -109,6 +109,13 @@ clog2(uint n)
 	if((n & 0xFF00) != 0) { r += 8; n >>= 8; }
 	if((n & 0xF0) != 0) { r += 4; n >>= 4; }
 	return r + l[n];
+}
+
+int
+clog2(uint n)
+{
+	if(n == 0) return 0;
+	return flog2(n - 1) + 1;
 }
 
 static void

@@ -29,6 +29,7 @@ int expect(int);
 void findmod(CModule *);
 void matchports(CModule *);
 CWire *getwire(CDesign *, char *);
+int flog2(uint);
 int clog2(uint);
 void cfginit(void);
 int isconsttrunc(Const *, int);

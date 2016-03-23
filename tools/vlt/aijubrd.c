@@ -498,7 +498,7 @@ makeintercon(Biobuf *bp)
 	for(ma = maps, i = 1; ma != nil; ma = ma->next, i++)
 		Bprint(bp, "\tlocalparam WAIT_%s = %d;\n", ma->name, i);
 	
-	Bprint(bp, "\treg [%d:0] state;\n\n", clog2(i+1)-1);
+	Bprint(bp, "\treg [%d:0] state;\n\n", flog2(i));
 	
 	Bprint(bp, "\talways @(posedge clk or negedge rstn)\n"
 		"\t\tif(!rstn) begin\n"
