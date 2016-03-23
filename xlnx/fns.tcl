@@ -41,16 +41,16 @@ proc implement {} {
 	
 	report_timing_summary -file $target/post_route_timing.rpt
 	report_utilization -file $target/post_route_util.rpt
-	
-	if {! [string match -nocase {*timing constraints are met*} \
-	[report_timing_summary -no_header -no_detailed_paths -return_string]]} \
-	{puts "timing constraints not met"}
 }
 
 proc bitstream {} {
 	global target
 	checktarget
 	write_bitstream -force -bin_file -file $target/out.bit
+	
+	if {! [string match -nocase {*timing constraints are met*} \
+	[report_timing_summary -no_header -no_detailed_paths -return_string]]} \
+	{puts " **** timing constraints not met ****"}
 }
 
 proc notb {args} {
