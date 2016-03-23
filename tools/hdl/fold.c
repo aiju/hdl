@@ -178,7 +178,7 @@ clog2(uint i)
 {
 	int n;
 
-	if(i == 0) return 0;
+	if(i <= 1) return 0;
 	n = 1;
 	i--;
 	if((i & 0xffff0000) != 0) { n += 16; i >>= 16; }
