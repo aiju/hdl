@@ -19,6 +19,7 @@ module j11int(
 	output reg busreq,
 	output reg buswr,
 	output reg busgp,
+	output reg busirq,
 	output reg [21:0] busaddr,
 	output reg [15:0] buswdata,
 	input wire busack,
@@ -80,12 +81,11 @@ module j11int(
 	localparam WRWAIT = 14;
 	localparam WRREQ = 15;
 	localparam WREND = 16;
-	localparam IRQACK = 17;
-	localparam OUTHI0 = 18;
-	localparam OUTHI1 = 19;
-	localparam OUTHI2 = 20;
-	localparam OUTHI3 = 21;
-	localparam INIT = 22;
+	localparam OUTHI0 = 17;
+	localparam OUTHI1 = 18;
+	localparam OUTHI2 = 19;
+	localparam OUTHI3 = 20;
+	localparam INIT = 21;
 
 	reg [4:0] state = INIT;
 	reg [4:0] state_;
@@ -138,8 +138,6 @@ module j11int(
 			casez(aio)
 			4'b1111:
 				state_ = WREND;
-			4'b1101:
-				state_ = IRQACK;
 			4'b1zzz:
 				state_ = 0&&!abort ? RDEND1 : RDREQ;
 			default:
@@ -178,9 +176,6 @@ module j11int(
 					state_ = OUTHI0;
 				else
 					state_ = IDLE;
-		IRQACK:
-			if(sctl)
-				state_ = IDLE;
 		OUTHI0:
 			state_ = OUTHI1;
 		OUTHI1:
@@ -212,6 +207,7 @@ module j11int(
 			busaddr[21:16] <= j11f[5:0];
 			aio <= j11f[11:8];
 			busgp <= j11f[11:8] == 4'b1110 || j11f[11:8] == 4'b0101;
+			busirq <= j11f[11:8] == 4'b1101;
 			bs <= j11f[7:6];
 			abort <= j11f[13];
 		end

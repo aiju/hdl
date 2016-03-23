@@ -6,6 +6,7 @@ module j11bus(
 	input wire busreq,
 	input wire buswr,
 	input wire busgp,
+	input wire busirq,
 	input wire [21:0] busaddr,
 	input wire [15:0] buswdata,
 	output reg busack,
@@ -27,6 +28,8 @@ module j11bus(
 	output wire [15:0] uartwdata,
 	input wire uartack,
 	input wire [15:0] uartrdata,
+	
+	input wire [1:0] uartirq,
 	
 	output reg j11init,
 	output reg j11halt,
@@ -50,7 +53,6 @@ module j11bus(
 		j11halt = 1'b0;
 		j11parity = 1'b1;
 		j11event = 1'b1;
-		j11irq = 4'b1111;
 		j11pwrf = 1'b1;
 		j11fpe = 1'b1;
 		busrst = 1'b1;
@@ -67,6 +69,8 @@ module j11bus(
 	reg odt;
 	assign leds = {4'b0, odt, j11init};
 	
+	reg [1:0] uartirqact;
+	
 	always @(posedge clk) begin
 		busack <= 1'b0;
 		buserr <= 1'b0;
@@ -82,6 +86,20 @@ module j11bus(
 				{1'b1, 8'o34}: odt <= 1'b1;
 				{1'b1, 8'o214}: busrst <= 1'b0;
 				{1'b1, 8'o234}: odt <= 1'b0;
+				endcase
+			end else if(busirq) begin
+				busack <= 1'b1;
+				busrdata <= 16'bx;
+				case(busaddr[3:0])
+				4'b0001: begin
+					if(uartirqact[0]) begin
+						busrdata <= 16'o60;
+						uartirqact[0] <= 1'b0;
+					end else if(uartirqact[1]) begin
+						busrdata <= 16'o64;
+						uartirqact[1] <= 1'b0;
+					end
+				end
 				endcase
 			end else begin
 				if(busaddr < 22'o17760000)
@@ -104,8 +122,14 @@ module j11bus(
 			busack <= 1'b1;
 			busrdata <= uartrdata;
 		end
+		if(uartirq[0]) uartirqact[0] <= 1'b1;
+		if(uartirq[1]) uartirqact[1] <= 1'b1;
 	end
 	
+	always @(posedge clk) begin
+		j11irq <= 4'b0000;
+		if(uartirqact != 0) j11irq[0] <= 1'b1;
+	end
 	
 	always @(posedge clk) begin
 		regack <= regreq;

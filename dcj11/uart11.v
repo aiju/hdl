@@ -11,6 +11,8 @@ module uart11(
 	output reg uartack,
 	output reg [15:0] uartrdata,
 	
+	output reg [1:0] uartirq,
+	
 	input wire uarthostreq,
 	input wire [2:0] uarthostaddr,
 	input wire uarthostwr,
@@ -25,8 +27,21 @@ module uart11(
 	
 	assign txwrdata = uartwdata[7:0];
 	assign rxwrdata = uarthostwdata[7:0];
-	wire [15:0] rcsr = {8'd0, !rxempty, 7'd0};
-	wire [15:0] xcsr = {8'd0, !txfull, 7'd0};
+	reg rxirqen, txirqen;
+	wire [15:0] rcsr = {8'd0, !rxempty, rxirqen, 6'd0};
+	wire [15:0] xcsr = {8'd0, !txfull, txirqen, 6'd0};
+	
+	reg [15:0] rxbytes;
+	
+	always @(posedge clk) begin
+		if(rxwren && !rxrden) rxbytes <= rxbytes + 1;
+		if(rxrden && !rxwren) rxbytes <= rxbytes - 1;
+	end
+	
+	always @(posedge clk) begin
+		uartirq[0] <= rxirqen && (rxrden && rxbytes > 1 || rxwren && rxbytes == 0);
+		uartirq[1] <= txirqen && txwren;
+	end
 
 	always @(posedge clk) begin
 		rxrden <= 1'b0;
@@ -38,11 +53,13 @@ module uart11(
 			uartrdata <= 16'bx;
 			casex({uartwr, uartaddr})
 			4'b000x: uartrdata <= rcsr;
+			4'b100x: rxirqen <= uartwdata[6];
 			4'b001x: begin
 				uartrdata <= {8'b0, rxrddata};
 				rxrden <= !rxempty;
 			end
 			4'b010x: uartrdata <= xcsr;
+			4'b110x: txirqen <= uartwdata[6];
 			4'b111x: txwren <= 1'b1;
 			endcase
 		end
