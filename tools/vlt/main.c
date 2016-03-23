@@ -114,7 +114,7 @@ flog2(uint n)
 int
 clog2(uint n)
 {
-	if(n == 0) return 0;
+	if(n <= 1) return 0;
 	return flog2(n - 1) + 1;
 }
 
