@@ -19,6 +19,8 @@ module hjdebug #(parameter N = 1, parameter SUM = 0, parameter SIZ = 1024) (
 	reg running = 1'b0, avail = 1'b0, full, start, abort, start0, step, trans;
 	reg step0 = 1'b0, step1 = 1'b0;
 	reg [N-1:0] memrdata, memrdata0, rdshreg, in0, in1, lastwr;
+	reg [31:0] trigctr;
+	reg trigrdy;
 	wire trigger;
 	genvar i;
 	
@@ -82,7 +84,8 @@ module hjdebug #(parameter N = 1, parameter SUM = 0, parameter SIZ = 1024) (
 	wire [NL-1:0] lout;
 	wire [2*N-1:0] tinp = {memrdata0, memrdata_};
 	reg srbusy = 1'b0;
-	assign trigger = !srbusy && &lout;
+	wire rawtrigger = !srbusy && &lout;
+	assign trigger = trigrdy && rawtrigger;
 	
 	for(i = 0; i < NL; i = i + 1) begin :trig
 		CFGLUT5 #(.INIT(-1)) L(
@@ -112,6 +115,10 @@ module hjdebug #(parameter N = 1, parameter SUM = 0, parameter SIZ = 1024) (
 		step1 <= step0;
 		regack <= 1'b0;
 	
+		if(rawtrigger && trigctr > 0) begin
+			trigctr <= trigctr - 1;
+			trigrdy <= trigctr == 1;
+		end
 		if(regreq) begin
 			regack <= 1'b1;
 			regerr <= 1'b0;
@@ -127,6 +134,10 @@ module hjdebug #(parameter N = 1, parameter SUM = 0, parameter SIZ = 1024) (
 					startsr <= 1'b1;
 					regack <= 1'b0;
 				end
+				20: begin
+					trigctr <= regwdata;
+					trigrdy <= regwdata == 0;
+				end
 				default: regerr <= 1'b1;
 				endcase
 			else
@@ -138,6 +149,7 @@ module hjdebug #(parameter N = 1, parameter SUM = 0, parameter SIZ = 1024) (
 					step <= 1'b1;
 				end
 				16: regrdata <= SUM;
+				20: regrdata <= trigctr;
 				default: regerr <= 1'b1;
 				endcase
 		end

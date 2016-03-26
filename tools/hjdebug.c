@@ -14,6 +14,7 @@ enum {
 	DEBUGDATA,
 	DEBUGTRIG,
 	DEBUGSUM,
+	DEBUGTRIGCTR,
 };
 
 enum {
@@ -376,7 +377,7 @@ copy(ulong *rp)
 static void
 usage(void)
 {
-	fprint(2, "usage: %s -p addr [-t] [-T tpoint] [trigger]\n       %s -p addr [-t] [-T tpoint] -d \n", argv0, argv0);
+	fprint(2, "usage: %s -p addr [-t] [-T tpoint] [-c count] [trigger]\n       %s -p addr [-t] [-T tpoint] -d \n", argv0, argv0);
 	exits("usage");
 }
 
@@ -384,7 +385,7 @@ void
 main(int argc, char **argv)
 {
 	Biobuf *bp;
-	int trans, download, addr, tpoint;
+	int trans, download, addr, tpoint, tcount;
 	ulong fsum;
 	char *p;
 	ulong *rp;
@@ -394,6 +395,7 @@ main(int argc, char **argv)
 	download = 0;
 	addr = -1;
 	tpoint = 0;
+	tcount = 0;
 	ARGBEGIN {
 	case 'p':
 		addr = strtol(EARGF(usage()), &p, 0);
@@ -404,6 +406,10 @@ main(int argc, char **argv)
 		break;
 	case 'T':
 		tpoint = strtol(EARGF(usage()), &p, 0);
+		if(*p != 0) usage();
+		break;
+	case 'c':
+		tcount = strtol(EARGF(usage()), &p, 0);
 		if(*p != 0) usage();
 		break;
 	case 'd':
@@ -432,6 +438,7 @@ main(int argc, char **argv)
 		rp[DEBUGCTL] |= CTLABORT;
 		if(argc != 0)
 			trigger(rp, argv[0]);
+		rp[DEBUGTRIGCTR] = tcount;
 		rp[DEBUGCTL] = tpoint << 16 | (trans ? CTLTRANS : 0) | CTLSTART;
 	}
 	while((rp[DEBUGCTL] & CTLAVAIL) == 0)
