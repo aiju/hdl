@@ -1,6 +1,6 @@
 `default_nettype none
 
-module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
+module hjdebug #(parameter N = 1, parameter SUM = 0, parameter SIZ = 1024) (
 	input wire clk,
 	
 	input wire regreq,
@@ -137,6 +137,7 @@ module hjdebug #(parameter N = 1, parameter SIZ = 1024) (
 					regack <= 1'b0;
 					step <= 1'b1;
 				end
+				16: regrdata <= SUM;
 				default: regerr <= 1'b1;
 				endcase
 		end

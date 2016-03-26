@@ -2,6 +2,7 @@
 #include <libc.h>
 #include <mp.h>
 #include <bio.h>
+#include <libsec.h>
 #include "dat.h"
 #include "fns.h"
 
@@ -636,6 +637,26 @@ aijufindmod(CModule *m)
 	return s;
 }
 
+static ulong
+calcsum(CModule *m)
+{
+	Fmt f;
+	char *s;
+	Symbol *p;
+	uchar digest[MD5dlen];
+
+	for(p = m->node->sc.st->ports; p != nil; p = p->portnext)
+		if(strcmp(p->name, "_regwdata") == 0)
+			break;
+	fmtstrinit(&f);
+	for(p = p->portnext; p != nil; p = p->portnext)
+		fmtprint(&f, "%s %n\n", p->name, p->type->sz);
+	s = fmtstrflush(&f);
+	md5((uchar *) s, strlen(s), digest, nil);
+	free(s);
+	return digest[0] | digest[1] << 8 | digest[2] << 16 | digest[3] << 24;
+}
+
 static void
 makedebug(CModule *m, Biobuf *bp)
 {
@@ -654,7 +675,7 @@ makedebug(CModule *m, Biobuf *bp)
 	for(p = p->portnext; p != nil; p = p->portnext)
 		sz = add(sz, p->type->sz);
 
-	Bprint(bp, "\thjdebug #(.N(%n)) debug0(\n"
+	Bprint(bp, "\thjdebug #(.N(%n), .SUM(32'h%.8ulx)) debug0(\n"
 		"\t\t.clk(clk),\n"
 		"\t\t.regreq(_regreq),\n"
 		"\t\t.regwr(_regwr),\n"
@@ -663,7 +684,7 @@ makedebug(CModule *m, Biobuf *bp)
 		"\t\t.regaddr(_regaddr),\n"
 		"\t\t.regrdata(_regrdata),\n"
 		"\t\t.regwdata(_regwdata),\n"
-		"\t\t.in({\n", sz);
+		"\t\t.in({\n", sz, calcsum(m));
 	for(p = m->node->sc.st->ports; p != nil; p = p->portnext)
 		if(strcmp(p->name, "_regwdata") == 0)
 			break;

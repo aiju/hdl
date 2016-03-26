@@ -3,6 +3,7 @@
 #include <bio.h>
 #include <ctype.h>
 #include <mp.h>
+#include <libsec.h>
 
 typedef struct Field Field;
 int debug = 0;
@@ -12,6 +13,7 @@ enum {
 	DEBUGN,
 	DEBUGDATA,
 	DEBUGTRIG,
+	DEBUGSUM,
 };
 
 enum {
@@ -94,6 +96,23 @@ readin(Biobuf *bp)
 		f->prev->next = f;
 		f->next->prev = f;
 	}
+}
+
+static ulong
+fieldsum(void)
+{
+	Field *f;
+	Fmt fmt;
+	char *s;
+	uchar digest[MD5dlen];
+	
+	fmtstrinit(&fmt);
+	for(f = fields.next; f != &fields; f = f->next)
+		fmtprint(&fmt, "%s %d\n", f->n, f->w);
+	s = fmtstrflush(&fmt);
+	md5((uchar *) s, strlen(s), digest, nil);
+	free(s);
+	return digest[0] | digest[1] << 8 | digest[2] << 16 | digest[3] << 24;
 }
 
 char *bufp;
@@ -323,7 +342,10 @@ copy(ulong *rp)
 				}
 				nb = f->w - l;
 				if(nb > k) nb = k;
-				uitomp(sh & (1<<nb)-1, r);
+				if(nb == 32)
+					uitomp(sh, r);
+				else
+					uitomp(sh & (1<<nb)-1, r);
 				mpleft(r, l, r);
 				mpor(f->new, r, f->new);
 				l += nb;
@@ -363,6 +385,7 @@ main(int argc, char **argv)
 {
 	Biobuf *bp;
 	int trans, download, addr, tpoint;
+	ulong fsum;
 	char *p;
 	ulong *rp;
 	
@@ -402,6 +425,9 @@ main(int argc, char **argv)
 	if(rp == (void*)-1)
 		sysfatal("segattach: %r");
 	rp += addr / 4;
+	fsum = fieldsum();
+	if(rp[DEBUGSUM] != fsum)
+		fprint(2, "checksums don't match (%#.8ulx != %#.8ulx)\n", rp[DEBUGSUM], fsum);
 	if(!download){
 		rp[DEBUGCTL] |= CTLABORT;
 		if(argc != 0)
