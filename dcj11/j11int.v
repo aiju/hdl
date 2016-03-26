@@ -55,7 +55,7 @@ module j11int(
 		syncsctl(clk, j11sctl, sctl),
 		syncmaps(clk, j11map, map);
 	
-	reg [3:0] ctr = 0;
+	reg [4:0] ctr = 0;
 	initial j11clk = 1'b0;
 	always @(posedge clk)
 		if(ctr == 4) begin
@@ -100,10 +100,12 @@ module j11int(
 	assign j11f = fdrive ? fout : 16'bz;
 	wire [15:0] hi = {6'b0, j11parity, j11event, j11fpe, j11init, j11halt, j11pwrf, j11irq};
 	reg [15:0] hi0 = 16'b0;
+	reg j11init0;
 	
 	always @(posedge clk) begin
 		state <= state_;
 		strb0 <= strb;
+		j11init0 <= j11init;
 		
 		if(busack)
 			fout <= busrdata;
@@ -188,6 +190,7 @@ module j11int(
 			if(hi != hi0)
 				state_ = OUTHI0;
 		endcase
+		if(j11init0 && !j11init) state_ = OUTHI0;
 	end
 	
 	initial busreq = 1'b0;

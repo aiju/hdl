@@ -7,19 +7,22 @@ module j11mem(
 	input wire memwr,
 	input wire [21:0] memaddr,
 	input wire [15:0] memwdata,
-	output reg memack,
-	output reg [15:0] memrdata
+	output wire memack,
+	output wire [15:0] memrdata,
+	
+	output wire dmemreq,
+	output wire dmemwr,
+	output wire [21:0] dmemaddr,
+	output wire [15:0] dmemwdata,
+	input wire dmemack,
+	input wire [15:0] dmemrdata	
 );
 
-	reg [15:0] mem[0:4095];
-	
-	always @(posedge clk) begin
-		memack <= memreq;
-		if(memreq)
-			if(memwr)
-				mem[memaddr] <= memwdata;
-			else
-				memrdata <= mem[memaddr];
-	end
+	assign dmemreq = memreq;
+	assign dmemwr = memwr;
+	assign dmemaddr = memaddr;
+	assign dmemwdata = memwdata;
+	assign memack = dmemack;
+	assign memrdata = dmemrdata;
 
 endmodule
