@@ -286,17 +286,17 @@ const: expr;
 
 expr:
 	primary
-	| '+' attrs expr %prec unaryprec { $$ = node(ASTUN, OPUPLUS, $3, $2); }
-	| '-' attrs expr %prec unaryprec { $$ = node(ASTUN, OPUMINUS, $3, $2); }
-	| '!' attrs expr %prec unaryprec { $$ = node(ASTUN, OPLNOT, $3, $2); }
-	| '~' attrs expr %prec unaryprec { $$ = node(ASTUN, OPNOT, $3, $2); }
-	| '&' attrs expr %prec unaryprec { $$ = node(ASTUN, OPRAND, $3, $2); }
-	| LONAND attrs expr %prec unaryprec { $$ = node(ASTUN, OPRNAND, $3, $2); }
-	| '|' attrs expr %prec unaryprec { $$ = node(ASTUN, OPROR, $3, $2); }
-	| LONOR attrs expr %prec unaryprec { $$ = node(ASTUN, OPRNOR, $3, $2); }
-	| '^' attrs expr %prec unaryprec { $$ = node(ASTUN, OPRXOR, $3, $2); }
-	| LONXOR attrs expr %prec unaryprec { $$ = node(ASTUN, OPRXNOR, $3, $2); }
-	| LONXOR1 attrs expr %prec unaryprec { $$ = node(ASTUN, OPRXNOR, $3, $2); }
+	| '+' attrs primary %prec unaryprec { $$ = node(ASTUN, OPUPLUS, $3, $2); }
+	| '-' attrs primary %prec unaryprec { $$ = node(ASTUN, OPUMINUS, $3, $2); }
+	| '!' attrs primary %prec unaryprec { $$ = node(ASTUN, OPLNOT, $3, $2); }
+	| '~' attrs primary %prec unaryprec { $$ = node(ASTUN, OPNOT, $3, $2); }
+	| '&' attrs primary %prec unaryprec { $$ = node(ASTUN, OPRAND, $3, $2); }
+	| LONAND attrs primary %prec unaryprec { $$ = node(ASTUN, OPRNAND, $3, $2); }
+	| '|' attrs primary %prec unaryprec { $$ = node(ASTUN, OPROR, $3, $2); }
+	| LONOR attrs primary %prec unaryprec { $$ = node(ASTUN, OPRNOR, $3, $2); }
+	| '^' attrs primary %prec unaryprec { $$ = node(ASTUN, OPRXOR, $3, $2); }
+	| LONXOR attrs primary %prec unaryprec { $$ = node(ASTUN, OPRXNOR, $3, $2); }
+	| LONXOR1 attrs primary %prec unaryprec { $$ = node(ASTUN, OPRXNOR, $3, $2); }
 	| expr '+' attrs expr { $$ = node(ASTBIN, OPADD, $1, $4, $3); }
 	| expr '-' attrs expr { $$ = node(ASTBIN, OPSUB, $1, $4, $3); }
 	| expr '*' attrs expr { $$ = node(ASTBIN, OPMUL, $1, $4, $3); }
