@@ -48,6 +48,7 @@ module axidma(
 	input wire dmemwr,
 	input wire [21:0] dmemaddr,
 	input wire [15:0] dmemwdata,
+	input wire [1:0] dmemwstrb,
 	output reg dmemack,
 	output reg [15:0] dmemrdata,
 	
@@ -90,7 +91,8 @@ module axidma(
 	wire rwreq = rlmemreq && rlmemwr && rok;
 	reg [1:0] drmod, rrmod;
 	wire [1:0] wmod = (ddpend || dwreq ? doff + dmemaddr : roff + rlmemaddr) >> 1;
-	wire [7:0] wstrb = {{2{wmod == 2'b11}}, {2{wmod == 2'b10}}, {2{wmod == 2'b01}}, {2{wmod == 2'b00}}};
+	wire [1:0] wstrb0 = ddpend || dwreq ? dmemwstrb : 2'b11;
+	wire [7:0] wstrb = {{2{wmod == 2'b11}} & wstrb0, {2{wmod == 2'b10}} & wstrb0, {2{wmod == 2'b01}} & wstrb0, {2{wmod == 2'b00}} & wstrb0};
 	
 	initial begin
 		axiarvalid = 1'b0;

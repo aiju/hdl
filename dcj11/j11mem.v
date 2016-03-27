@@ -7,6 +7,7 @@ module j11mem(
 	input wire memwr,
 	input wire [21:0] memaddr,
 	input wire [15:0] memwdata,
+	input wire [1:0] memwstrb,
 	output reg memack,
 	output reg [15:0] memrdata,
 	output reg memerr,
@@ -15,6 +16,7 @@ module j11mem(
 	output wire dmemwr,
 	output reg [21:0] dmemaddr,
 	output wire [15:0] dmemwdata,
+	output wire [1:0] dmemwstrb,
 	input wire dmemack,
 	input wire [15:0] dmemrdata,
 	
@@ -51,6 +53,7 @@ module j11mem(
 	reg [15:0] uniwdata;
 	reg [21:0] uniaddr;
 	reg [15:0] unirdata;
+	reg [1:0] uniwstrb;
 
 	reg mempend, rlpend;
 
@@ -70,6 +73,7 @@ module j11mem(
 				unimap <= memaddr >= 22'o17000000;
 				uniwdata <= memwdata;
 				uniwr <= memwr;
+				uniwstrb <= memwstrb;
 				mempend <= 1'b0;
 				state <= CPU;
 			end else if(rldmareq || rlpend) begin
@@ -78,6 +82,7 @@ module j11mem(
 				uniwdata <= rldmawdata;
 				uniwr <= rldmawr;
 				unimap <= 1'b1;
+				uniwstrb <= 2'b11;
 				rlpend <= 1'b0;
 				state <= RL;
 			end
@@ -115,6 +120,7 @@ module j11mem(
 	
 	assign dmemwr = uniwr;
 	assign dmemwdata = uniwdata;
+	assign dmemwstrb = uniwstrb;
 	assign uartwr = uniwr;
 	assign uartwdata = uniwdata;
 	assign rlwr = uniwr;

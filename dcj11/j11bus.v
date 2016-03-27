@@ -9,6 +9,7 @@ module j11bus(
 	input wire busirq,
 	input wire [21:0] busaddr,
 	input wire [15:0] buswdata,
+	input wire [1:0] buswstrb,
 	output reg busack,
 	output reg buserr,
 	output reg [15:0] busrdata,
@@ -19,6 +20,7 @@ module j11bus(
 	output wire memwr,
 	output wire [21:0] memaddr,
 	output wire [15:0] memwdata,
+	output wire [1:0] memwstrb,
 	input wire memack,
 	input wire [15:0] memrdata,
 	input wire memerr,
@@ -56,6 +58,7 @@ module j11bus(
 	assign memwr = buswr;
 	assign memaddr = busaddr;
 	assign memwdata = buswdata;
+	assign memwstrb = buswstrb;
 	
 	reg odt;
 	assign leds = {4'b0, odt, j11init};

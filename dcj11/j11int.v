@@ -22,6 +22,8 @@ module j11int(
 	output reg busirq,
 	output reg [21:0] busaddr,
 	output reg [15:0] buswdata,
+	output reg [1:0] buswstrb,
+	output reg [1:0] busbs,
 	input wire busack,
 	input wire [15:0] busrdata,
 	
@@ -94,7 +96,6 @@ module j11int(
 	assign j11state = state;
 	
 	reg [3:0] aio;
-	reg [1:0] bs;
 	reg abort;
 	reg [15:0] fout;
 	reg fdrive;
@@ -213,7 +214,7 @@ module j11int(
 			aio <= j11f[11:8];
 			busgp <= j11f[11:8] == 4'b1110 || j11f[11:8] == 4'b0101;
 			busirq <= j11f[11:8] == 4'b1101;
-			bs <= j11f[7:6];
+			busbs <= j11f[7:6];
 			abort <= j11f[13];
 			mapen <= !j11map;
 		end
@@ -222,6 +223,7 @@ module j11int(
 		FETCHADDR4: begin
 			j11dsel <= INLO;
 			busaddr[15:0] <= j11f;
+			buswstrb <= aio == 4'b0011 ? j11f[0] ? 2'b10 : 2'b01 : 2'b11;
 		end
 		
 		RDREQ: begin
