@@ -60,6 +60,8 @@ threadmain()
 	for(;;){
 		while(c = v[2], c >= 0)
 			;
-		print("%c", c & 0x7f);
+		c &= 0x7f;
+		if(c == '\r' || c == 127) continue;
+		print("%c", c);
 	}
 }
