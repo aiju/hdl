@@ -96,7 +96,7 @@ module j11bus(
 						uartirqact[1] <= 1'b0;
 					end
 				4'b0010:
-					if(rlirq) begin
+					if(rlirqact) begin
 						busrdata <= 16'o160;
 						rlirqact <= 1'b0;
 					end
