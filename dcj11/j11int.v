@@ -33,6 +33,8 @@ module j11int(
 	input wire j11pwrf,
 	input wire j11fpe,
 	
+	output reg mapen,
+	
 	output wire [4:0] j11state,
 	output wire [15:0] j11fout0
 );
@@ -213,6 +215,7 @@ module j11int(
 			busirq <= j11f[11:8] == 4'b1101;
 			bs <= j11f[7:6];
 			abort <= j11f[13];
+			mapen <= !j11map;
 		end
 		FETCHADDR3:
 			j11dsel <= INLO;

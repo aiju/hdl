@@ -21,15 +21,10 @@ module j11bus(
 	output wire [15:0] memwdata,
 	input wire memack,
 	input wire [15:0] memrdata,
-	
-	output reg uartreq,
-	output wire [2:0] uartaddr,
-	output wire uartwr,
-	output wire [15:0] uartwdata,
-	input wire uartack,
-	input wire [15:0] uartrdata,
+	input wire memerr,
 	
 	input wire [1:0] uartirq,
+	input wire rlirq,
 	
 	output reg j11init,
 	output reg j11halt,
@@ -62,20 +57,16 @@ module j11bus(
 	assign memaddr = busaddr;
 	assign memwdata = buswdata;
 	
-	assign uartwr = buswr;
-	assign uartaddr = busaddr;
-	assign uartwdata = buswdata;
-	
 	reg odt;
 	assign leds = {4'b0, odt, j11init};
 	
 	reg [1:0] uartirqact;
+	reg rlirqact;
 	
 	always @(posedge clk) begin
 		busack <= 1'b0;
 		buserr <= 1'b0;
 		memreq <= 1'b0;
-		uartreq <= 1'b0;
 		if(busreq)
 			if(busgp) begin
 				busack <= 1'b1;
@@ -91,7 +82,7 @@ module j11bus(
 				busack <= 1'b1;
 				busrdata <= 16'bx;
 				case(busaddr[3:0])
-				4'b0001: begin
+				4'b0001:
 					if(uartirqact[0]) begin
 						busrdata <= 16'o60;
 						uartirqact[0] <= 1'b0;
@@ -99,36 +90,28 @@ module j11bus(
 						busrdata <= 16'o64;
 						uartirqact[1] <= 1'b0;
 					end
-				end
-				endcase
-			end else begin
-				if(busaddr < 22'o17760000)
-					memreq <= 1'b1;
-				else
-					casex(busaddr[12:0])
-					13'o1756x: uartreq <= 1'b1;
-					default: begin
-						busack <= 1'b1;
-						buserr <= 1'b1;
+				4'b0010:
+					if(rlirq) begin
+						busrdata <= 16'o160;
+						rlirqact <= 1'b0;
 					end
-					endcase
-					
-			end
+				endcase
+			end else
+				memreq <= 1'b1;
 		if(memack) begin
 			busack <= 1'b1;
 			busrdata <= memrdata;
-		end
-		if(uartack) begin
-			busack <= 1'b1;
-			busrdata <= uartrdata;
+			buserr <= memerr;
 		end
 		if(uartirq[0]) uartirqact[0] <= 1'b1;
 		if(uartirq[1]) uartirqact[1] <= 1'b1;
+		if(rlirq) rlirqact <= 1'b1;
 	end
 	
 	always @(posedge clk) begin
 		j11irq <= 4'b0000;
 		if(uartirqact != 0) j11irq[0] <= 1'b1;
+		if(rlirqact) j11irq[1] <= 1'b1;
 	end
 	
 	always @(posedge clk) begin

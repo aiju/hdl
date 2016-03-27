@@ -73,7 +73,7 @@ module axidma(
 	assign axiarqos = 4'b0000;
 	assign axiarsize = 2'b10;
 	assign axiawburst = 2'b01;
-	assign axiawcache = roff[3:0];
+	assign axiawcache = 4'b0000;
 	assign axiawlen = 0;
 	assign axiawlock = 2'b00;
 	assign axiawprot = 3'b000;

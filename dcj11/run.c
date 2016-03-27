@@ -50,6 +50,7 @@ threadmain()
 	if(v == (u32int*)-1)
 		sysfatal("segattach: %r");
 	getpa("mem", &v[4], &v[5]);
+	getpa("disk", &v[6], &v[7]);
 	v[0] = 0;
 	sleep(250);
 	v[0] = 1;

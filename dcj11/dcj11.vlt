@@ -29,21 +29,15 @@ design top {
 	uart11 {
 		uarthost* map(auto);
 	}
+	rl11;
 	axidma { axi* <saxihp0*>; reg* = axidmareg* map(auto); }
 	
 	_debug {
 		=: bus*;
-		axirdata;
-		axiwdata;
-		axiwstrb;
-		axiawvalid;
-		axiawready;
-		axiarvalid;
-		axibvalid;
-		axibresp;
-		axiwvalid;
-		axiwready;
-		=: axidmareg*;
+		=: mem*;
+		=: dmem*;
+		=: rl*;
+		mapen;
 		_reg* = debug* map(auto);
 	}
 }
