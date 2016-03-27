@@ -105,6 +105,12 @@ module j11mem(
 	end
 	
 	reg [21:0] unibase[0:31];
+	initial begin : init
+		integer i;
+		
+		for(i = 0; i < 32; i = i + 1)
+			unibase[i] = i << 13;
+	end
 	
 	reg [21:0] unimapped;
 	
