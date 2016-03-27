@@ -74,6 +74,7 @@ module j11bus(
 			if(busgp) begin
 				busack <= 1'b1;
 				busrdata <= 16'bx;
+				buserr <= 1'b0;
 				case({buswr, busaddr[7:0]})
 				{1'b1, 8'o0}: busrdata <= powerup;
 				{1'b1, 8'o14}: busrst <= 1'b1;
@@ -84,6 +85,7 @@ module j11bus(
 			end else if(busirq) begin
 				busack <= 1'b1;
 				busrdata <= 16'bx;
+				buserr <= 1'b0;
 				case(busaddr[3:0])
 				4'b0001:
 					if(uartirqact[0]) begin

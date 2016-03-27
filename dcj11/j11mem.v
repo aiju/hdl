@@ -19,7 +19,8 @@ module j11mem(
 	output wire [1:0] dmemwstrb,
 	input wire dmemack,
 	input wire [15:0] dmemrdata,
-	
+	input wire dmemerr,
+
 	input wire rldmareq,
 	input wire rldmawr,
 	input wire [17:0] rldmaaddr,
@@ -136,13 +137,17 @@ module j11mem(
 		uartreq <= 1'b0;
 		rlreq <= 1'b0;
 		uniack <= 1'b0;
-		if(unireq)
+		if(unireq) begin
+			unierr <= 1'b0;
 			if(!(&unimapped[21:13])) begin
 				dmemreq <= 1'b1;
 				dmemaddr <= unimapped;
-			end else begin
-				unierr <= 1'b0;
+			end else
 				casez(unimapped[12:0])
+				13'b1_111_111_100_zzz: begin
+					uniack <= 1'b1;
+					unirdata <= 0;
+				end
 				13'b1_000_01z_zzz_zzz: begin
 					mapreq <= 1'b1;
 					mapaddr <= unimapped;
@@ -160,10 +165,11 @@ module j11mem(
 					unierr <= 1'b1;
 				end
 				endcase
-			end
+		end
 		if(dmemack) begin
 			uniack <= 1'b1;
 			unirdata <= dmemrdata;
+			unierr <= dmemerr;
 		end
 		if(uartack) begin
 			uniack <= 1'b1;

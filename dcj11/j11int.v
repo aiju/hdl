@@ -26,6 +26,7 @@ module j11int(
 	output reg [1:0] busbs,
 	input wire busack,
 	input wire [15:0] busrdata,
+	input wire buserr,
 	
 	input wire j11init,
 	input wire j11halt,
@@ -47,7 +48,6 @@ module j11int(
 	localparam OUTHI = 4'b1110;
 	localparam OUTLO = 4'b1101;
 
-	assign j11abortout = 0;
 	assign j11dmr = 1;
 	assign j11miss = 0;
 
@@ -104,14 +104,20 @@ module j11int(
 	wire [15:0] hi = {6'b0, j11parity, j11event, j11fpe, j11init, j11halt, j11pwrf, j11irq};
 	reg [15:0] hi0 = 16'b0;
 	reg j11init0;
+	reg abortout;
+	assign j11abortout = !j11sctl && abortout && busbs != 2'b11;
 	
 	always @(posedge clk) begin
 		state <= state_;
 		strb0 <= strb;
 		j11init0 <= j11init;
 		
-		if(busack)
+		if(state_ == IDLE)
+			abortout <= 1'b0;
+		if(busack) begin
 			fout <= busrdata;
+			abortout <= buserr;
+		end
 		if(state_ == OUTHI0) begin
 			fout <= hi;
 			hi0 <= hi;

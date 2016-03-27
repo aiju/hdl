@@ -51,6 +51,7 @@ module axidma(
 	input wire [1:0] dmemwstrb,
 	output reg dmemack,
 	output reg [15:0] dmemrdata,
+	output reg dmemerr,
 	
 	input wire rlmemreq,
 	input wire rlmemwr,
@@ -181,6 +182,7 @@ module axidma(
 			else
 				rlmemack <= 1'b1;
 		end
+		if(dmemreq) dmemerr <= !dok;
 		if(dmemreq && !dok) dmemack <= 1'b1;
 		if(rlmemreq && !rok) rlmemack <= 1'b1;
 	end
