@@ -146,7 +146,7 @@ module axidma(
 			end
 		end
 		if(!axiwvalid || axiwready) begin
-			if(ddpend || 0 && dwreq) begin
+			if(ddpend || dwreq) begin
 				axiwdata <= {dmemwdata, dmemwdata, dmemwdata, dmemwdata};
 				axiwstrb <= wstrb;
 				axiwlast <= 1'b1;
