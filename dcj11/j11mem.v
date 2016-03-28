@@ -42,6 +42,12 @@ module j11mem(
 	output wire [15:0] rlwdata,
 	input wire rlack,
 	input wire [15:0] rlrdata,
+
+	output reg kwreq,
+	output wire kwwr,
+	output wire [15:0] kwwdata,
+	input wire kwack,
+	input wire [15:0] kwrdata,
 	
 	input wire mapen	
 );
@@ -132,6 +138,8 @@ module j11mem(
 	assign uartwdata = uniwdata;
 	assign rlwr = uniwr;
 	assign rlwdata = uniwdata;
+	assign kwwr = uniwr;
+	assign kwwdata = uniwdata;
 	
 	reg mapreq, mapack;
 	reg [6:0] mapaddr;
@@ -143,6 +151,7 @@ module j11mem(
 		uartreq <= 1'b0;
 		rlreq <= 1'b0;
 		uniack <= 1'b0;
+		kwreq <= 1'b0;
 		if(unireq) begin
 			unierr <= 1'b0;
 			if(!(&unimapped[21:13])) begin
@@ -166,6 +175,8 @@ module j11mem(
 					rlreq <= 1'b1;
 					rladdr <= unimapped;
 				end
+				13'b1_111_101_100_110:
+					kwreq <= 1'b1;
 				default: begin
 					uniack <= 1'b1;
 					unierr <= 1'b1;
@@ -188,6 +199,10 @@ module j11mem(
 		if(mapack) begin
 			uniack <= 1'b1;
 			unirdata <= maprdata;
+		end
+		if(kwack) begin
+			uniack <= 1'b1;
+			unirdata <= kwrdata;
 		end
 	end
 	

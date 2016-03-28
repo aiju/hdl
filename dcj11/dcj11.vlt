@@ -30,6 +30,7 @@ design top {
 		uarthost* map(auto);
 	}
 	rl11;
+	kw11;
 	axidma { axi* <saxihp0*>; reg* = axidmareg* map(auto); }
 	
 	_debug {
@@ -37,6 +38,7 @@ design top {
 		=: mem*;
 		=: dmem*;
 		=: rl*;
+		=: kw*;
 		mapen;
 		_reg* = debug* map(auto);
 	}

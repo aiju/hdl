@@ -27,6 +27,7 @@ module j11bus(
 	
 	input wire [1:0] uartirq,
 	input wire rlirq,
+	input wire kwirq,
 	
 	output reg j11init,
 	output reg j11halt,
@@ -65,6 +66,7 @@ module j11bus(
 	
 	reg [1:0] uartirqact;
 	reg rlirqact;
+	reg kwirqact;
 	
 	always @(posedge clk) begin
 		busack <= 1'b0;
@@ -100,6 +102,11 @@ module j11bus(
 						busrdata <= 16'o160;
 						rlirqact <= 1'b0;
 					end
+				4'b0100:
+					if(kwirqact) begin
+						busrdata <= 16'o100;
+						kwirqact <= 1'b0;
+					end
 				endcase
 			end else
 				memreq <= 1'b1;
@@ -111,12 +118,14 @@ module j11bus(
 		if(uartirq[0]) uartirqact[0] <= 1'b1;
 		if(uartirq[1]) uartirqact[1] <= 1'b1;
 		if(rlirq) rlirqact <= 1'b1;
+		if(kwirq) kwirqact <= 1'b1;
 	end
 	
 	always @(posedge clk) begin
 		j11irq <= 4'b0000;
 		if(uartirqact != 0) j11irq[0] <= 1'b1;
 		if(rlirqact) j11irq[1] <= 1'b1;
+		if(kwirqact) j11irq[2] <= 1'b1;
 	end
 	
 	always @(posedge clk) begin
