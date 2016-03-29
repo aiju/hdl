@@ -38,8 +38,7 @@ module j11int(
 	
 	output reg mapen,
 	
-	output wire [4:0] j11state,
-	output wire [15:0] j11fout0
+	output wire [4:0] j11state
 );
 
 	localparam NONE = 4'b1100;
@@ -268,7 +267,5 @@ module j11int(
 		end
 		endcase
 	end
-	
-	assign j11fout0 = fout;
 
 endmodule
