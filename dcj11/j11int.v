@@ -134,8 +134,6 @@ module j11int(
 	
 		case(state)
 		IDLE: begin
-			if(hi != hi0)
-				state_ = OUTHI0;
 			if(strb && !strb0)
 				state_ = WAITALE;
 		end
