@@ -3,7 +3,7 @@
 module j11int(
 	input wire clk,
 	
-	inout wire [15:0] j11f,
+	inout wire [15:0] iof,
 	output reg j11clk,
 	output wire j11dmr,
 	output reg j11cont,
@@ -98,9 +98,15 @@ module j11int(
 	reg [3:0] aio;
 	reg abort;
 	reg [15:0] fout;
+	wire [15:0] fin;
 	reg fdrive;
 	
-	assign j11f = fdrive ? fout : 16'bz;
+	generate
+		genvar i;
+		for(i = 0; i < 16; i = i + 1)
+			IOBUF iobuf(.IO(iof[i]), .T(!fdrive), .I(fout[i]), .O(fin[i]));
+	endgenerate
+	
 	wire [15:0] hi = {6'b0, j11parity, j11event, j11fpe, j11init, j11halt, j11pwrf, j11irq};
 	reg [15:0] hi0 = 16'b0;
 	reg j11init0;
@@ -216,20 +222,20 @@ module j11int(
 			j11dsel <= INHI;
 		FETCHADDR2: begin
 			j11dsel <= INLO;
-			busaddr[21:16] <= j11f[5:0];
-			aio <= j11f[11:8];
-			busgp <= j11f[11:8] == 4'b1110 || j11f[11:8] == 4'b0101;
-			busirq <= j11f[11:8] == 4'b1101;
-			busbs <= j11f[7:6];
-			abort <= j11f[13];
+			busaddr[21:16] <= fin[5:0];
+			aio <= fin[11:8];
+			busgp <= fin[11:8] == 4'b1110 || fin[11:8] == 4'b0101;
+			busirq <= fin[11:8] == 4'b1101;
+			busbs <= fin[7:6];
+			abort <= fin[13];
 			mapen <= !j11map;
 		end
 		FETCHADDR3:
 			j11dsel <= INLO;
 		FETCHADDR4: begin
 			j11dsel <= INLO;
-			busaddr[15:0] <= j11f;
-			buswstrb <= aio == 4'b0011 ? j11f[0] ? 2'b10 : 2'b01 : 2'b11;
+			busaddr[15:0] <= fin;
+			buswstrb <= aio == 4'b0011 ? fin[0] ? 2'b10 : 2'b01 : 2'b11;
 		end
 		
 		RDREQ: begin
@@ -251,7 +257,7 @@ module j11int(
 		WRREQ: begin
 			busreq <= state != WRREQ;
 			buswr <= 1'b1;
-			buswdata <= j11f;
+			buswdata <= fin;
 		end
 		WREND:
 			j11cont <= 1'b0;

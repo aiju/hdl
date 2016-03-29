@@ -7,7 +7,7 @@ files {
 
 design top {
 	j11int {
-		j11f <gp[15:0]>;
+		iof <gp[15:0]>;
 		j11clk <gp[16]>;
 		j11dmr <gp[17]>;
 		j11cont <gp[18]>;
