@@ -589,6 +589,14 @@ static Symbol **enumlastp;
 void
 enumstart(Type *t)
 {
+	if(t != nil)
+		switch(t->t){
+		case TYPBIT:
+		case TYPBITV:
+			break;
+		default:
+			error(nil, "invalid enum base type '%T'", t);
+		}
 	enumt = type(TYPENUM, t);
 	enumlast = nil;
 	enumlastp = &enumt->vals;
@@ -1435,6 +1443,13 @@ enumsz(Type *t)
 	ASTNode *n;
 	Symbol *s;
 	
+	if(t->elem != nil){
+		switch(t->elem->t){
+		case TYPBIT: case TYPBITV:
+			return t->elem->sz;
+		default: error(nil, "enumsz: unimplemented type '%T'", t->elem);
+		}
+	}
 	n = nil;
 	for(s = t->vals; s != nil; s = s->typenext)
 		n = nodemax(n, s->val);

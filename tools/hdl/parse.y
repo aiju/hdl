@@ -88,7 +88,7 @@ typevector:
 	type1 { typefinal($1.t, $1.i, &$$.t, &$$.i); }
 	| typevector '[' cexpr ']' { $$.t = type(TYPVECTOR, $1.t, $3); $$.i = $1.i; }
 
-opttypews: { $$.t = nil; $$.i = 0; } | type1
+opttypews: { $$.t = nil; $$.i = 0; } | typevector
 
 type0: typew | type0 typew { typeor($1.t, $1.i, $2.t, $2.i, &$$.t, &$$.i); }
 
