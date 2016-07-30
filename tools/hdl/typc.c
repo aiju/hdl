@@ -118,7 +118,7 @@ dodecl(Symbol *s, Type *t)
 			h = emalloc(sizeof(Field));
 			h->sym = g->sym;
 			h->down = g;
-			if(t->mem){
+			if(t->mem && (s->opt & (OPTIN|OPTOUT)) == 0){
 				h->sz = g->sz;
 				h->stride = g->cnt == nil ? node(ASTCINT, 1) : g->cnt;
 				h->len = t->sz;
