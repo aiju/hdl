@@ -1,0 +1,25 @@
+spec (&maybe implementation)
+- bit reversal operator
+- maybe harmonize clock definitions with the other type words
+- add casts
+- define precisely ==, !=, === and !==
+- functions (also in fsms)
+
+future ideas (not necessarily good)
+- rotation operators
+- change i++ to be expressions, like in C
+- fixed-point arithmetic (core language or library?)
+- operator overloading
+- vector parallel operations (i.e. iterate over all components)
+
+implementation
+- struct parameters
+- fix pack-defs
+- async signals
+- comma operator as an lval
+- bitvector and array literals
+- implement @ and #
+
+questions
+- how meaningful is it to speak of the signedness of an infinite bitvector?
+- should @ be zeroes or undefined at the beginning? if it is zeroes, it would be legal to do 1@x to find out if x has ever been true.
