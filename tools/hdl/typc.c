@@ -131,7 +131,6 @@ dodecl(Symbol *s, Type *t)
 				h->len = t->sz;
 				h->look = LOOKVEC;
 			}
-			print("%s %n %n\n", h->sym->name, h->sz, h->cnt);
 			*p = h;
 			p = &h->next;
 		}
