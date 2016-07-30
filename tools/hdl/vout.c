@@ -255,16 +255,22 @@ static int
 vdecl(Fmt *f, Symbol *s)
 {
 	Type *t;
-	ASTNode *sz;
+	ASTNode *sz, *msz;
 	int rc;
 	
 	t = s->type;
 	sz = nil;
+	msz = nil;
 	rc = 0;
 	switch(t->t){
 	case TYPBIT: break;
 	case TYPBITV: sz = t->sz; break;
-	default: error(s, "Verilog does not support %T", t); return 0;
+	case TYPVECTOR:
+		if(t->elem == nil || t->elem->t != TYPBITV || !t->mem) goto nope;
+		sz = t->elem->sz;
+		msz = t->sz;
+		break;
+	default: nope: error(s, "Verilog does not support %T", t); return 0;
 	}
 	if((s->opt & OPTIN) != 0) rc += fmtstrcpy(f, "input ");
 	if((s->opt & OPTOUT) != 0) rc += fmtstrcpy(f, "output ");	
@@ -275,6 +281,7 @@ vdecl(Fmt *f, Symbol *s)
 	}
 	if(sz != nil) rc += fmtprint(f, "[%n:0] ", nodeaddi(sz, -1));
 	rc += fmtstrcpy(f, s->name);
+	if(msz != nil) rc += fmtprint(f, "[0:%n]", nodeaddi(msz, -1));
 	return rc;
 }
 
