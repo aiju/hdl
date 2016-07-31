@@ -17,7 +17,7 @@ Type words can appear in any order but not all combinations are a legal type.
 .IP \(bu
 Only one of the words that declare a type (\fBinteger\fR, \fBstring\fR, \fBreal\fR, a defined type) may be used.
 .IP \(bu
-Only one of \fBwire\fR, \fBreg\fR, \fBtypedef\fR and \fBconst\fR may be used.
+Only one of \fBwire\fR, \fBreg\fR, \fBinput\fR, \fBtypedef\fR and \fBconst\fR may be used.
 .IP \(bu
 Only one of \fBinput\fR, \fBoutput\fR, \fBtypedef\fR and \fBconst\fR may be used.
 .LP
@@ -100,7 +100,8 @@ Two instances with different arguments are considered of different type.
 Variables
 .TS
 r1W12 l.
-\fIvar-def\fR ←	\fItype\fR [\fB< \fR[\fIclock\fR] \fB>\fR] \fIvar\fR { \fB, \fIvar \fR} [ \fB, \fR]
+\fIvar-def\fR ←	\fItype\fR [\fIclock\fR] \fIvar\fR { \fB, \fIvar \fR} [ \fB, \fR]
+\fIclock\fR ←	\fB< \fR[\fIclock\fR] \fB>\fR
 \fIvar\fR ←	\fIsymbol\fR { \fB[ \fIcomma-expr \fB] \fR } [ \fB= \fIexpr \fR]
 .TE
 .LP
@@ -120,6 +121,8 @@ If no clock is specified and there is only one clock visible in the scope, that 
 To mark a variable as \fIasynchronous\fR an empty clock declaration \fB<>\fR is used.
 .LP
 A clock declaration can be shared between multiple variable definitions using the notation \fB< \fIclock \fB> { ... \fB}\fR.
+.LP
+Only ports (see "modules") can use the \fBinput\fR and \fBoutput\fR type words.
 .bp
 .NH
 Expressions
@@ -293,34 +296,112 @@ If no position indicator is specified, the elements are stepped through in incre
 The \fB[]\fR indicator is special and defines a default value to be used for all elements that are not explicitly defined.
 .LP
 It is worth noting that bitvectors can also be described by literals.
+.bp
 .NH
 Statements
+.NH 2
+Assignments
 .TS
 r1W12 l.
+\fIstat\fR ←	\fIstat1\fB;\fR
 \fIstat1\fR ←	ε
 ∨	\fIlval \fB= \fIcomma-expr \fR
 ∨	\fIlval \fIassign-op\fB= \fIcomma-expr \fR
 ∨	\fIlval \fB++\fR
-∨	\fIrval \fB--\fR
-
-\fIstat\fR ←	\fIstat1\fB;\fR
-∨	\fBif(\fIcomma-expr\fB) \fIstat
+∨	\fIlval \fB--\fR
+.TE
+.LP
+Assignments update the value of a variable.
+The exact semantics depend on the context, but generally speaking the \fIlval\fR will refer to the value of right-hand side.
+.
+.LP
+\fIlval \fIassign-op\fB= \fIcomma-expr\fR is equivalent to \fIlval \fB= \fIlval \fIassign-op \fIcomma-expr\fR. The only difference is that \fIlval\fR is evaluated only once.
+.br
+\fIlval\fB++\fR is equivalent to \fIlval \fB+= \fR1.
+.br
+\fIlval\fB--\fR is equivalent to \fIlval \fB-= \fR1.
+.NH 2
+Blocks
+.TS
+r1W12 l.
+\fIstat\fR ←	\fR[ \fIsymbol \fR] \fB{ \fR{\fIstat\fR} \fB}
+∨	\fIvar-def\fB;\fR
+.TE
+.LP
+Blocks serve to group statements and to create a new scope for variable definitions.
+Blocks can be named, this allows the \fBbreak\fR and \fBcontinue\fR statements to refer to the block.
+Names also allow a debugger to reference signals defined inside the block.
+Note that unlike Verilog a name is not needed to define variables inside the block.
+.NH 2
+Control statements
+.TS
+r1W12 l.
+\fIstat\fR ←	\fBif(\fIcomma-expr\fB) \fIstat
 ∨	\fBwhile(\fIcomma-expr\fB) \fIstat
 ∨	\fBdo \fIstat \fBwhile(\fIcomma-expr\fB);
 ∨	\fBfor(\fIstat1\fB; \fR[\fIcomma-expr\fR]\fB; \fIstat1\fB) \fIstat
-∨	\fR[ \fIsymbol \fR] \fB{ \fR{\fIstat\fR} \fB}
 ∨	\fBbreak \fR[\fIblock\fR]\fB;\fR
 ∨	\fBcontinue \fR[\fIblock\fR]\fB;\fR
-∨	\fIvar-def\fB;\fR
-∨	\fBswitch(\fIcomma-expr\fB) { \fR{\fIstat\fR} \fB}\fR
-∨	\fBcase \fIexpr \fR{ \fB, \fIexpr \fR} \fB:\fR
 .TE
+.LP
+The control statements statements function identically to C.
+The only difference is that if \fIstat\fR is block named \fIblock\fR, then \fBbreak \fIblock\fR and \fBcontinue \fIblock\fR can be used to apply \fBbreak\fR and \fBcontinue\fR to that loop specifically.
+.NH 2
+Switch statements
+.TS
+r1W12 l.
+\fIstat\fR ←	\fBswitch(\fIcomma-expr\fB) { \fR{\fIstat\fR} \fB}\fR
+∨	\fBswitchz(\fIcomma-expr\fB) { \fR{\fIstat\fR} \fB}\fR
+∨	\fBcase \fIexpr \fR{ \fB, \fIexpr \fR} \fB:\fR
+∨	\fBdefault:\fR
+.TE
+.LP
+The \fBswitch\fR statement compares \fIcomma-expr\fR with each of the \fBcase\fR values defined inside it and jumps to the first value that matches.
+Each \fBcase\fR statement has one or more expressions and they need not be constant.
+If no value matches, the \fBdefault\fR statement is jumped to.
+If there is no \fBdefault\fR statement, execution proceeds after the \fBswitch\fR body.
+Execution jumps out of the \fBswitch\fR statement at the next \fBcase\fR statement.
+.LP
+\fBswitchz\fR functions like \fBswitch\fR but \fBz\fR bits in the \fBcase\fR statements are treated as wildcards.
 .NH
+Modules
+.TS
+r1W12 l.
+\fImodule-def\fR ←	\fBmodule \fImodule \fB( \fR{\fIport\fB,\fR} [\fIport\fR] \fB) { \fR{ \fIdef \fR} \fB}
+\fIport\fR ←	[\fItype\fR] [\fIclock\fR] \fIsymbol\fR {\fB[\fIcomma-expr\fB]\fR}
+\fIdef\fR ←	\fIstat\fR ⋁ \fImodule-def\fR ∨ ...
+.TE
+.LP
+Modules serve to group logic.
+A module presents an interface defined by a set of ports.
+Ports function very much like variables except they also have a clear direction (\fBinput\fR or \fBoutput\fR) that must be defined for them.
+.LP
+During one cycle of execution of a module all the definitions are executed repeatedly until the results converge.
+Finally, all assignments to primed variables are copied over to become the main variables.
+.LP
+It is illegal
+[TODO: Make sense.]
+.IP \(bu
+for signals to have multiple drivers.
+.IP \(bu
+for signals to be cyclically dependent on each other.
+.LP
+.NH 2
+Initial statements
+.TS
+r1W12 l.
+\fIdef\fR ←	\fBinitial( \fR{ \fItrigger \fB, \fR} [ \fItrigger \fR] \fB) \fIstat
+\fItrigger\fR ←	\fBdefault\fR ∨ \fIexpr\fR
+.TE
+\fBInitial\fR statements allow the values of registers to be overridden.
+They can be triggered by both synchronous and asynchronous signals, as well as the \fBdefault\fR keyword which indicates that the block should be executed on startup.
+In an \fBinitial\fR statement values should be assigned to unprimed variables.
+Initial blocks are run before all other blocks and in case of synchronous signals they depend on the value during the \fIprevious\fR cycle.
+.NH 2
 Finite state machines (FSM)
 .TS
 r1W12 l.
 \fIfsm\fR ←	\fBfsm \fIsymbol \fR[\fB< \fIexpr \fR[\fB, \fIexpr\fR] \fB>\fR] \fB{ \fR{\fBstat\fR} \fB}\fR
-
 \fIstat\fR ←	\fBgoto \fR[\fIstate\fR]\fB;\fR
 ∨	\fR[\fIstate\fR]\fB:\fR
 ∨	\fBdefault:\fR
@@ -331,6 +412,8 @@ Each \fIstate\fR declared in the body defines one of the possible values.
 A lone \fB:\fR declares another state, incrementing a number at the end of the last state, or appending \f(CW0\fR if there is no number.
 The \fBdefault\fR keyword declares no state.
 .LP
+Control statements can be used in a fsm; by including state definitions in the main loop their execution can span several states.
+.LP
 During each cycle of execution the statements from first the \fBdefault\fR case and then the current state are executed.
 If a \fBgoto\fR statement is executed, execution is halted and the next state is set to the label given.
 If no label is given, the current one is assumed.
@@ -339,29 +422,57 @@ It is legal to reference the \fIsymbol\fR variable.
 Assigning to \fIsymbol\fR or \fIsymbol\fB'\fR is illegal.
 .bp
 .NH
-Modules
+Lexical conventions
+.NH 2
+Symbols
+.LP
+The character set for symbols currently consists of
+.IP \(bu
+Letters
+.IP \(bu
+Numbers
+.IP \(bu
+The underscore symbol \fB_\fR
+.LP
+Note that a symbol may not start with a letter.
+.LP
+The following words are keywords and must not be used as symbols.
 .TS
-r1W12 l.
-\fImodule-def\fR ←	\fBmodule \fImodule \fB( \fR{\fIport\fB,\fR} [\fIport\fR] \fB) { \fR{ \fIdef \fR} \fB}
-
-\fIdef\fR ←	\fIstat\fR
-∨	\fIfsm\fR
-∨	\fBinitial( \fR{ \fItrigger \fB, \fR} [ \fItrigger \fR] \fB) \fIstat
-
-\fItrigger\fR ←	\fBdefault\fR ∨ \fIexpr\fR
+lFB lFB lFB lFB lFB lFB .
+bit	break	case	clock	const	continue
+default	do	else	enum	for	fsm
+goto	if	initial	input	integer	module
+output	real	reg	signed	string	struct
+switch	switchz	typedef	while	wire
 .TE
+.NH 2
+Numbers
 .LP
-During one cycle of execution all the definitions of a module are executed repeatedly until the results converge.
-Finally, all assignments to primed variables are copied over to become the main variables.
+A numerical literal has the format
+.QP
+[[\fIlength\fR] \fB'\fR [\fBs\fR] \fIradix\fR] \fIvalue\fR
+.QE
 .LP
-It is illegal
-[TODO: Make sense.]
+Note that all characters in a numerical literal must be consecutive with no spaces allowed.
+\fB_\fR is however allowed to be added anywhere and has no effect.
+A number must not begin in \fB_\fR (lest it be mistaken for a symbol).
+No parts of a number are case sensitive.
+.LP
+\fIradix\fR must be one of \fBd\fR (decimal), \fBh\fR (hexadecimal), \fBo\fR (octal) or \fBb\fR (binary).
+\fBs\fR can be used to specify a signed number.
+.LP
+\fIlength\fR specifies the number of bits in the final constant. If it is not specified, the number is unbounded.
+.LP
+The valid digits in \fIvalue\fR are a subset of 0123456789abcdefzx? (\fB?\fR is equivalent to \fBz\fR), depending on the base.
 .IP \(bu
-for signals to have multiple drivers.
+The digits ≥ the base value are excluded.
 .IP \(bu
-for signals to be cyclically dependent on each other.
+\fBz\fR and \fBx\fR are not permitted for decimal numbers.
 .LP
-\fBInitial\fR statements allow the values of registers to be overridden.
-They can be triggered by both synchronous and asynchronous signals, as well as the \fBdefault\fR keyword which indicates that the block should be executed on startup.
-In an \fBinitial\fR statement values should be assigned to unprimed variables.
-Initial blocks are run before all other blocks and in case of synchronous signals they use the value from the \fIlast\fR cycle.
+If the first specified digit is \fBz\fR or \fBx\fR, this digit will be repeated to fill the length of the number, if necessary.
+.NH 2
+Comments
+.LP
+\fB//\fR will cause the rest of the line to be ignored.
+.LP
+\fB/*\fR will cause everything until \fB*/\fR to be ignored. It may not be nested.

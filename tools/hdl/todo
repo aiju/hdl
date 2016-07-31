@@ -11,6 +11,9 @@ future ideas (not necessarily good)
 - fixed-point arithmetic (core language or library?)
 - operator overloading
 - vector parallel operations (i.e. iterate over all components)
+- hierarchical references
+- switch fallthru statement
+- UTF-8 in symbols (need to translate to Verilog somehow...)
 
 implementation
 - struct parameters
@@ -19,6 +22,7 @@ implementation
 - comma operator as an lval
 - bitvector and array literals
 - implement @ and #
+- nested modules
 
 questions
 - how meaningful is it to speak of the signedness of an infinite bitvector?
