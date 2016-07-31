@@ -555,6 +555,7 @@ ssabuildbl(ASTNode *n, SemDefs *d, int attr)
 	case ASTTERN:
 	case ASTSWITCH:
 	case ASTIDX:
+	case ASTCAST:
 		m->n1 = mkblock(ssabuildbl(n->n1, d, attr));
 		m->n2 = mkblock(ssabuildbl(n->n2, d, attr));
 		m->n3 = mkblock(ssabuildbl(n->n3, d, attr));
@@ -887,6 +888,7 @@ trackdep(ASTNode *n, SemVars *cdep)
 		n->n1->semv->deps = trackdep(n->n2, depinc(cdep));
 		return cdep;
 	case ASTOP:
+	case ASTCAST:
 		cdep->ref++;
 		return depcat(trackdep(n->n1, cdep), trackdep(n->n2, cdep));
 	case ASTTERN:
@@ -1473,6 +1475,7 @@ tracklive1(ASTNode *n, SemVars **gen, SemVars **kill)
 			*gen = depadd(*gen, n->semv);
 		break;
 	case ASTOP:
+	case ASTCAST:
 		tracklive1(n->n1, gen, kill);
 		tracklive1(n->n2, gen, kill);
 		break;
@@ -1551,6 +1554,7 @@ proplive(ASTNode *n, SemVars **live)
 		}
 		break;
 	case ASTOP:
+	case ASTCAST:
 		m->n1 = mkblock(proplive(n->n1, live));
 		m->n2 = mkblock(proplive(n->n2, live));
 		break;
@@ -1941,6 +1945,7 @@ makeast(ASTNode *n)
 	for(p = n->ports; p != nil; p = p->next)
 		if(p->n->t == ASTDECL){
 			s = p->n->sym;
+			assert(s->semc[0] != nil);
 			s = s->semc[0]->targv;
 			assert(s != nil);
 			m->ports = nlcat(m->ports, nl(node(ASTDECL, s, nil)));

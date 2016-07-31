@@ -104,6 +104,7 @@ trackvaruse(ASTNode *n, int env)
 	case ASTINITIAL:
 		trackvaruse(n->n1, ENVALWAYS);
 		break;
+	case ASTCAST:
 	case ASTOP:
 	case ASTIF:
 	case ASTWHILE:
@@ -211,6 +212,8 @@ vereprint(Fmt *f, ASTNode *n, int env)
 			rc += vereprint(f, n->n3, 0);
 		rc += fmtrune(f, ']');
 		break;
+	case ASTCAST:
+		return vereprint(f, n->n1, env);
 	default:
 		error(n, "vereprint: unknown %A", n->t);
 	}

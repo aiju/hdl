@@ -42,6 +42,7 @@ static char *astname[] = {
 	[ASTALWAYS] "ASTALWAYS",
 	[ASTDASS] "ASTDASS",
 	[ASTASYNC] "ASTASYNC",
+	[ASTCAST] "ASTCAST",
 };
 
 static char *symtname[] = {
@@ -228,6 +229,10 @@ node(int t, ...)
 	case ASTSEMGOTO:
 		n->semb = va_arg(va, SemBlock *);
 		break;
+	case ASTCAST:
+		n->totype = va_arg(va, Type *);
+		n->n1 = va_arg(va, ASTNode *);
+		break;
 	default: sysfatal("node: unknown %A", t);
 	}
 	va_end(va);
@@ -310,6 +315,8 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 		return a->semv == b->semv;
 	case ASTSEMGOTO:
 		return a->semb == b->semb;
+	case ASTCAST:
+		return eq(a->n1, b->n1, eq) && a->totype == b->totype;
 	default:
 		error(a, "nodeeq: unknown %A", a->t);
 		return 0;
@@ -627,6 +634,13 @@ enumend(void)
 	return t;
 }
 
+ASTNode *
+mkcast(Type *t, int i, ASTNode *n)
+{
+	if(i != 0) error(nil, "invalid cast");
+	return node(ASTCAST, t, n);
+}
+
 OpData *
 getopdata(int op)
 {
@@ -689,6 +703,10 @@ eastprint(Fmt *f, ASTNode *n, int env)
 		}
 		if(env > d->prec)
 			rc += fmtrune(f, ')');
+		break;
+	case ASTCAST:
+		rc += fmtprint(f, "(%T) ", n->totype);
+		rc += eastprint(f, n->n1, 15);
 		break;
 	case ASTTERN:
 		if(env > 3)
@@ -1003,7 +1021,7 @@ condcheck(ASTNode *n)
 }
 
 static ASTNode *
-implicitcast(ASTNode *n, Type *t)
+cast(ASTNode *n, Type *t, int expl)
 {
 	if(n == nil || n->type == nil || t == nil || n->type == t)
 		return n;
@@ -1012,15 +1030,15 @@ implicitcast(ASTNode *n, Type *t)
 	case TYPINT:
 	case TYPBIT:
 	case TYPREAL:
-		if(n->type->t == TYPBITV || n->type->t == TYPBIT || n->type->t == TYPREAL || n->type->t == TYPINT || n->type->t == TYPENUM)
+		if(n->type->t == TYPBITV || n->type->t == TYPBIT || n->type->t == TYPREAL || n->type->t == TYPINT || n->type->t == TYPENUM || expl && n->type->t == TYPSTRING)
 			return n;
 		break;
 	case TYPSTRING:
-		if(n->type->t == TYPSTRING)
+		if(n->type->t == TYPSTRING || expl && n->type->t == TYPBITV)
 			return n;
 		break;
 	case TYPENUM:
-		if(n->type->t == TYPBITV || n->type->t == TYPBIT || n->type->t == TYPINT)
+		if(n->type->t == TYPBITV || n->type->t == TYPBIT || n->type->t == TYPINT || expl && (n->type->t == TYPENUM || n->type->t == TYPREAL))
 			return n;
 		break;
 	case TYPSTRUCT:
@@ -1032,7 +1050,7 @@ implicitcast(ASTNode *n, Type *t)
 			return n;
 		break;
 	default:
-		error(n, "implicitcast: unknown %T", t);
+		error(n, "cast: unknown %T", t);
 		return n;
 	}
 	error(n, "can't cast '%T' to '%T'", n->type, t);
@@ -1089,7 +1107,7 @@ static Type *
 typerepl(Line *l, ASTNode *n, Type *t)
 {
 	if(t == nil) return nil;
-	n = implicitcast(n, type(TYPINT));
+	n = cast(n, type(TYPINT), 0);
 	if(n == nil) return nil;
 	if(t->t == TYPSTRING)
 		return t;
@@ -1228,7 +1246,7 @@ typecheck(ASTNode *n, Type *ctxt)
 		insist(n->n1 != nil);
 		typecheck(n->n2, n->n1->type);
 		insist(n->op == OPNOP);
-		n->n2 = implicitcast(n->n2, n->n1->type);
+		n->n2 = cast(n->n2, n->n1->type, 0);
 		break;
 	case ASTCINT:
 		n->type = type(TYPINT);
@@ -1289,8 +1307,8 @@ typecheck(ASTNode *n, Type *ctxt)
 			return;
 		}
 		if((t1 == TYPREAL || t2 == TYPREAL) && (d->flags & OPDREAL) != 0){
-			n->n1 = implicitcast(n->n1, type(TYPREAL));
-			n->n2 = implicitcast(n->n2, type(TYPREAL));
+			n->n1 = cast(n->n1, type(TYPREAL), 0);
+			n->n2 = cast(n->n2, type(TYPREAL), 0);
 			n->type = (d->flags & OPDBITOUT) != 0 ? type(TYPBIT) : type(TYPREAL);
 			return;
 		}
@@ -1327,8 +1345,8 @@ typecheck(ASTNode *n, Type *ctxt)
 		typecheck(n->n2, ctxt);
 		typecheck(n->n3, ctxt);
 		n->type = typemax(n->n2->type, n->n3->type);
-		n->n2 = implicitcast(n->n2, n->type);
-		n->n3 = implicitcast(n->n3, n->type);
+		n->n2 = cast(n->n2, n->type, 0);
+		n->n3 = cast(n->n3, n->type, 0);
 		break;
 	case ASTIDX:
 		typecheck(n->n1, ctxt);
@@ -1410,9 +1428,14 @@ typecheck(ASTNode *n, Type *ctxt)
 	case ASTINITIAL:
 		for(mp = n->nl; mp != nil; mp = mp->next){
 			typecheck(mp->n, nil);
-			mp->n = implicitcast(mp->n, type(TYPBIT, 0));
+			mp->n = cast(mp->n, type(TYPBIT, 0), 0);
 		}
 		typecheck(n->n1, nil);
+		break;
+	case ASTCAST:
+		typecheck(n->n1, nil);
+		n->type = n->totype;
+		n->n1 = cast(n->n1, n->totype, 1);
 		break;
 	default:
 		error(n, "typecheck: unknown %A", n->t);

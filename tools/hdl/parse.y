@@ -53,6 +53,7 @@
 %left '*' '/' '%'
 %right LOEXP
 %left '#' '@'
+%left cast
 %left unaryprec
 
 %start program
@@ -249,6 +250,7 @@ expr:
 	| '^' primary %prec unaryprec { $$ = node(ASTOP, OPUXOR, $2, nil); }
 	| '!' primary %prec unaryprec { $$ = node(ASTOP, OPLNOT, $2, nil); }
 	| '{' litexprs '}' { $$ = node(ASTLITERAL, $2); }
+	| '(' type ')' expr %prec cast { $$ = mkcast($2.t, $2.i, $4); }
 
 cexpr:
 	expr

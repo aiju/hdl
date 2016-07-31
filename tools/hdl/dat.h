@@ -80,6 +80,7 @@ struct ASTNode {
 			Symbol *sym;
 			SymTab *st;
 			Nodes *nl, *ports;
+			Type *totype;
 		};
 		Const cons;
 		int i;
@@ -111,6 +112,7 @@ enum {
 	ASTBLOCK,
 	ASTBREAK,
 	ASTCASE,
+	ASTCAST,
 	ASTCINT,
 	ASTCONST,
 	ASTCONTINUE,

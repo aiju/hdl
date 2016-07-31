@@ -82,3 +82,4 @@ void addsym(SymTab *, Symbol *);
 void verilog(ASTNode *);
 Symbol *findclock(Symbol *);
 ASTNode *dangle(ASTNode *, ASTNode *);
+ASTNode *mkcast(Type *, int, ASTNode *);

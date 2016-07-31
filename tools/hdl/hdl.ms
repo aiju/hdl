@@ -296,6 +296,30 @@ If no position indicator is specified, the elements are stepped through in incre
 The \fB[]\fR indicator is special and defines a default value to be used for all elements that are not explicitly defined.
 .LP
 It is worth noting that bitvectors can also be described by literals.
+.NH 2
+Casts
+.LP
+If the type of an expression does not match the type that is expected by context (e.g. assigning to a variable of a different type), an implicit cast is attempted.
+Implicit casts follow the following rules
+.IP \(bu
+Bitvectors, \fBbit\fR, \fBinteger\fR and \fBreal\fR types can be freely interconverted.
+.IP \(bu
+\fBenum\fR can be converted to and from bitvectors, \fBbit\fR and \fBinteger\fR and to \fBreal\fR.
+Different \fBenum\fR types may not be implicitly casted.
+.IP \(bu
+No other casts are allowed.
+.LP
+.TS
+r1W12 l.
+\fIexpr\fR ←	\fB(\fItype\fB) \fIexpr\fR
+.TE
+.LP
+An explicit cast can be performed with the above notation.
+It behaves like an implicit cast but also supports the following cases
+.IP \(bu
+\fBenum\fR can be converted to and from \fBreal\fR and other \fBenum\fR types.
+.IP \(bu
+\fBstring\fR can be converted to and from a bitvector.
 .bp
 .NH
 Statements
