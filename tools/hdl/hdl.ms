@@ -434,7 +434,7 @@ Numbers
 .IP \(bu
 The underscore symbol \fB_\fR
 .LP
-Note that a symbol may not start with a letter.
+Note that a symbol may not start with a digit.
 .LP
 The following words are keywords and must not be used as symbols.
 .TS
