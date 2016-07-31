@@ -416,9 +416,15 @@ veriprint(Fmt *f, ASTNode *n, int indent, int env)
 	case ASTIF:
 		if(env != ENVALWAYS) enverror(n, env);
 		rc += fmtprint(f, "%Iif(%n)", indent, n->n1);
+	astif:
 		rc += verbprint(f, dangle(n->n2, n->n3), indent, env);
 		if(n->n3 != nil){
 			rc += fmtprint(f, "%Ielse", indent);
+			if(n->n3->t == ASTIF){
+				n = n->n3;
+				rc += fmtprint(f, " if(%n)", n->n1);
+				goto astif;
+			}
 			rc += verbprint(f, n->n3, indent, env);
 		}
 		break;
