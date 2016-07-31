@@ -97,7 +97,7 @@ consparse(Const *c, char *s)
 	}else
 		sz = 0;
 	s++;
-	if(*s == 's'){
+	if(*s == 's' || *s == 'S'){
 		c->sign = 1;
 		s++;
 	}
@@ -110,6 +110,7 @@ consparse(Const *c, char *s)
 		error(nil, "'%c' invalid base specifier", *s);
 		goto out;
 	}
+	c->base = b;
 	s++;
 	if(s[1] == 0 && (s[0] == 'x' || s[0] == 'X' || s[0] == 'z' || s[0] == 'Z' || s[0] == '?'))
 		b = 2;
