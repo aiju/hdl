@@ -1,9 +1,9 @@
 spec (&maybe implementation)
-- bit reversal operator
 - maybe harmonize clock definitions with the other type words
-- add casts
 - define precisely ==, !=, === and !==
 - functions (also in fsms)
+- pipeline blocks
+- support [] with the lhs not an l-value
 
 future ideas (not necessarily good)
 - rotation operators
@@ -16,6 +16,7 @@ future ideas (not necessarily good)
 - UTF-8 in symbols (need to translate to Verilog somehow...)
 
 implementation
+- support [] lvals
 - struct parameters
 - fix pack-defs
 - async signals
@@ -23,6 +24,7 @@ implementation
 - bitvector and array literals
 - implement @ and #
 - nested modules
+- compensate for verilog expression width behaviour
 
 questions
 - how meaningful is it to speak of the signedness of an infinite bitvector?

@@ -195,6 +195,9 @@ lFB s s s s
 lFCW l l l l.
 Symbol	Operation		Result type	Notes
 Binary operators (in decreasing order of precedence)
+()	Cast
+	Unary operators
+_
 #	Delay	R	\fIa\fR	\fIb\fR must be a constant non-negative integer.
 @	Prior value	R	\fIa\fR	\fIb\fR must be \fBbit\fR.
 _
@@ -247,6 +250,7 @@ Unary operators
 |	Reduction or		\fBbit\fR
 ^	Reduction xor		\fBbit\fR
 !	Logical not	b	\fBbit\fR
+%	Reverse bit order	i	\fIa\fR
 .TE
 For bitvectors all operations from the operator table are supported.
 .br

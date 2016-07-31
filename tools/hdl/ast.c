@@ -104,6 +104,7 @@ static OpData opdata[] = {
 	[OPUXOR] {"^", OPDUNARY|OPDBITOUT, 15},
 	[OPMAX] {"max", OPDWMAX, 3},
 	[OPCLOG2] {"clog2", OPDUNARY|OPDWINF, 15},
+	[OPREV] {"%", OPDUNARY|OPDSPECIAL, 15},
 };
 
 #define enumfmt(name, array) \
@@ -1290,6 +1291,10 @@ typecheck(ASTNode *n, Type *ctxt)
 			switch(n->op){
 			case OPREPL:
 				n->type = typerepl(n, n->n1, n->n2->type);
+				return;
+			case OPREV:
+				if(t1 >= 0 && t1 != TYPBITV && n->type->sz == nil) goto t1fail;
+				n->type = n->n1->type;
 				return;
 			default:
 				error(n, "typecheck: unknown %s", d->name);

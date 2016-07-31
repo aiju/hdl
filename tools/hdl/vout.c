@@ -170,7 +170,7 @@ vereprint(Fmt *f, ASTNode *n, int env)
 			if(d == nil)
 				error(n, "vereprint: unknown operator %d", n->op);
 			else
-				error(n, "vereprint: operator '%s' not valid in Verilog", d->name);
+				error(n, "vereprint: operator '%s%s' not valid in Verilog", (d->flags & OPDUNARY) != 0 ? "unary " : "", d->name);
 			break;
 		}
 		if((d->flags & OPDUNARY) != 0){

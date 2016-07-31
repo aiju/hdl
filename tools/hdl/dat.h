@@ -180,6 +180,7 @@ enum {
 	OPUXOR,
 	OPMAX,
 	OPCLOG2,
+	OPREV,
 };
 
 enum {
