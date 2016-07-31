@@ -17,6 +17,7 @@ future ideas (not necessarily good)
 
 implementation
 - support [] lvals
+- handle 'latch-like' behaviour (by muxing registers)
 - struct parameters
 - fix pack-defs
 - async signals
