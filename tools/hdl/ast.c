@@ -454,7 +454,7 @@ typeor(Type *t1, int i1, Type *t2, int i2, Type **tp, int *ip)
 	int io, ia, ib;
 
 	io = i1 | i2;
-	ia = io & (OPTWIRE | OPTREG | OPTTYPEDEF | OPTCONST);
+	ia = io & (OPTWIRE | OPTREG | OPTIN | OPTTYPEDEF | OPTCONST);
 	ia &= ia - 1;
 	ib = io & (OPTIN | OPTOUT | OPTTYPEDEF | OPTCONST);
 	ib &= ib - 1;
@@ -1196,8 +1196,11 @@ typecheck(ASTNode *n, Type *ctxt)
 	case ASTMODULE:
 	case ASTBLOCK:
 	case ASTFSM:
-		for(mp = n->ports; mp != nil; mp = mp->next)
+		for(mp = n->ports; mp != nil; mp = mp->next){
 			typecheck(mp->n, nil);
+			if(mp->n->t == ASTDECL && (mp->n->sym->opt & (OPTIN|OPTOUT)) == 0)
+				error(mp->n, "'%s' port must be input or output", mp->n->sym->name);
+		}
 		for(mp = n->nl; mp != nil; mp = mp->next)
 			typecheck(mp->n, nil);
 		break;
