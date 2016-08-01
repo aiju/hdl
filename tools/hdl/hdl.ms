@@ -440,7 +440,7 @@ Each \fIstate\fR declared in the body defines one of the possible values.
 A lone \fB:\fR declares another state, incrementing a number at the end of the last state, or appending \f(CW0\fR if there is no number.
 The \fBdefault\fR keyword declares no state.
 .LP
-Control statements can be used in a fsm; by including state definitions in the main loop their execution can span several states.
+Control statements can be used in a fsm; by including state definitions in the body their execution can span several states.
 .LP
 During each cycle of execution the statements from first the \fBdefault\fR case and then the current state are executed.
 If a \fBgoto\fR statement is executed, execution is halted and the next state is set to the label given.
