@@ -1015,7 +1015,9 @@ astinit(void)
 static void
 condcheck(ASTNode *n)
 {
-	if(n->type == nil)
+	if(n == nil || n->type == nil)
+		return;
+	if(n->type->t == TYPBITV && nodeeq(n->type->sz, node(ASTCINT, 1), nodeeq))
 		return;
 	if(n->type->t != TYPBIT)
 		error(n, "%T invalid as condition", n->type);
