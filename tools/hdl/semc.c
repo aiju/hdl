@@ -706,10 +706,10 @@ dominter(SemBlock *a, SemBlock *b)
 	if(a == nil) return b;
 	if(b == nil) return a;
 	while(a != b){
-		while(a != nil && a->idx > b->idx)
+		while(a != nil && a->idx < b->idx)
 			a = a->ipdom;
 		assert(a != nil);
-		while(b != nil && b->idx > a->idx)
+		while(b != nil && b->idx < a->idx)
 			b = b->ipdom;
 		assert(b != nil);
 	}
@@ -726,6 +726,8 @@ calcdom(void)
 	for(i = 0; i < nblocks; i++)
 		if(blocks[i]->nto == 0)
 			blocks[i]->ipdom = blocks[i];
+		else
+			blocks[i]->ipdom = nil;
 	do{
 		ch = 0;
 		for(i = nblocks; --i >= 0; ){
@@ -734,7 +736,7 @@ calcdom(void)
 				continue;
 			n = nil;
 			for(j = 0; j < b->nto; j++)
-				n = dominter(n, b->to[j]->ipdom);
+				n = dominter(n, b->to[j]);
 			ch += b->ipdom != n;
 			b->ipdom = n;
 		}
