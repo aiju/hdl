@@ -207,6 +207,7 @@ fsmcopy(ASTNode *n)
 	Nodes *mp;
 	FSMState *s0, *s1, *s2, *s3;
 
+	if(n == nil) return;
 	switch(n->t){
 	default:
 		error(n, "fsmcopy: unknown %A", n->t);
@@ -297,7 +298,10 @@ fsmcopy(ASTNode *n)
 		s3 = newstate(nil, 0);
 		
 		stcur->nl = nlcat(stcur->nl, nl(node(ASTGOTO, s0->s)));
-		s0->nl = nl(node(ASTIF, n->n2, node(ASTGOTO, s1->s), node(ASTGOTO, s3->s)));
+		if(n->n2 == nil)
+			s0->nl = nl(node(ASTGOTO, s1->s));
+		else
+			s0->nl = nl(node(ASTIF, n->n2, node(ASTGOTO, s1->s), node(ASTGOTO, s3->s)));
 		
 		stcur = s2;
 		statappend(s2);
