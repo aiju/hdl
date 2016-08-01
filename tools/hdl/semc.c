@@ -515,7 +515,7 @@ phi(SemBlock *b, SemDefs *d, SemDefs *glob)
 					v = ssaget(b->from[j]->defs, dp->sym, dp->prime);
 					if(v != nil && v == v->sym->semc[v->prime])
 						if(!v->prime){
-							error(v->sym, "'%s' phi: phase error", v->sym->name);
+							error(v->sym, "'%s' incomplete definition", v->sym->name);
 							mm = node(ASTSSA, v);
 						}else{
 							mm = node(ASTSSA, v->sym->semc[0]);
