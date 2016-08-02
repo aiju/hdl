@@ -214,6 +214,21 @@ semvfmt(Fmt *f)
 	return fmtprint(f, "%s%s$%d%s", v->sym->name, v->prime ? "'" : "", v->idx, (v->flags & SVCANNX) != 0 ? "!" : ".");
 }
 
+static int
+depsfmt(Fmt *f)
+{
+	SemVars *v;
+	int i, rc;
+	
+	v = va_arg(f->args, SemVars *);
+	if(v == nil) return fmtstrcpy(f, "<nil>");
+	if(v->n == 0) return fmtstrcpy(f, "<empty>");
+	rc = 0;
+	for(i = 0; i < v->n - 1; i++)
+		rc += fmtprint(f, "%Σ, ", v->p[i]);
+	rc += fmtprint(f, "%Σ", v->p[v->n - 1]);
+	return rc;
+}
 
 static void
 defsym(Symbol *s, SemDefs *glob)
@@ -2130,4 +2145,5 @@ void
 semvinit(void)
 {
 	fmtinstall(L'Σ', semvfmt);
+	fmtinstall(L'Δ', depsfmt);
 }
