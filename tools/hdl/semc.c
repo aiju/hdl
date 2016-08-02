@@ -2005,19 +2005,28 @@ static void
 printblocks(void)
 {
 	SemBlock *b;
+	Nodes *p;
 	int i, j;
 	
 	for(j = 0; j < nblocks; j++){
 		b = blocks[j];
-		print("%p:\n", b);
+		print("%p:", b);
 		if(b->nfrom != 0){
-			print("\t// from ");
+			print(" // from ");
 			for(i = 0; i < b->nfrom; i++)
 				print("%p%s", b->from[i], i+1 == b->nfrom ? "" : ", ");
-			print("\n");
 		}
-		astprint(b->phi, 1);
-		astprint(b->cont, 1);
+		print("\n");
+		if(b->phi != nil && b->phi->t == ASTBLOCK){
+			for(p = b->phi->nl; p != nil; p = p->next)
+				astprint(p->n, 1);
+		}else
+			astprint(b->phi, 1);
+		if(b->cont != nil && b->cont->t == ASTBLOCK){
+			for(p = b->cont->nl; p != nil; p = p->next)
+				astprint(p->n, 1);
+		}else
+			astprint(b->cont, 1);
 		astprint(b->jump, 1);
 	}
 }
