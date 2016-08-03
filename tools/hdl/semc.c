@@ -1641,7 +1641,7 @@ again:
 		v = vars[i];
 		if(v == v->sym->semc[1] && (v->sym->semc[0]->flags & SVREG) != 0)
 			outs = depadd(outs, v);
-		if(v == v->sym->semc[0] && (v->sym->semc[0]->flags & SVREG) == 0)
+		if(v == v->sym->semc[0])
 			outs = depadd(outs, v);
 	}
 	do{
