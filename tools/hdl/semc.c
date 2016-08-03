@@ -1781,7 +1781,7 @@ dessa(void)
 			if(w->sym != v->sym || w->prime != v->prime || w->targv == nil) continue;
 			for(k = 0; k < i; k++){
 				if(vars[k]->targv != w->targv) continue;
-				if(deptest(vars[k]->live, v)) break;
+				if(deptest(vars[k]->live, v) || deptest(v->live, vars[k])) break;
 			}
 			if(k == i) break;
 		}
