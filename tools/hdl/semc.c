@@ -1540,7 +1540,7 @@ addphis(SemVars *live, SemBlock *t, SemBlock *f)
 }
 
 static Nodes *
-proplive(ASTNode *n, SemVars **live)
+proplive(ASTNode *n, SemVars **live, int *ch)
 {
 	ASTNode *m;
 	int nrl, i, del;
@@ -1564,40 +1564,43 @@ proplive(ASTNode *n, SemVars **live)
 		if(n->n1 == nil || n->n1->t != ASTSSA) break;
 		if(deptest(*live, n->n1->semv) == 0) del = 1;
 		*live = depsub(*live, n->n1->semv);
-		m->n2 = mkblock(proplive(n->n2, live));
+		m->n2 = mkblock(proplive(n->n2, live, ch));
 		if(del){
 			nodeput(m);
+			(*ch)++;
 			return nil;
 		}
 		break;
+	case ASTPHI:
+		break;
 	case ASTOP:
 	case ASTCAST:
-		m->n1 = mkblock(proplive(n->n1, live));
-		m->n2 = mkblock(proplive(n->n2, live));
+		m->n1 = mkblock(proplive(n->n1, live, ch));
+		m->n2 = mkblock(proplive(n->n2, live, ch));
 		break;
 	case ASTTERN:
 	case ASTIDX:
-		m->n1 = mkblock(proplive(n->n1, live));
-		m->n2 = mkblock(proplive(n->n2, live));
-		m->n3 = mkblock(proplive(n->n3, live));
+		m->n1 = mkblock(proplive(n->n1, live, ch));
+		m->n2 = mkblock(proplive(n->n2, live, ch));
+		m->n3 = mkblock(proplive(n->n3, live, ch));
 		break;		
 	case ASTIF:
-		m->n1 = mkblock(proplive(n->n1, live));
+		m->n1 = mkblock(proplive(n->n1, live, ch));
 		break;
 	case ASTSWITCH:
-		m->n2 = mkblock(proplive(n->n2, live));
-		m->n1 = mkblock(proplive(n->n1, live));
+		m->n2 = mkblock(proplive(n->n2, live, ch));
+		m->n1 = mkblock(proplive(n->n1, live, ch));
 		break;
 	case ASTCASE:
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
-			m->nl = nlcat(m->nl, proplive(r->n, live));
+			m->nl = nlcat(m->nl, proplive(r->n, live, ch));
 		break;
 	case ASTBLOCK:
 		m->nl = nil;
 		listarr(n->nl, &rl, &nrl);
 		for(i = nrl; --i >= 0; )
-			m->nl = nlcat(proplive(rl[i], live), m->nl);
+			m->nl = nlcat(proplive(rl[i], live, ch), m->nl);
 		free(rl);
 		break;
 	default:
@@ -1620,6 +1623,7 @@ tracklive(void)
 	kill = emalloc(sizeof(SemVars *) * nblocks);
 	livein = emalloc(sizeof(SemVars *) * nblocks);
 	liveout = emalloc(sizeof(SemVars *) * nblocks);
+again:
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
 		nodeps.ref += 4;
@@ -1634,9 +1638,9 @@ tracklive(void)
 	outs = depinc(&nodeps);
 	for(i = 0; i < nvars; i++){
 		v = vars[i];
-		if((v->flags & SVPORT) != 0 && (v->sym->opt & OPTOUT) != 0)
-			outs = depadd(outs, v);
 		if(v == v->sym->semc[1] && (v->sym->semc[0]->flags & SVREG) != 0)
+			outs = depadd(outs, v);
+		if(v == v->sym->semc[0] && (v->sym->semc[0]->flags & SVREG) == 0)
 			outs = depadd(outs, v);
 	}
 	do{
@@ -1665,19 +1669,28 @@ tracklive(void)
 		}
 		putdeps(glob);
 	}while(ch != 0);
+	ch = 0;
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
-		for(j = 0; j < liveout[i]->n; j++)
-			liveout[i]->p[j]->live = depcat(liveout[i]->p[j]->live, depinc(liveout[i]));
 		l = depinc(liveout[i]);
-		b->jump = mkblock(proplive(b->jump, &l));
-		b->cont = mkblock(proplive(b->cont, &l));
+		b->jump = mkblock(proplive(b->jump, &l, &ch));
+		b->cont = mkblock(proplive(b->cont, &l, &ch));
+		b->phi = mkblock(proplive(b->phi, &l, &ch));
 		putdeps(l);
-		b->live = liveout[i];
+	}
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		if(ch == 0){
+			for(j = 0; j < liveout[i]->n; j++)
+				liveout[i]->p[j]->live = depcat(liveout[i]->p[j]->live, depinc(liveout[i]));
+			b->live = liveout[i];
+		}else
+			putdeps(liveout[i]);
 		putdeps(livein[i]);
 		putdeps(gen[i]);
 		putdeps(kill[i]);
 	}
+	if(ch != 0) goto again;
 	free(gen);
 	free(kill);
 	free(livein);
