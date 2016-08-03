@@ -10,6 +10,7 @@ typedef struct SemVars SemVars;
 typedef struct SemDefs SemDefs;
 typedef struct SemInit SemInit;
 typedef struct SemTrigger SemTrigger;
+#pragma varargck type "Δ" SemVars *
 
 enum { SEMHASH = 32 };
 
