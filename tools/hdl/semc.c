@@ -2004,15 +2004,11 @@ static void
 printlive(void)
 {
 	SemVar *v;
-	int i, j;
+	int i;
 	
 	for(i = 0; i < nvars; i++){
 		v = vars[i];
-		if(v->live == nil || v->live->n == 0) continue;
-		print("%Σ ", v);
-		for(j = 0; j < v->live->n; j++)
-			print("%Σ,", v->live->p[j]);
-		print("\n");
+		print("%Σ %Δ\n", v, v->live);
 	}
 }
 
