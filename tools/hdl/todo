@@ -26,6 +26,7 @@ implementation
 - implement @ and #
 - nested modules
 - compensate for verilog expression width behaviour
+- non-synchronous initializations need to have reset values propagated to other signals
 
 questions
 - how meaningful is it to speak of the signedness of an infinite bitvector?
