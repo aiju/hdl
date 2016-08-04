@@ -14,6 +14,7 @@ typedef struct SemTrigger SemTrigger;
 
 enum { SEMHASH = 32 };
 
+/* initialization statement (var=val) */
 struct SemInit {
 	enum {
 		SINONE,
@@ -32,6 +33,7 @@ struct SemTrigger {
 	SemInit *first, **last;
 	SemTrigger *next;
 };
+/* a variable for the purposes of this file (including SSA variables) */
 struct SemVar {
 	Symbol *sym;
 	int prime;
@@ -41,46 +43,51 @@ struct SemVar {
 	
 	int def, ref;
 	enum {
-		SVCANNX = 1,
-		SVNEEDNX = 2,
-		SVDELDEF = 4,
+		SVCANNX = 1, /* can determine primed version */
+		SVNEEDNX = 2, /* need to determine primed version */
+		SVDELDEF = 4, /* definition to be deleted */
 		SVREG = 8,
 		SVPORT = 16,
 	} flags;
-	SemVars *deps;
-	SemVars *live;
-	SemVar *tnext;
+	SemVars *deps; /* definition depends on these variables */
+	SemVars *live; /* simultaneously live with these variables */
+	SemVar *tnext; /* next value */
 	SemInit *init;
 	int nsinits;
 	Symbol *targv;
 };
+/* SemVars are reference-counted and copy-on-write */
 struct SemVars {
 	SemVar **p;
 	int n;
 	int ref;
 };
 enum { SEMVARSBLOCK = 32 }; /* must be power of two */
+/* hashtable for looking up Symbol -> SemVar */
 struct SemDef {
+	/* key */
 	Symbol *sym;
 	int prime;
-	int ctr;
+	/* value */
 	SemVar *sv;
+	int ctr; /* count number of definitions (used for φ functions) */
 	SemDef *next;
 };
 struct SemDefs {
 	SemDef *hash[SEMHASH];
 };
+/* basic block */
 enum { FROMBLOCK = 16 };
 struct SemBlock {
 	int idx;
 	SemBlock **from, **to;
 	int nfrom, nto;
-	ASTNode *phi;
-	ASTNode *cont;
-	ASTNode *jump;
-	SemBlock *ipdom;
-	SemDefs *defs;
-	SemVars *deps;
+	ASTNode *phi; /* φ definitions */
+	ASTNode *cont; /* contents of the block */
+	ASTNode *jump; /* branch leaving the block */
+	SemBlock *ipdom; /* immediate post-dominator */
+	SemDefs *defs; /* definitions */
+	SemVars *deps; /* control dependencies */
 	SemVars *live;
 };
 
@@ -145,6 +152,7 @@ mkvar(Symbol *s, int p)
 	return v;
 }
 
+/* look up a SemVar in a SemDefs */
 static SemVar *
 ssaget(SemDefs *d, Symbol *s, int pr)
 {
@@ -157,12 +165,18 @@ ssaget(SemDefs *d, Symbol *s, int pr)
 	return nil;
 }
 
+/* record new Symbol -> SemVar association.
+   in case of conflict the behaviour is determined by mode.
+   mode == 2: complain.
+   mode == 1: override existing definitions.
+   mode == 0: set existing definition to nil. */
+
 static void
 defsadd(SemDefs *d, SemVar *sv, int mode)
 {
 	SemDef **p;
 	SemDef *dv;
-	
+
 	for(p = &d->hash[((uintptr)sv->sym) % SEMHASH]; *p != nil && ((*p)->sym < sv->sym || (*p)->prime < sv->prime); p = &(*p)->next)
 		;
 	if(*p != nil && (*p)->sym == sv->sym && (*p)->prime == sv->prime){
@@ -231,6 +245,7 @@ depsfmt(Fmt *f)
 	return rc;
 }
 
+/* record a new Symbol and create SemVars for both unprimed and primed versions */
 static void
 defsym(Symbol *s, SemDefs *glob)
 {
@@ -260,6 +275,7 @@ newblock(void)
 	return s;
 }
 
+/* stack of named blocks (for translating disable statements) */
 typedef struct TBlock TBlock;
 struct TBlock {
 	Symbol *sym;
@@ -294,6 +310,7 @@ gettblock(Line *l, TBlock *t, Symbol *s)
 	return t->ex;
 }
 
+/* blockbuild converts from AST format into basic blocks */
 static SemBlock *
 blockbuild(ASTNode *n, SemBlock *sb, SemDefs *glob, TBlock *tb)
 {
@@ -437,6 +454,7 @@ gotosub(ASTNode *n)
 	return nl(n);
 }
 
+/* a lot of the algorithms don't like critical edges -- split them */
 static int
 critedge(void)
 {
@@ -460,6 +478,8 @@ critedge(void)
 	return rc;
 }
 
+/* handle the lval of an assignment by recursively traversing it, recording the state in attr.
+   bit 0 in attr marks primed variables. */
 static ASTNode *
 lvalhandle(ASTNode *n, SemDefs *d, int attr)
 {
@@ -490,6 +510,8 @@ lvalhandle(ASTNode *n, SemDefs *d, int attr)
 	}
 }
 
+/* if s already has a phi function, reuse the existing SemVar.
+   else make a new one. */
 static SemVar *
 findphi(Nodes *r, Symbol *s, int pr)
 {
@@ -504,6 +526,8 @@ findphi(Nodes *r, Symbol *s, int pr)
 	return mkvar(s, pr);
 }
 
+/* define a phi function for all variables with conflicting definitions.
+   since we iterate, we need to work with the existing phi functions. */
 static void
 phi(SemBlock *b, SemDefs *d, SemDefs *glob)
 {
@@ -629,6 +653,7 @@ blockcmp(SemBlock *a, SemBlock *b)
 	return 0;
 }
 
+/* replace the last visible SSA version of a variable with the one with index 0. */
 static SemDefs *fixlastd;
 static Nodes *
 fixlast(ASTNode *n)
@@ -645,6 +670,7 @@ fixlast(ASTNode *n)
 	return nl(n);
 }
 
+/* convert into SSA form */
 static void
 ssabuild(SemDefs *glob)
 {
@@ -693,6 +719,7 @@ reorderdfw(int *idx, int i, int *ctr)
 	idx[i] = --(*ctr);
 }
 
+/* put blocks in reverse post-order */
 static void
 reorder(void)
 {
@@ -732,6 +759,7 @@ dominter(SemBlock *a, SemBlock *b)
 	return a;
 }
 
+/* calculate the immediate post-dominators using the algorithm by Cooper, Harvey and Kennedy */
 static void
 calcdom(void)
 {
@@ -768,6 +796,7 @@ putdeps(SemVars *v)
 	}
 }
 
+/* create a new copy (if necessary) */
 static SemVars *
 depmod(SemVars *a)
 {
@@ -815,6 +844,7 @@ depsub(SemVars *a, SemVar *b)
 	return a;
 }
 
+/* merge two sets */
 static SemVars *
 depcat(SemVars *a, SemVars *b)
 {
@@ -832,6 +862,7 @@ depcat(SemVars *a, SemVars *b)
 	return a;
 }
 
+/* take the difference of two sets */
 static SemVars *
 depdecat(SemVars *a, SemVars *b)
 {
@@ -883,6 +914,8 @@ deptest(SemVars *a, SemVar *b)
 	return 0;
 }
 
+/* calculate dependencies of an expression and propagate the dependencies
+   through to assignment statements. */
 static SemVars *
 trackdep(ASTNode *n, SemVars *cdep)
 {
@@ -925,6 +958,8 @@ trackdep(ASTNode *n, SemVars *cdep)
 	}
 }
 
+/* propagate control dependencies to all blocks that depend on a block.
+   stop at the immediate post dominator t. */
 static void
 depprop(SemBlock *t, SemBlock *b, SemVars *v)
 {
@@ -940,6 +975,7 @@ depprop(SemBlock *t, SemBlock *b, SemVars *v)
 	putdeps(v);
 }
 
+/* process a control statement for control dependencies */
 static void
 depproc(SemBlock *b, ASTNode *n)
 {
@@ -993,6 +1029,7 @@ trackdeps(void)
 	}
 }
 
+/* calculate whether we can determine the primed version (based on dependencies) */
 static void
 trackcans(void)
 {
@@ -1018,6 +1055,8 @@ trackcans(void)
 	}while(ch > 0);
 }
 
+/* determine whether we should determine the next value of a variable.
+   also decide which variables to registerize. */
 static void
 trackneed(void)
 {
@@ -1049,6 +1088,7 @@ trackneed(void)
 			}
 		}
 	}
+	/* propagate SVNEEDNX to all variables we are dependent on */
 	do{
 		ch = 0;
 		for(j = 0; j < nvars; j++){
@@ -1113,6 +1153,7 @@ deldefs(ASTNode *n)
 	return nl(n);
 }
 
+/* copy blocks and create definitions for the primed values as needed */
 static void
 makenext(void)
 {
@@ -1166,6 +1207,7 @@ makenext(void)
 	bsfree(copy);
 }
 
+/* join the initializer types a and b, returning SIINVAL in case of conflict */
 static int
 initjoin(int a, int b)
 {
@@ -1175,6 +1217,7 @@ initjoin(int a, int b)
 	return SIINVAL;
 }
 
+/* determine the initializer type corresponding to an expression */
 static int
 inittype(ASTNode *n)
 {
@@ -1204,6 +1247,8 @@ inittype(ASTNode *n)
 	}
 }
 
+/* process statement in initial block with triggers tr,
+   creating SemInit structures for all triggers. */
 static void
 initial1(ASTNode *n, Nodes *tr, SemDefs *glob)
 {
@@ -1253,6 +1298,7 @@ initial1(ASTNode *n, Nodes *tr, SemDefs *glob)
 	}
 }
 
+/* process all initial blocks */
 static void
 initial(SemDefs *glob)
 {
@@ -1273,6 +1319,7 @@ static BitSet *sinitvisit;
 static SemDefs *sinitvars;
 static SemTrigger *sinits;
 
+/* find all variables in a statement that we would like to initialize */
 static Nodes *
 sinitblock(ASTNode *n)
 {
@@ -1314,6 +1361,7 @@ sinitcmp(void *va, void *vb)
 	return a - b;
 }
 
+/* group SemInit structures by trigger */
 static void
 sinitgather(void)
 {
@@ -1343,6 +1391,7 @@ sinitgather(void)
 				}
 }
 
+/* manually add to the from/to list of a block */
 static void
 mkftlist(SemBlock *b, int to, ...)
 {
@@ -1361,6 +1410,7 @@ mkftlist(SemBlock *b, int to, ...)
 	va_end(va);
 }
 
+/* add initialization statements to blocks as needed */
 static void
 sinitbuild(SemBlock *b)
 {
@@ -1401,6 +1451,7 @@ sinitbuild(SemBlock *b)
 	}
 }
 
+/* process synchronous initializations */
 static int
 syncinit(void)
 {
@@ -1424,6 +1475,7 @@ syncinit(void)
 	return rc;
 }
 
+/* make Verilog initial block for all SIDEF initiailizers */
 static Nodes *
 initdef(void)
 {
@@ -1446,6 +1498,7 @@ initdef(void)
 	return nil;
 }
 
+/* convert list to array (so we can traverse backwards) */
 static void
 listarr(Nodes *n, ASTNode ***rp, int *nrp)
 {
@@ -1464,6 +1517,7 @@ listarr(Nodes *n, ASTNode ***rp, int *nrp)
 	*nrp = nr;
 }
 
+/* calculate gen and kill sets for liveness analysis */
 static void
 tracklive1(ASTNode *n, SemVars **gen, SemVars **kill)
 {
@@ -1517,6 +1571,8 @@ tracklive1(ASTNode *n, SemVars **gen, SemVars **kill)
 	}
 }
 
+/* add variables references by the phi statements in block t
+   to the liveness set of block f */
 static SemVars *
 addphis(SemVars *live, SemBlock *t, SemBlock *f)
 {
@@ -1540,6 +1596,8 @@ addphis(SemVars *live, SemBlock *t, SemBlock *f)
 	return live;
 }
 
+/* propagate liveness information, stepping backwards through the block.
+   delete dead definitions as they encountered (incrementing *ch). */
 static Nodes *
 proplive(ASTNode *n, SemVars **live, int *ch)
 {
@@ -1611,6 +1669,7 @@ proplive(ASTNode *n, SemVars **live, int *ch)
 	return nl(nodededup(n, m));
 }
 
+/* calculate live variables and delete dead definitions, iterating until there are no more changes. */
 static void
 tracklive(void)
 {
@@ -1737,6 +1796,7 @@ dessa1(ASTNode *n)
 	return nl(n);
 }
 
+/* delete a phi statement and add assignments to the previous blocks, if needed. */
 static void
 delphi(SemBlock *b)
 {
@@ -1761,6 +1821,7 @@ delphi(SemBlock *b)
 
 static SymTab *newst;
 
+/* translate out of SSA back into normality */
 static void
 dessa(void)
 {
@@ -1776,6 +1837,7 @@ dessa(void)
 		if(v->ref == 0)
 			continue;
 		SET(w);
+		/* check to see if we can merge with any other SSA version of a variable */
 		for(j = 0; j < i; j++){
 			w = vars[j];
 			if(w->sym != v->sym || w->prime != v->prime || w->targv == nil) continue;
@@ -1790,6 +1852,7 @@ dessa(void)
 			continue;
 		}
 		j = 0;
+		/* find first unused name */
 		do{
 			n = smprint(j == 0 ? "%s%s" : "%s%s_%d", v->sym->name, v->prime ? "_nxt" : "", j);
 			j++;
@@ -1804,6 +1867,7 @@ dessa(void)
 		s->semc[0] = v;
 		v->targv = s;
 	}
+	/* replace references to SSA variables with their non-SSA version */
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
 		b->phi = mkblock(descend(b->phi, nil, dessa1));
@@ -1816,6 +1880,7 @@ dessa(void)
 
 static BitSet *delbl;
 
+/* replace a goto statement with the contents of the target block */
 static Nodes *
 blocksub(ASTNode *n)
 {
@@ -1829,6 +1894,7 @@ blocksub(ASTNode *n)
 	return nlcat(unmkblock(t->cont), unmkblock(t->jump));
 }
 
+/* delete blocks from the block list */
 static void
 delblocks(BitSet *bs)
 {
@@ -1848,6 +1914,7 @@ delblocks(BitSet *bs)
 	nblocks -= nr;
 }
 
+/* return the last statement of a block */
 static ASTNode *
 getlast(ASTNode *n)
 {
@@ -1859,6 +1926,7 @@ getlast(ASTNode *n)
 	return r->n;
 }
 
+/* return a new copy of a block with the last statement deleted */
 static ASTNode *
 dellast(ASTNode *n)
 {
@@ -1873,6 +1941,8 @@ dellast(ASTNode *n)
 	return m;
 }
 
+/* detect if and switch statements where all paths ultimately converge
+   and move the goto out of the statement. */
 static Nodes *
 iffix(ASTNode *n)
 {
@@ -1920,6 +1990,8 @@ countsemgoto(ASTNode *n)
 	return n != nil && n->t == ASTSEMGOTO;
 }
 
+/* simple iterative algorithm to remove goto statements from the blocks.
+   does not attempt to handle loops. */
 static void
 deblock(void)
 {
@@ -1962,6 +2034,7 @@ deblock(void)
 	}
 }
 
+/* recreate AST tree for module n */
 static ASTNode *
 makeast(ASTNode *n)
 {
@@ -2065,6 +2138,7 @@ unblock(ASTNode *n)
 	return n;
 }
 
+/* simplify the AST by removing pointless blocks */
 static Nodes *
 delempty(ASTNode *n)
 {
