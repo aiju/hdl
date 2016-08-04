@@ -180,9 +180,9 @@ vereprint(Fmt *f, ASTNode *n, int env)
 		}
 		if(env > d->prec)
 			rc += fmtrune(f, '(');
-		rc += vereprint(f, n->n1, d->prec + (d->flags & OPDRIGHT) != 0);
+		rc += vereprint(f, n->n1, d->prec + ((d->flags & OPDRIGHT) != 0));
 		rc += fmtprint(f, " %s ", d->name);
-		rc += vereprint(f, n->n2, d->prec + (d->flags & OPDRIGHT) == 0);
+		rc += vereprint(f, n->n2, d->prec + ((d->flags & OPDRIGHT) == 0));
 		if(env > d->prec)
 			rc += fmtrune(f, ')');
 		break;
