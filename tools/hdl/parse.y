@@ -242,14 +242,14 @@ expr:
 	| expr '@' expr { $$ = node(ASTOP, OPAT, $1, $3); }
 	| expr '?' expr ':' expr { $$ = node(ASTTERN, $1, $3, $5); }
 	| expr '(' cexpr ')' { $$ = node(ASTOP, OPREPL, $1, $3); }
-	| '+' primary %prec unaryprec { $$ = node(ASTOP, OPUPLUS, $2, nil); }
-	| '-' primary %prec unaryprec { $$ = node(ASTOP, OPUMINUS, $2, nil); }
-	| '~' primary %prec unaryprec { $$ = node(ASTOP, OPNOT, $2, nil); }
-	| '&' primary %prec unaryprec { $$ = node(ASTOP, OPUAND, $2, nil); }
-	| '|' primary %prec unaryprec { $$ = node(ASTOP, OPUOR, $2, nil); }
-	| '^' primary %prec unaryprec { $$ = node(ASTOP, OPUXOR, $2, nil); }
-	| '!' primary %prec unaryprec { $$ = node(ASTOP, OPLNOT, $2, nil); }
-	| '%' primary %prec unaryprec { $$ = node(ASTOP, OPREV, $2, nil); }
+	| '+' expr %prec unaryprec { $$ = node(ASTOP, OPUPLUS, $2, nil); }
+	| '-' expr %prec unaryprec { $$ = node(ASTOP, OPUMINUS, $2, nil); }
+	| '~' expr %prec unaryprec { $$ = node(ASTOP, OPNOT, $2, nil); }
+	| '&' expr %prec unaryprec { $$ = node(ASTOP, OPUAND, $2, nil); }
+	| '|' expr %prec unaryprec { $$ = node(ASTOP, OPUOR, $2, nil); }
+	| '^' expr %prec unaryprec { $$ = node(ASTOP, OPUXOR, $2, nil); }
+	| '!' expr %prec unaryprec { $$ = node(ASTOP, OPLNOT, $2, nil); }
+	| '%' expr %prec unaryprec { $$ = node(ASTOP, OPREV, $2, nil); }
 	| '{' litexprs '}' { $$ = node(ASTLITERAL, $2); }
 	| '(' type ')' expr %prec cast { $$ = mkcast($2.t, $2.i, $4); }
 
