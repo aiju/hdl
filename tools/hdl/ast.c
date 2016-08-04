@@ -1303,7 +1303,7 @@ typecheck(ASTNode *n, Type *ctxt)
 			}
 			return;
 		}
-		if(n->n1->type == n->n2->type && (d->flags & OPDEQ) != 0){
+		if((d->flags & OPDEQ) != 0 && n->n1->type == n->n2->type){
 			n->type = type(TYPBIT);
 			return;
 		}
