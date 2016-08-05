@@ -23,4 +23,6 @@ HFILES=dat.h fns.h
 
 lex.$O: y.tab.c
 
+semc.$O: semc0.c semc1.c semc2.c
+
 YFLAGS=$YFLAGS -D1 -v
