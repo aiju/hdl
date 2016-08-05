@@ -415,6 +415,7 @@ nodeaddi(ASTNode *a, int i)
 	if(a == nil) return node(ASTCINT, i);
 	if(a->t == ASTCINT && (i >= 0 ? a->i + i >= a->i : a->i + i < a->i))
 		return node(ASTCINT, a->i + i);
+	if(i == 0) return a;
 	return node(ASTOP, OPADD, a, node(ASTCINT, i));
 }
 
@@ -425,6 +426,8 @@ nodeadd(ASTNode *a, ASTNode *b)
 	if(a == nil || b == nil) return nil;
 	if(a->t == ASTCINT && b->t == ASTCINT && (int)((a->i & M) + (b->i & M)) >= 0)
 		return node(ASTCINT, a->i + b->i);
+	if(a->t == ASTCINT && a->i == 0) return b;
+	if(b->t == ASTCINT && b->i == 0) return a;
 	return node(ASTOP, OPADD, a, b);
 }
 
@@ -435,6 +438,7 @@ nodesub(ASTNode *a, ASTNode *b)
 	if(a == nil || b == nil) return nil;
 	if(a->t == ASTCINT && b->t == ASTCINT && (int)((a->i & M) - (b->i & M)) >= 0)
 		return node(ASTCINT, a->i + b->i);
+	if(b->t == ASTCINT && b->i == 0) return a;
 	return node(ASTOP, OPSUB, a, b);
 }
 
@@ -444,6 +448,8 @@ nodemul(ASTNode *a, ASTNode *b)
 	if(a == nil || b == nil) return nil;
 	if(a->t == ASTCINT && b->t == ASTCINT && (int)(a->i * b->i) == (vlong)a->i * b->i)
 		return node(ASTCINT, a->i * b->i);
+	if(a->t == ASTCINT && a->i == 1) return b;
+	if(b->t == ASTCINT && b->i == 1) return a;
 	return node(ASTOP, OPMUL, a, b);
 }
 
