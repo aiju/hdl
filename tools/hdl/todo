@@ -14,6 +14,7 @@ future ideas (not necessarily good)
 - hierarchical references
 - switch fallthru statement
 - UTF-8 in symbols (need to translate to Verilog somehow...)
+- allow attaching @valid to a signal definition so that reference to the signal always invoke @valid
 
 implementation
 - support [] lvals
