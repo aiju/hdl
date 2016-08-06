@@ -58,9 +58,16 @@ struct SemVar {
 };
 /* SemVars are reference-counted and copy-on-write */
 struct SemVars {
-	SemVar **p;
+	SemVar **p; /* entries */
+	int *f; /* flags */
 	int n;
 	int ref;
+};
+/* dependencies are classified into categories */
+enum {
+	DEPOTHER = 1,
+	DEPPHI = 2, /* phi function */
+	DEPISUB = 4, /* indexed assignment */
 };
 enum { SEMVARSBLOCK = 32 }; /* must be power of two */
 /* hashtable for looking up Symbol -> SemVar */

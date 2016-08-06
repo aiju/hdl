@@ -3,6 +3,7 @@ putdeps(SemVars *v)
 {
 	if(v != nil && --v->ref == 0){
 		free(v->p);
+		free(v->f);
 		free(v);
 	}
 }
@@ -18,26 +19,38 @@ depmod(SemVars *a)
 	b = emalloc(sizeof(SemVars));
 	b->p = emalloc(-(-a->n & -SEMVARSBLOCK) * sizeof(SemVar *));
 	memcpy(b->p, a->p, a->n * sizeof(SemVar *));
+	b->f = emalloc(-(-a->n & -SEMVARSBLOCK) * sizeof(int));
+	memcpy(b->f, a->f, a->n * sizeof(int));
 	b->n = a->n;
 	b->ref = 1;
 	return b;
 }
 
 static SemVars *
-depadd(SemVars *a, SemVar *b)
+depaddf(SemVars *a, SemVar *b, int f)
 {
 	int i;
 	
 	assert(a != nil && a->ref > 0);
 	for(i = 0; i < a->n; i++)
-		if(a->p[i] == b)
+		if(a->p[i] == b){
+			if((f & ~a->f[i]) != 0){
+				a = depmod(a);
+				a->f[i] |= f;
+			}
 			return a;
+		}
 	a = depmod(a);
-	if((a->n % SEMVARSBLOCK) == 0)
+	if((a->n % SEMVARSBLOCK) == 0){
 		a->p = erealloc(a->p, sizeof(SemVar *), a->n, SEMVARSBLOCK);
-	a->p[a->n++] = b;
+		a->f = erealloc(a->f, sizeof(int), a->n, SEMVARSBLOCK);
+	}
+	a->p[a->n] = b;
+	a->f[a->n] = f;
+	a->n++;
 	return a;
 }
+#define depadd(a, b) depaddf(a, b, 0)
 
 static SemVars *
 depsub(SemVars *a, SemVar *b)
@@ -68,7 +81,7 @@ depcat(SemVars *a, SemVars *b)
 		return a;
 	}
 	for(i = 0; i < b->n; i++)
-		a = depadd(a, b->p[i]);
+		a = depaddf(a, b->p[i], b->f[i]);
 	putdeps(b);
 	return a;
 }
@@ -128,7 +141,7 @@ deptest(SemVars *a, SemVar *b)
 /* calculate dependencies of an expression and propagate the dependencies
    through to assignment statements. */
 static SemVars *
-trackdep(ASTNode *n, SemVars *cdep)
+trackdep(ASTNode *n, SemVars *cdep, int fl)
 {
 	Nodes *r;
 
@@ -141,28 +154,34 @@ trackdep(ASTNode *n, SemVars *cdep)
 		return cdep;
 	case ASTBLOCK:
 		for(r = n->nl; r != nil; r = r->next)
-			putdeps(trackdep(r->n, depinc(cdep)));
+			putdeps(trackdep(r->n, depinc(cdep), fl));
 		return cdep;
 	case ASTASS:
 		if(n->n1 == nil || n->n1->t != ASTSSA) return cdep;
 		assert(n->n1->semv != nil);
 		n->n1->semv->def++;
-		n->n1->semv->deps = trackdep(n->n2, depinc(cdep));
+		n->n1->semv->deps = trackdep(n->n2, depinc(cdep), fl);
 		return cdep;
 	case ASTOP:
 	case ASTCAST:
 		cdep->ref++;
-		return depcat(trackdep(n->n1, cdep), trackdep(n->n2, cdep));
+		return depcat(trackdep(n->n1, cdep, fl), trackdep(n->n2, cdep, fl));
 	case ASTTERN:
 	case ASTIDX:
-	case ASTISUB:
 		cdep->ref += 2;
-		return depcat(depcat(trackdep(n->n1, cdep), trackdep(n->n2, cdep)), trackdep(n->n3, cdep));
+		return depcat(depcat(trackdep(n->n1, cdep, fl), trackdep(n->n2, cdep, fl)), trackdep(n->n3, cdep, fl));
+	case ASTISUB:
+		assert(n->n1 != nil && n->n1->t == ASTIDX);
+		cdep = depcat(cdep, trackdep(n->n1->n1, depinc(cdep), DEPISUB));
+		cdep = depcat(cdep, trackdep(n->n1->n2, depinc(cdep), DEPOTHER));
+		cdep = depcat(cdep, trackdep(n->n1->n3, depinc(cdep), DEPOTHER));
+		cdep = depcat(cdep, trackdep(n->n2, depinc(cdep), DEPOTHER));
+		return cdep;
 	case ASTSSA:
-		return depadd(cdep, n->semv);
+		return depaddf(cdep, n->semv, fl);
 	case ASTPHI:
 		for(r = n->nl; r != nil; r = r->next)
-			cdep = depcat(cdep, trackdep(r->n, depinc(cdep)));
+			cdep = depcat(cdep, trackdep(r->n, depinc(cdep), DEPPHI));
 		return cdep;
 	default:
 		error(n, "trackdep: unknown %A", n->t);
@@ -197,12 +216,12 @@ depproc(SemBlock *b, ASTNode *n)
 	if(n == nil) return;
 	switch(n->t){
 	case ASTIF:
-		v = trackdep(n->n1, depinc(&nodeps));
+		v = trackdep(n->n1, depinc(&nodeps), DEPOTHER);
 		depprop(b->ipdom, b->to[0], depinc(v));
 		depprop(b->ipdom, b->to[1], v);
 		break;
 	case ASTSWITCH:
-		v = trackdep(n->n1, depinc(&nodeps));
+		v = trackdep(n->n1, depinc(&nodeps), DEPOTHER);
 		for(r = n->n2->nl; r != nil; r = r->next)
 			switch(r->n->t){
 			case ASTSEMGOTO:
@@ -210,7 +229,7 @@ depproc(SemBlock *b, ASTNode *n)
 				break;
 			case ASTCASE:
 				for(s = r->n->nl; s != nil; s = s->next)
-					v = trackdep(s->n, v);
+					v = trackdep(s->n, v, DEPOTHER);
 				break;
 			case ASTDEFAULT:
 				break;
@@ -236,8 +255,8 @@ trackdeps(void)
 	}
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
-		putdeps(trackdep(b->phi, depinc(b->deps)));
-		putdeps(trackdep(b->cont, depinc(b->deps)));
+		putdeps(trackdep(b->phi, depinc(b->deps), DEPOTHER));
+		putdeps(trackdep(b->cont, depinc(b->deps), DEPOTHER));
 	}
 }
 
