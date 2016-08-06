@@ -15,9 +15,10 @@ future ideas (not necessarily good)
 - switch fallthru statement
 - UTF-8 in symbols (need to translate to Verilog somehow...)
 - allow attaching @valid to a signal definition so that reference to the signal always invoke @valid
+- allow definition before use
 
 implementation
-- support [] lvals
+- support 'variable splitting' (variables with bits that are independent)
 - handle 'latch-like' behaviour (by muxing registers)
 - struct parameters
 - fix pack-defs
