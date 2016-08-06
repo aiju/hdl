@@ -23,6 +23,7 @@ static char *astname[] = {
 	[ASTASS] "ASTASS",
 	[ASTPRIME] "ASTPRIME",
 	[ASTIDX] "ASTIDX",
+	[ASTISUB] "ASTISUB",
 	[ASTSYMB] "ASTSYMB",
 	[ASTMEMB] "ASTMEMB",
 	[ASTOP] "ASTOP",
@@ -194,6 +195,7 @@ node(int t, ...)
 	case ASTWHILE:
 	case ASTALWAYS:
 	case ASTDASS:
+	case ASTISUB:
 		n->n1 = va_arg(va, ASTNode *);
 		n->n2 = va_arg(va, ASTNode *);
 		break;
@@ -282,6 +284,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTIDX:
 	case ASTIF:
 	case ASTINITIAL:
+	case ASTISUB:
 	case ASTLITELEM:
 	case ASTMEMB:
 	case ASTOP:
@@ -738,6 +741,13 @@ eastprint(Fmt *f, ASTNode *n, int env)
 		if(n->op > 0)
 			rc += eastprint(f, n->n3, 0);
 		rc += fmtrune(f, ']');
+		break;
+	case ASTISUB:
+		rc += fmtstrcpy(f, "isub(");
+		rc += eastprint(f, n->n1, 2);
+		rc += fmtstrcpy(f, ", ");
+		rc += eastprint(f, n->n2, 2);
+		rc += fmtstrcpy(f, ")");
 		break;
 	case ASTBREAK: rc += fmtstrcpy(f, "break"); break;
 	case ASTCONTINUE: rc += fmtstrcpy(f, "continue"); break;

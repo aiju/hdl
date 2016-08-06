@@ -346,6 +346,7 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTFOR:
 	case ASTIDX:
 	case ASTIF:
+	case ASTISUB:
 	case ASTLITELEM:
 	case ASTMEMB:
 	case ASTOP:
@@ -421,6 +422,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTFOR:
 	case ASTIDX:
 	case ASTIF:
+	case ASTISUB:
 	case ASTLITELEM:
 	case ASTOP:
 	case ASTPRIME:

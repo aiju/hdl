@@ -48,6 +48,7 @@ tracklive1(ASTNode *n, SemVars **gen, SemVars **kill)
 		break;
 	case ASTOP:
 	case ASTCAST:
+	case ASTISUB:
 		tracklive1(n->n1, gen, kill);
 		tracklive1(n->n2, gen, kill);
 		break;
@@ -134,6 +135,7 @@ proplive(ASTNode *n, SemVars **live, int *ch)
 		break;
 	case ASTOP:
 	case ASTCAST:
+	case ASTISUB:
 		m->n1 = mkblock(proplive(n->n1, live, ch));
 		m->n2 = mkblock(proplive(n->n2, live, ch));
 		break;
@@ -291,8 +293,20 @@ countref(void)
 static Nodes *
 dessa1(ASTNode *n)
 {
+	ASTNode *idx;
+
 	if(n->t == ASTSSA)
 		return nl(node(ASTSYMB, n->semv->targv));
+	if(n->t == ASTASS && n->n2 != nil && n->n2->t == ASTISUB){
+		idx = n->n2->n1;
+		assert(idx != nil && idx->t == ASTIDX);
+		if(nodeeq(n->n1, idx->n1, nodeeq))
+			return nl(node(ASTASS, OPNOP, idx, n->n2->n2));
+		return nls(
+			node(ASTASS, OPNOP, n->n1, idx->n1),
+			node(ASTASS, OPNOP, node(ASTIDX, idx->op, n->n1, idx->n2, idx->n3), n->n2->n2),
+			nil);
+	}
 	return nl(n);
 }
 
@@ -638,6 +652,17 @@ unblock(ASTNode *n)
 	return n;
 }
 
+static ASTNode *
+asstarg(ASTNode *n)
+{
+	if(n == nil) return nil;
+	switch(n->t){
+	case ASTPRIME: return asstarg(n->n1);
+	case ASTIDX: return asstarg(n->n1);
+	default: return n;
+	}
+}
+
 /* simplify the AST by removing pointless blocks */
 static Nodes *
 delempty(ASTNode *n)
@@ -680,7 +705,7 @@ delempty(ASTNode *n)
 					if(s->n->t != ASTASS)
 						goto nope;
 					for(t = r->n->nl; t != s; t = t->next)
-						if(nodeeq(s->n->n1, t->n->n1, nodeeq))
+						if(nodeeq(asstarg(s->n->n1), asstarg(t->n->n1), nodeeq))
 							goto nope;
 				}
 				n->nl = nlcat(n->nl, r->n->nl);

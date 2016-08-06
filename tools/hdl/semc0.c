@@ -377,12 +377,14 @@ critedge(void)
 	return rc;
 }
 
+static Nodes *ssabuildbl(ASTNode *, SemDefs *, int);
+
 /* handle the lval of an assignment by recursively traversing it, recording the state in attr.
    bit 0 in attr marks primed variables. */
 static ASTNode *
-lvalhandle(ASTNode *n, SemDefs *d, int attr)
+lvalhandle(ASTNode *n, ASTNode **rhs, SemDefs *d, int attr)
 {
-	ASTNode *m, *r;
+	ASTNode *m, *r, *s;
 	SemVar *v;
 
 	if(n == nil) return nil;
@@ -392,7 +394,7 @@ lvalhandle(ASTNode *n, SemDefs *d, int attr)
 		defsadd(d, v, 1);
 		return node(ASTSSA, v);
 	case ASTPRIME:
-		r = lvalhandle(n->n1, d, 1);
+		r = lvalhandle(n->n1, rhs, d, 1);
 		if(r != nil && r->t == ASTSSA)
 			return r;
 		if(r == n->n1)
@@ -403,6 +405,11 @@ lvalhandle(ASTNode *n, SemDefs *d, int attr)
 	case ASTSSA:
 		defsadd(d, n->semv, 1);
 		return n;
+	case ASTIDX:
+		s = mkblock(ssabuildbl(n, d, attr & 1));
+		r = lvalhandle(n->n1, rhs, d, attr);
+		*rhs = node(ASTISUB, s, *rhs);
+		return r;
 	default:
 		error(n, "lvalhandle: unknown %A", n->t);
 		return n;
@@ -493,16 +500,21 @@ ssabuildbl(ASTNode *n, SemDefs *d, int attr)
 	case ASTOP:
 	case ASTTERN:
 	case ASTSWITCH:
-	case ASTIDX:
 	case ASTCAST:
+	case ASTISUB:
 		m->n1 = mkblock(ssabuildbl(n->n1, d, attr));
 		m->n2 = mkblock(ssabuildbl(n->n2, d, attr));
 		m->n3 = mkblock(ssabuildbl(n->n3, d, attr));
 		m->n4 = mkblock(ssabuildbl(n->n4, d, attr));
 		break;
+	case ASTIDX:
+		m->n1 = mkblock(ssabuildbl(n->n1, d, attr));
+		m->n2 = mkblock(ssabuildbl(n->n2, d, attr&~1));
+		m->n3 = mkblock(ssabuildbl(n->n3, d, attr&~1));
+		break;
 	case ASTASS:
 		m->n2 = mkblock(ssabuildbl(n->n2, d, attr));
-		m->n1 = lvalhandle(m->n1, d, 0);
+		m->n1 = lvalhandle(m->n1, &m->n2, d, 0);
 		break;
 	case ASTSYMB:
 		sv = ssaget(d, n->sym, attr);
@@ -523,7 +535,6 @@ ssabuildbl(ASTNode *n, SemDefs *d, int attr)
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, ssabuildbl(r->n, d, attr));
 		break;
-
 	default:
 		error(n, "ssabuildbl: unknown %A", n->t);
 	}

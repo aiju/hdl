@@ -155,6 +155,7 @@ trackdep(ASTNode *n, SemVars *cdep)
 		return depcat(trackdep(n->n1, cdep), trackdep(n->n2, cdep));
 	case ASTTERN:
 	case ASTIDX:
+	case ASTISUB:
 		cdep->ref += 2;
 		return depcat(depcat(trackdep(n->n1, cdep), trackdep(n->n2, cdep)), trackdep(n->n3, cdep));
 	case ASTSSA:
@@ -238,6 +239,84 @@ trackdeps(void)
 		putdeps(trackdep(b->phi, depinc(b->deps)));
 		putdeps(trackdep(b->cont, depinc(b->deps)));
 	}
+}
+
+static int
+findcircles(SemVar *v, SemVar *targ, BitSet *visit)
+{
+	int i;
+	SemVar *w;
+
+	if(bsadd(visit, v->idx)) return 0;
+	if(v->deps == nil) return 0;
+	for(i = 0; i < v->deps->n; i++){
+		w = v->deps->p[i];
+		if(w == targ) return 1;
+		if(findcircles(w, targ, visit)) return 1;
+	}
+	return 0;
+}
+
+static int circbroken;
+static Nodes *
+circbreak1(ASTNode *n)
+{
+	ASTNode *idx;
+	BitSet *visit;
+	ASTNode *m;
+	int r;
+	
+	if(n->t == ASTASS && n->n2 != nil && n->n2->t == ASTISUB){
+		idx = n->n2->n1;
+		assert(idx != nil && idx->t == ASTIDX);
+		if(n->n1->t == ASTSSA && idx->n1->t == ASTSSA && idx->n1->semv == idx->n1->semv->sym->semc[1]){
+			visit = bsnew(nvars);
+			r = findcircles(idx->n1->semv, n->n1->semv, visit);
+			bsfree(visit);
+			if(r){
+				m = nodedup(n);
+				m->n2 = nodedup(m->n2);
+				m->n2->n1 = nodedup(m->n2->n1);
+				m->n2->n1->n1 = node(ASTSSA, idx->n1->semv->sym->semc[0]);
+				circbroken++;
+				return nl(m);
+			}
+		}
+	}
+	return nl(n);
+}
+
+static void
+circbreak(void)
+{
+	SemBlock *b;
+	int i;
+
+	circbroken = 0;
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		b->cont = onlyone(descend(b->cont, nil, circbreak1));
+	}
+	if(circbroken != 0)
+		trackdeps();
+}
+
+static void
+circdefs(void)
+{
+	int i;
+	BitSet *visit;
+	
+	visit = bsnew(nvars);
+	for(i = 0; i < nvars; i++){
+		bsreset(visit);
+		if(vars[i] == vars[i]->sym->semc[0] && findcircles(vars[i], vars[i], visit))
+			error(vars[i]->sym, "combinational loop involving %s", vars[i]->sym->name);
+		bsreset(visit);
+		if(vars[i] == vars[i]->sym->semc[1] && findcircles(vars[i], vars[i], visit))
+			error(vars[i]->sym, "combinational loop involving %s'", vars[i]->sym->name);
+	}
+	bsfree(visit);
 }
 
 /* calculate whether we can determine the primed version (based on dependencies) */

@@ -123,6 +123,8 @@ semcomp(ASTNode *n)
 	calcdom();
 	/* semc1.c */
 	trackdeps();
+	circbreak();
+	circdefs();
 	trackcans();
 	trackneed();
 	makenext();
