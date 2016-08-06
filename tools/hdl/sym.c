@@ -78,6 +78,21 @@ addsym(SymTab *st, Symbol *s)
 	s->st = st;
 }
 
+void
+delsym(SymTab *st, Symbol *s)
+{
+	int h;
+	Symbol **p;
+	
+	h = hash(s->name) % SYMHASH;
+	for(p = &st->sym[h]; *p != nil; p = &(*p)->next)
+		if(*p == s){
+			*p = s->next;
+			s->next = nil;
+			return;
+		}
+}
+
 ASTNode *
 newscope(SymTab *sc, int t, Symbol *s)
 {

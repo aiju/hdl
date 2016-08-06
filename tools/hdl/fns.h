@@ -79,6 +79,7 @@ BitSet* bsdup(BitSet *);
 #define bsfree free
 void bscntgr(BitSet *, BitSet *, int *, int *);
 void addsym(SymTab *, Symbol *);
+void delsym(SymTab *, Symbol *);
 void verilog(ASTNode *);
 Symbol *findclock(Symbol *);
 ASTNode *dangle(ASTNode *, ASTNode *);

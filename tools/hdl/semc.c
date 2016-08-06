@@ -48,6 +48,7 @@ struct SemVar {
 		SVDELDEF = 4, /* definition to be deleted */
 		SVREG = 8,
 		SVPORT = 16,
+		SVMKSEQ = 32, /* create a sequential always block */
 	} flags;
 	SemVars *deps; /* definition depends on these variables */
 	SemVars *live; /* simultaneously live with these variables */
@@ -96,6 +97,7 @@ struct SemBlock {
 	SemDefs *defs; /* definitions */
 	SemVars *deps; /* control dependencies */
 	SemVars *live;
+	ASTNode *clock; /* always block clock (== nil for a normal block) */
 };
 
 static SemVars nodeps = {.ref = 1000};
@@ -138,10 +140,13 @@ semcomp(ASTNode *n)
 	initial(glob);
 	syncinit();
 	/* semc2.c */
+	trackdeps();
+	findseq();
 	tracklive();
 	countref();
 	dessa();
 	deblock();
+	mkseq();
 	n = makeast(n);
 	n = mkblock(descend(n, nil, delempty));
 	return n;

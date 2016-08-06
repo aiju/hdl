@@ -1,3 +1,31 @@
+/* find candidates for sequential blocks */
+static void
+findseq(void)
+{
+	int i, j, f;
+	SemVar *v, *w;
+	
+	for(i = 0; i < nvars; i++){
+		v = vars[i];
+		if((v->flags & SVREG) != 0)
+			v->flags |= SVMKSEQ;
+	}
+	for(i = 0; i < nvars; i++){
+		v = vars[i];
+		if(v->deps == nil) continue;
+		for(j = 0; j < v->deps->n; j++){
+			w = v->deps->p[j];
+			f = v->deps->f[j];
+			if(v->sym == w->sym && v->prime == w->prime && (f & ~(DEPPHI|DEPISUB)) == 0)
+				continue;
+			if(w->prime)
+				w->sym->semc[0]->flags &= ~SVMKSEQ;
+			if(w->idx != 0)
+				v->sym->semc[0]->flags &= ~SVMKSEQ;
+		}
+	}
+}
+
 /* convert list to array (so we can traverse backwards) */
 static void
 listarr(Nodes *n, ASTNode ***rp, int *nrp)
@@ -548,6 +576,126 @@ deblock(void)
 	}
 }
 
+static ASTNode *
+asstarg(ASTNode *n)
+{
+	if(n == nil) return nil;
+	switch(n->t){
+	case ASTSYMB: return n;
+	case ASTIDX: return asstarg(n->n1);
+	default:
+		warn(n, "asstarg: unknown %A", n->t);
+		return n;
+	}
+}
+
+static Nodes *seqclock;
+static int
+findseqclocks(ASTNode *n)
+{
+	ASTNode *m;
+	Symbol *t;
+	SemVar *v;
+	Nodes *r;
+
+	if(n == nil || n->t != ASTASS) return 0;
+	m = asstarg(n->n1);
+	if(m == nil || m->t != ASTSYMB) return 0;
+	t = m->sym;
+	v = t->semc[0]->sym->semc[0];
+	if((v->flags & SVMKSEQ) == 0) return 0;
+	if(t != v->tnext->targv) return 0;
+	assert(t->clock != nil);
+	for(r = seqclock; r != nil; r = r->next)
+		if(nodeeq(r->n, t->clock, nodeeq))
+			return 0;
+	seqclock = nlcat(seqclock, nl(t->clock));
+	return 0;
+}
+
+static ASTNode *
+targrepl(ASTNode *n, Symbol *new)
+{
+	switch(n->t){
+	case ASTSYMB:
+		n = nodedup(n);
+		n->sym = new;
+		return n;
+	case ASTIDX:
+		n = nodedup(n);
+		n->n1 = targrepl(n->n1, new);
+		return n;
+	default:
+		warn(n, "targrepl: unknown %A", n->t);
+		return n;
+	}
+}
+
+static ASTNode *convseqclock;
+static Nodes *
+convseq(ASTNode *n)
+{
+	ASTNode *m, *c;
+	Symbol *t, *tn;
+	SemVar *v;
+
+	switch(n->t){
+	case ASTASS:
+		m = asstarg(n->n1);
+		if(m == nil || m->t != ASTSYMB)
+			return nil;
+		t = m->sym;
+		v = t->semc[0]->sym->semc[0];
+		if((v->flags & SVMKSEQ) == 0)
+			tn = nil;
+		else
+			tn = v->tnext->targv;
+		if(t == tn)
+			c = t->clock;
+		else
+			c = nil;
+		if(!nodeeq(c, convseqclock, nodeeq))
+			return nil;
+		if(c == nil)
+			return nl(n);
+		delsym(newst, t);
+		n->t = ASTDASS;
+		n->n1 = targrepl(n->n1, t->semc[0]->sym->semc[0]->targv);
+		if(nodeeq(n->n1, n->n2, nodeeq))
+			return nil;
+		return nl(n);
+	default:
+		return nl(n);
+	}	
+}
+
+/* create sequential blocks */
+static void
+mkseq(void)
+{
+	int i;
+	SemBlock *b, *c;
+	Nodes *r;
+	
+	for(i = 0; i < nblocks; i++){
+		b = blocks[i];
+		seqclock = nil;
+		descendsum(b->cont, findseqclocks);
+		descendsum(b->jump, findseqclocks);
+		if(seqclock == nil) continue;
+		for(r = seqclock; r != nil; r = r->next){
+			c = newblock();
+			c->clock = r->n;
+			convseqclock = r->n;
+			c->cont = onlyone(descend(b->cont, nil, convseq));
+			c->jump = onlyone(descend(b->jump, nil, convseq));
+		}
+		convseqclock = nil;
+		b->cont = onlyone(descend(b->cont, nil, convseq));
+		b->jump = onlyone(descend(b->jump, nil, convseq));
+	}
+}
+
 /* recreate AST tree for module n */
 static ASTNode *
 makeast(ASTNode *n)
@@ -577,6 +725,7 @@ makeast(ASTNode *n)
 	for(i = 0; i < SYMHASH; i++)
 		for(s = newst->sym[i]; s != nil; s = s->next){
 			if(s->semc[0] == nil || (s->semc[0]->flags & SVREG) == 0) continue;
+			if((s->semc[0]->flags & SVMKSEQ) != 0) continue;
 			if(s->semc[0]->tnext == nil){ error(s, "'%s' makeast: tnext == nil", s->name); continue; }
 			if(s->semc[0]->tnext->targv == nil){ error(s, "'%s' makeast: tnext->targv == nil", s->name); continue; }
 			if(s->clock == nil){ error(s, "'%s' makeast: no clock", s->name); continue; }
@@ -595,6 +744,8 @@ makeast(ASTNode *n)
 		b = blocks[i];
 		p = nlcat(unmkblock(b->cont), unmkblock(b->jump));
 		e = node(ASTBLOCK, p);
+		if(b->clock != nil)
+			e = node(ASTALWAYS, b->clock, e);
 		m->nl = nlcat(m->nl, nl(e));
 	}
 	m->nl = nlcat(m->nl, initdef());
@@ -650,17 +801,6 @@ unblock(ASTNode *n)
 	if(n->t != ASTBLOCK) return n;
 	if(n->nl != nil && n->nl->next == nil) return n->nl->n;
 	return n;
-}
-
-static ASTNode *
-asstarg(ASTNode *n)
-{
-	if(n == nil) return nil;
-	switch(n->t){
-	case ASTPRIME: return asstarg(n->n1);
-	case ASTIDX: return asstarg(n->n1);
-	default: return n;
-	}
 }
 
 /* simplify the AST by removing pointless blocks */

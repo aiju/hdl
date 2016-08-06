@@ -248,6 +248,10 @@ trackdeps(void)
 	int i;
 	SemBlock *b;
 	
+	for(i = 0; i < nvars; i++){
+		putdeps(vars[i]->deps);
+		vars[i]->deps = depinc(&nodeps);
+	}
 	for(i = 0; i < nblocks; i++){
 		b = blocks[i];
 		if(b->nto <= 1) continue;
