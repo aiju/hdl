@@ -340,6 +340,7 @@ hasdangle(ASTNode *n)
 	switch(n->t){
 	case ASTBLOCK:
 	case ASTASS:
+	case ASTDASS:
 	case ASTSEMGOTO:
 	case ASTGOTO:
 	case ASTDISABLE:
