@@ -1,7 +1,7 @@
 *.8
 *.5
-8.out
-5.out
+8.*
+5.*
 .Xil
 *.log
 usage_statistics_webtalk.xml
@@ -12,4 +12,9 @@ build
 y.tab.c
 y.tab.h
 y.output
+fsm_encoding.os
+*.vstf
+*.dmp
+*.vcd
 y.debug
+cvcsim
