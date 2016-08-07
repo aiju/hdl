@@ -32,13 +32,14 @@ design top {
 	rl11;
 	kw11;
 	axidma { axi* <saxihp0*>; reg* = axidmareg* map(auto); }
+	busmon { axi* = hp1axi* <saxihp1*>; monreg* map(auto); }
 	
 	_debug {
 		=: bus*;
 		=: mem*;
 		=: dmem*;
-		=: rl*;
-		=: kw*;
+		=: j11*;
+		=: hp1axi*;
 		mapen;
 		_reg* = debug* map(auto);
 	}

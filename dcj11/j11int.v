@@ -24,6 +24,7 @@ module j11int(
 	output reg [15:0] buswdata,
 	output reg [1:0] buswstrb,
 	output reg [1:0] busbs,
+	output reg [3:0] busaio,
 	input wire busack,
 	input wire [15:0] busrdata,
 	input wire buserr,
@@ -38,7 +39,9 @@ module j11int(
 	
 	output reg mapen,
 	
-	output wire [4:0] j11state
+	output wire [4:0] j11state,
+	output reg [31:0] j11time,
+	output wire j11abort
 );
 
 	localparam NONE = 4'b1100;
@@ -93,8 +96,7 @@ module j11int(
 	reg [4:0] state = INIT;
 	reg [4:0] state_;
 	assign j11state = state;
-	
-	reg [3:0] aio;
+
 	reg abort;
 	reg [15:0] fout;
 	wire [15:0] fin;
@@ -149,7 +151,7 @@ module j11int(
 		FETCHADDR3:
 			state_ = FETCHADDR4;
 		FETCHADDR4: begin
-			casez(aio)
+			casez(busaio)
 			4'b1111:
 				state_ = WREND;
 			4'b1zzz:
@@ -220,7 +222,7 @@ module j11int(
 		FETCHADDR2: begin
 			j11dsel <= INLO;
 			busaddr[21:16] <= fin[5:0];
-			aio <= fin[11:8];
+			busaio <= fin[11:8];
 			busgp <= fin[11:8] == 4'b1110 || fin[11:8] == 4'b0101;
 			busirq <= fin[11:8] == 4'b1101;
 			busbs <= fin[7:6];
@@ -232,7 +234,7 @@ module j11int(
 		FETCHADDR4: begin
 			j11dsel <= INLO;
 			busaddr[15:0] <= fin;
-			buswstrb <= aio == 4'b0011 ? fin[0] ? 2'b10 : 2'b01 : 2'b11;
+			buswstrb <= busaio == 4'b0011 ? fin[0] ? 2'b10 : 2'b01 : 2'b11;
 		end
 		
 		RDREQ: begin
@@ -265,5 +267,13 @@ module j11int(
 		end
 		endcase
 	end
+	
+	always @(posedge clk) begin
+		if(!j11sctl)
+			j11time <= j11time + 1;
+		else
+			j11time <= 0;
+	end
+	assign j11abort = abort;
 
 endmodule

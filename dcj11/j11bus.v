@@ -62,7 +62,7 @@ module j11bus(
 	assign memwstrb = buswstrb;
 	
 	reg odt;
-	assign leds = {4'b0, odt, j11init};
+	assign leds = {4'b0, !odt, j11init};
 	
 	reg [1:0] uartirqact;
 	reg rlirqact;
@@ -130,8 +130,10 @@ module j11bus(
 	
 	always @(posedge clk) begin
 		regack <= regreq;
-		if(regreq)
+		if(regreq) begin
 			j11init <= regwdata[0];
+			j11halt <= regwdata[1];
+		end
 	end
 
 endmodule
