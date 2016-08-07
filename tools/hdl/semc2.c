@@ -393,17 +393,13 @@ dessa(void)
 			v->targv = w->targv;
 			continue;
 		}
-		j = 0;
-		/* find first unused name */
-		do{
-			n = smprint(j == 0 ? "%s%s" : "%s%s_%d", v->sym->name, v->prime ? "_nxt" : "", j);
-			j++;
-			s = getsym(newst, 0, n);
-			free(n);
-		}while(s->t != SYMNONE);
+		n = smprint("%s%s", v->sym->name, v->prime ? "_nxt" : "");
+		s = getfreesym(newst, n);
+		free(n);
 		s->t = SYMVAR;
 		s->type = v->sym->type;
 		s->clock = v->sym->clock;
+		s->Line = v->sym->Line;
 		if(v == v->sym->semc[0])
 			s->opt = v->sym->opt & (OPTIN | OPTOUT);
 		s->semc[0] = v;

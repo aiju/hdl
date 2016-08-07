@@ -299,3 +299,19 @@ checksym(Symbol *s)
 	if(s->t == SYMNONE && s->whine++ < 5)
 		error(nil, "'%s' undeclared", s->name);
 }
+
+Symbol *
+getfreesym(SymTab *st, char *n)
+{
+	Symbol *s;
+	char *m;
+	int j;
+	
+	s = getsym(st, 0, n);
+	for(j = 0; s->t != SYMNONE; j++){
+		m = smprint("%s_%d", n, j);
+		s = getsym(st, 0, m);
+		free(m);
+	}
+	return s;
+}
