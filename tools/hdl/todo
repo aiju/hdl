@@ -33,3 +33,4 @@ implementation
 questions
 - how meaningful is it to speak of the signedness of an infinite bitvector?
 - should @ be zeroes or undefined at the beginning? if it is zeroes, it would be legal to do 1@x to find out if x has ever been true.
+- should fsm semantics be changed to be more like pipelines? e.g. should x++ in a fsm state compile to x' = x + 1?
