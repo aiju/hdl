@@ -143,7 +143,6 @@ static void
 propsets(void)
 {
 	PipeStage *s;
-	int i;
 
 	for(s = stlist.next; s != &stlist; s = s->next)
 		s->live = bsnew(s->nvars);
@@ -240,7 +239,10 @@ process(ASTNode *n)
 			if(stcur->outvars[i] != nil && stcur->outvars[i] != stcur->invars[i])
 				r = nlcat(r, nl(node(ASTDECL, stcur->outvars[i], nil)));
 			if(bstest(stcur->live, i))
-				pipebl = nlcat(pipebl, nl(node(ASTASS, OPNOP, node(ASTPRIME, node(ASTSYMB, stcur->invars[i])), node(ASTSYMB, stcur->prev->outvars[i]))));
+				if(stcur->prev == &stlist)
+					warn(stcur->vars[i], "%s used but not set", stcur->vars[i]->name);
+				else
+					pipebl = nlcat(pipebl, nl(node(ASTASS, OPNOP, node(ASTPRIME, node(ASTSYMB, stcur->invars[i])), node(ASTSYMB, stcur->prev->outvars[i]))));
 		}
 		return r;
 	case ASTSYMB:
