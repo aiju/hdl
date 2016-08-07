@@ -220,10 +220,7 @@ decode(void)
 			break;
 		case 067:
 			byte = w>>15;
-			if(byte) /* MFPS */
-				writedst = 1;
-			else /* SXT */
-				writedst = 1;
+			writedst = 1;
 			break;
 		}
 		break;
