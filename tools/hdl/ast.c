@@ -44,6 +44,7 @@ static char *astname[] = {
 	[ASTDASS] "ASTDASS",
 	[ASTASYNC] "ASTASYNC",
 	[ASTCAST] "ASTCAST",
+	[ASTPIPEL] "ASTPIPEL",
 };
 
 static char *symtname[] = {
@@ -148,6 +149,7 @@ node(int t, ...)
 	case ASTSTATE:
 	case ASTABORT:
 	case ASTPHI:
+	case ASTPIPEL:
 		break;
 	case ASTBLOCK:
 		n->nl = va_arg(va, Nodes *);
@@ -301,6 +303,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTCASE:
 	case ASTLITERAL:
 	case ASTPHI:
+	case ASTPIPEL:
 		if(a->sym != b->sym)
 			return 0;
 		for(mp = a->nl, np = b->nl; mp != np && mp != nil && np != nil; mp = mp->next, np = np->next)
@@ -838,6 +841,7 @@ iastdecl(Fmt *f, ASTNode *n, int indent)
 	int rc;
 	
 	rc = 0;
+	if(n->sym == nil) return fmtstrcpy(f, "<nil>");
 	if(n->sym->t == SYMTYPE) rc += fmtprint(f, "typedef ");
 	if((n->sym->opt & OPTIN) != 0) rc += fmtprint(f, "input ");
 	if((n->sym->opt & OPTOUT) != 0) rc += fmtprint(f, "output ");
@@ -953,6 +957,12 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 		break;
 	case ASTFSM:
 		rc += fmtprint(f, "%Ifsm %s {\n", indent, n->sym->name);
+		for(mp = n->nl; mp != nil; mp = mp->next)
+			rc += iastprint(f, mp->n, indent + 1);
+		rc += fmtprint(f, "%I}\n", indent);
+		break;
+	case ASTPIPEL:
+		rc += fmtprint(f, "%Ipipeline %s {\n", indent, n->sym->name);
 		for(mp = n->nl; mp != nil; mp = mp->next)
 			rc += iastprint(f, mp->n, indent + 1);
 		rc += fmtprint(f, "%I}\n", indent);
@@ -1233,6 +1243,7 @@ typecheck(ASTNode *n, Type *ctxt)
 	case ASTMODULE:
 	case ASTBLOCK:
 	case ASTFSM:
+	case ASTPIPEL:
 		for(mp = n->ports; mp != nil; mp = mp->next){
 			typecheck(mp->n, nil);
 			if(mp->n->t == ASTDECL && (mp->n->sym->opt & (OPTIN|OPTOUT)) == 0)

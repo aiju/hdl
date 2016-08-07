@@ -6,10 +6,11 @@
 #include "dat.h"
 #include "fns.h"
 
-static Symbol *lastlab;
-static ASTNode *curfsm;
+Symbol *lastlab;
+ASTNode *curfsm;
+extern ASTNode *curpipe;
 
-static Symbol *
+Symbol *
 contnum(void)
 {
 	char *b, *p;
@@ -39,8 +40,12 @@ fsmstate(Symbol *s)
 	SymTab *st;
 	ASTNode *n;
 
-	if(curfsm == nil){
-		error(nil, "state outside of fsm");
+	if(curfsm != nil)
+		st = curfsm->st;
+	else if(curpipe != nil)
+		st = curpipe->st;
+	else{
+		error(nil, "state outside of fsm or pipeline");
 		return nil;
 	}
 	
@@ -50,7 +55,6 @@ fsmstate(Symbol *s)
 			return nil;
 	}
 	
-	st = curfsm->st;
 	n = node(ASTSTATE);
 	lastlab = n->sym = decl(st, s, SYMSTATE, 0, n, nil);
 	return n;
@@ -59,7 +63,7 @@ fsmstate(Symbol *s)
 void
 fsmstart(ASTNode *n)
 {
-	if(curfsm != nil)
+	if(curfsm != nil || curpipe != nil)
 		error(nil, "nested fsm");
 	curfsm = n;
 	lastlab = nil;

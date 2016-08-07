@@ -9,6 +9,7 @@ OFILES=\
 	sym.$O \
 	fsm.$O \
 	fold.$O \
+	pipe.$O \
 	typc.$O \
 	semc.$O \
 	set.$O \

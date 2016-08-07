@@ -40,6 +40,7 @@ static Keyword kwtable[] = {
 	"integer", LINTEGER,
 	"module", LMODULE,
 	"output", LOUTPUT,
+	"pipeline", LPIPELINE,
 	"real", LREAL,
 	"reg", LREG,
 	"signed", LSIGNED,

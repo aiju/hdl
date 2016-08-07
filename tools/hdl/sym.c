@@ -31,6 +31,7 @@ makesym(SymTab *st, char *n)
 	s->next = st->sym[h];
 	s->st = st;
 	s->Line = *curline;
+	s->pipeidx = -1;
 	st->sym[h] = s;
 	return s;
 }
@@ -108,6 +109,7 @@ newscope(SymTab *sc, int t, Symbol *s)
 		case ASTBLOCK: symt = SYMBLOCK; break;
 		case ASTMODULE: symt = SYMMODULE; break;
 		case ASTFSM: symt = SYMFSM; break;
+		case ASTPIPEL: symt = SYMPIPEL; break;
 		default: sysfatal("newscope: %A", t); symt = 0;
 		}
 		s = decl(sc, s, symt, 0, n, nil);
@@ -314,4 +316,14 @@ getfreesym(SymTab *st, char *n)
 		free(m);
 	}
 	return s;
+}
+
+void
+symcpy(Symbol *d, Symbol *s)
+{
+	d->t = s->t;
+	d->opt = s->opt;
+	d->type = s->type;
+	d->clock = s->clock;
+	d->Line = s->Line;
 }

@@ -368,6 +368,7 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTCASE:
 	case ASTLITERAL:
 	case ASTPHI:
+	case ASTPIPEL:
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, descend(r->n, pre, mod));
@@ -440,6 +441,7 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 	case ASTCASE:
 	case ASTLITERAL:
 	case ASTPHI:
+	case ASTPIPEL:
 		for(r = n->ports; r != nil; r = r->next)
 			rc += descendsum(r->n, eval);
 		for(r = n->nl; r != nil; r = r->next)

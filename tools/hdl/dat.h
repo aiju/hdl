@@ -57,6 +57,8 @@ struct Symbol {
 	
 	void *typc;
 	
+	int pipeidx;
+	
 	SemVar *semc[2];
 	int semcidx[2];
 	int whine, multiwhine;
@@ -134,6 +136,7 @@ enum {
 	ASTMODULE,
 	ASTOP,
 	ASTPHI,
+	ASTPIPEL,
 	ASTPRIME,
 	ASTSEMGOTO,
 	ASTSSA,
@@ -204,6 +207,7 @@ enum {
 	SYMSTATE,
 	SYMFSM,
 	SYMTYPE,
+	SYMPIPEL,
 };
 
 enum {
