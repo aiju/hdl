@@ -20,12 +20,15 @@ bsnew(int max)
 BitSet *
 bsgrow(BitSet *b, int n)
 {
+	int i;
+
 	if(b == nil)
 		return bsnew(n);
-	n = n + 31 >> 5;
-	b = realloc(b, sizeof(BitSet) + n * 4);
-	if(n > b->n)
-		memset(b->p + n, 0, n - b->n);
+	i = (n + 31 >> 5) - b->n;
+	if(i == 0)
+		return b;
+	b = erealloc(b, 1, sizeof(BitSet) + b->n * 4, i * 4);
+	b->n += i;
 	return b;
 }
 
@@ -34,6 +37,7 @@ bsdup(BitSet *b)
 {
 	BitSet *c;
 	
+	if(b == nil) return nil;
 	c = bsnew(b->n << 5);
 	bscopy(c, b);
 	return c;
@@ -102,30 +106,56 @@ void
 bsunion(BitSet *r, BitSet *a, BitSet *b)
 {
 	int i;
+	BitSet *c;
 
-	assert(r->n == a->n && a->n == b->n);
-	for(i = 0; i < r->n; i++)
+	if(a->n > b->n){
+		c = a;
+		a = b;
+		b = c;
+	}
+	if(r->n < b->n)
+		bsgrow(r, b->n << 5);
+	for(i = 0; i < a->n; i++)
 		r->p[i] = a->p[i] | b->p[i];
+	for(; i < b->n; i++)
+		r->p[i] = b->p[i];
+	for(; i < r->n; i++)
+		r->p[i] = 0;
 }
 
 void
 bsminus(BitSet *r, BitSet *a, BitSet *b)
 {
-	int i;
+	int i, m;
 
-	assert(r->n == a->n && a->n == b->n);
-	for(i = 0; i < r->n; i++)
+	if(r->n < a->n)
+		bsgrow(r, a->n << 5);
+	m = a->n < b->n ? a->n : b->n;
+	for(i = 0; i < m; i++)
 		r->p[i] = a->p[i] & ~b->p[i];
+	for(; i < a->n; i++)
+		r->p[i] = a->p[i];
+	for(; i < r->n; i++)
+		r->p[i] = 0;
 }
 
 void
 bsinter(BitSet *r, BitSet *a, BitSet *b)
 {
 	int i;
+	BitSet *c;
 
-	assert(r->n == a->n && a->n == b->n);
-	for(i = 0; i < r->n; i++)
+	if(a->n > b->n){
+		c = a;
+		a = b;
+		b = c;
+	}
+	if(r->n < a->n)
+		bsgrow(r, a->n << 5);
+	for(i = 0; i < a->n; i++)
 		r->p[i] = a->p[i] & b->p[i];
+	for(; i < r->n; i++)
+		r->p[i] = 0;
 }
 
 int
