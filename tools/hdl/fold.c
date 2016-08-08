@@ -6,6 +6,8 @@
 #include "dat.h"
 #include "fns.h"
 
+#define is0(x) (mpcmp((x), mpzero) == 0)
+
 static int
 binput(Fmt *f, Const *c)
 {
@@ -27,8 +29,8 @@ binput(Fmt *f, Const *c)
 		return fmtstrcpy(f, "(invalid)");
 	if(i == 0)
 		i = 1;
-	i %= sizeof(mpdigit) * 8;
-	j = n->top > x->top ? n->top : x->top;
+	j = (i + 31) / (sizeof(mpdigit) * 8);
+	i = (i + sizeof(mpdigit) * 8 - 1) % (sizeof(mpdigit) * 8) + 1;
 	rc = fmtstrcpy(f, "'b");
 	while(--j >= 0){
 		p = j >= n->top ? 0 : n->p[j];
@@ -51,20 +53,29 @@ constfmt(Fmt *f)
 {
 	Const *c;
 	int rc;
+	int s;
 	
 	c = va_arg(f->args, Const *);
 	rc = 0;
 	if(c == nil || c->n == nil || c->x == nil)
 		return fmtstrcpy(f, "<nil>");
+	s = c->n->sign;
+	if(s < 0){
+		c->n->sign = 1;
+		rc += fmtrune(f, '-');
+	}
 	if(c->sz != 0)
 		rc += fmtprint(f, "%d", c->sz);
-	if(mpcmp(c->x, mpzero) != 0)
-		return rc + binput(f, c);
-	if(c->base == 0 || c->base == 10)
-		return rc + fmtprint(f, c->sz != 0 ? "'d%.10B" : "%.10B", c->n);
-	if(c->base == 16)
-		return rc + fmtprint(f, "'h%.16B", c->n);
-	return rc + fmtprint(f, "'b%.2B", c->n);
+	if(!is0(c->x)){
+		rc += binput(f, c);
+	}else if(c->base == 0 || c->base == 10)
+		rc += fmtprint(f, c->sz != 0 ? "'d%.10B" : "%.10B", c->n);
+	else if(c->base == 16)
+		rc += fmtprint(f, "'h%.16B", c->n);
+	else
+		rc += fmtprint(f, "'b%.2B", c->n);
+	c->n->sign = s;
+	return rc;
 }
 
 void
@@ -190,12 +201,347 @@ clog2(uint i)
 	return n;
 }
 
+static int
+cintop(int op, int a, int b, int *cp)
+{
+	int c;
+	vlong v;
+
+	switch(op){
+	case OPADD:
+		*cp = c = a + b;
+		return (~(a ^ b) & (a ^ c)) >= 0;
+	case OPSUB:
+		*cp = c = a - b;
+		return ((a ^ b) & (a ^ c)) >= 0;
+	case OPMUL:
+		v = (vlong)a * b;
+		*cp = v;
+		return v < 0x7fffffffLL && v >= -0x80000000LL;
+	case OPDIV: *cp = a / b; return 1;
+	case OPEXP: return 0;
+	case OPMOD: *cp = a % b; return 1;
+	case OPAND: *cp = a & b; return 1;
+	case OPOR: *cp = a | b; return 1;
+	case OPXOR: *cp = a ^ b; return 1;
+	case OPLSL:
+		if(b >= 32 || b < 0)
+			return 0;
+		else{
+			*cp = c = a << b;
+			return (a >> 32 - b) == 0 && (c ^ a) >= 0;
+		}
+		break;
+	case OPASR:
+		if(b >= 32 || b < 0)
+			*cp = a >> 31;
+		else
+			*cp = a >> b;
+		return 1;
+	case OPLSR:
+		if(b >= 32 || b < 0)
+			*cp = 0;
+		else
+			*cp = (unsigned)a >> b;
+		return 1;
+	case OPEQS:
+	case OPEQ:
+		*cp = a == b;
+		return 1;
+	case OPNES:
+	case OPNE:
+		*cp = a != b;
+		return 1;
+	case OPLT: *cp = a < b; return 1;
+	case OPGT: *cp = a > b; return 1;
+	case OPLE: *cp = a <= b; return 1;
+	case OPGE: *cp = a >= b; return 1;
+	case OPLAND: *cp = a && b; return 1;
+	case OPLOR: *cp = a || b; return 1;
+	case OPUPLUS: *cp = a; return 1;
+	case OPUMINUS: *cp = -a; return 1;
+	case OPNOT: *cp = ~a; return 1;
+	case OPLNOT: *cp = !a; return 1;
+	case OPUAND: *cp = a == -1; return 1;
+	case OPUOR: *cp = a != 0; return 1;
+	case OPUXOR: return 0;
+	case OPMAX: *cp = a >= b ? a : b; return 1;
+	case OPCLOG2: *cp = clog2(a); return 1;
+	default:
+		warn(nil, "cintop: unknown %s", getopdata(op)->name);
+		return 0;
+	}
+}
+
+static Const *
+mkconstint(Const *c, int n)
+{
+	c->n = itomp(n, c->n);
+	c->x = itomp(0, c->x);
+	c->sz = 0;
+	c->sign = 1;
+	c->base = 10;
+	return c;
+}
+
+static void
+consttrunc(Const *c)
+{
+	if(c->sz == 0) return;
+	if(c->sign){
+		mpxtend(c->n, c->sz, c->n);
+		mpxtend(c->x, c->sz, c->x);
+	}else{
+		mptrunc(c->n, c->sz, c->n);
+		mptrunc(c->x, c->sz, c->x);
+	}
+}
+
+static void
+mprev(mpint *a, int n, mpint *b)
+{
+	int i, j;
+	mpdigit v, m;
+	
+	mptrunc(a, n, b);
+	for(i = 0; i < b->top; i++){
+		v = b->p[i];
+		m = -1;
+		for(j = sizeof(mpdigit) * 8; j >>= 1; ){
+			m ^= m << j;
+			v = v >> j & m | v << j & ~m;
+		}
+		b->p[i] = v;
+	}
+	for(i = 0; i < b->top / 2; i++){
+		v = b->p[i];
+		b->p[i] = b->p[b->top - 1 - i];
+		b->p[b->top - 1 - i] = v;
+	}
+	mpleft(b, n - b->top * sizeof(mpdigit) * 8, b);
+}
+
+static void
+mprepl(mpint *a, int n, int s, mpint *b)
+{
+	mpint *t;
+	int i;
+	int l;
+	
+	if(n == 0){
+		mpassign(mpzero, b);
+		return;
+	}
+	t = mpnew(0);
+	mpassign(a, b);
+	l = s;
+	for(i = n; i != 1; i >>= 1){
+		if((i & 1) != 0){
+			mpleft(b, s, t);
+			mpor(t, a, b);
+			l += s;
+		}
+		mpleft(b, l, t);
+		mpor(b, t, b);
+		l *= 2;
+	}
+	mpfree(t);
+}
+
+static int
+constop(int op, Const *x, Const *y, Const *z)
+{
+	OpData *d;
+	mpint *t;
+	int i;
+	
+	d = getopdata(op);
+	z->n = mpnew(0);
+	z->x = mpnew(0);
+	if(y != nil && x->base == 10) z->base = y->base;
+	else z->base = x->base;
+	if(op == OPREPL)
+		z->sign = y->sign;
+	else
+		z->sign = x->sign || y != nil && y->sign;
+	if((d->flags & OPDWINF) != 0)
+		z->sz = 0;
+	else if((d->flags & OPDWMAX) != 0){
+		if(x->sz == 0 || y->sz == 0)
+			z->sz = 0;
+		else if(x->sz > y->sz)
+			z->sz = x->sz;
+		else
+			z->sz = y->sz;
+	}else if((d->flags & OPDWADD) != 0){
+		if(x->sz == 0 || y->sz == 0)
+			z->sz = 0;
+		else
+			z->sz = x->sz + y->sz;
+	}else if((d->flags & OPDBITOUT) != 0){
+		z->sz = 1;
+		z->sign = 0;
+	}else if((d->flags & OPDUNARY) != 0)
+		z->sz = x->sz;
+	else if(op == OPREPL){
+		if(y->sz == 0 || !is0(x->x)) return 0;
+		z->sz = mptoi(x->n) * y->sz;
+	}else{
+		warn(nil, "constop: unknown %s (width)", d->name);
+		z->sz = 0;
+	}
+	switch(op){
+	default:
+		if(!is0(x->x) || y != nil && !is0(y->x)){
+		xxx:
+			itomp(-1, z->x);
+			consttrunc(z);
+			return 1;
+		}
+		break;
+	case OPAND:
+	case OPOR:
+	case OPNOT:
+	case OPEQS:
+	case OPNES:
+	case OPXOR:
+	case OPCAT:
+	case OPREV:
+		break;
+	case OPLSL:
+	case OPLSR:
+	case OPASR:
+		if(!is0(y->x)) goto xxx;
+		break;
+	case OPREPL:
+		if(!is0(x->x)) goto xxx;
+		break;
+	}
+	switch(op){
+	case OPADD: mpadd(x->n, y->n, z->n); break;
+	case OPSUB: mpsub(x->n, y->n, z->n); break;
+	case OPMUL: mpmul(x->n, y->n, z->n); break;
+	case OPDIV:
+		if(is0(y->n)) return 0;
+		mpdiv(x->n, y->n, z->n, nil);
+		break;
+	case OPMOD:
+		if(is0(y->n)) return 0;
+		mpdiv(x->n, y->n, nil, z->n);
+		break;
+	case OPEXP: mpexp(x->n, y->n, nil, z->n); break;
+	case OPLSL:
+		mpleft(x->n, mptoi(y->n), z->n);
+		mpleft(x->x, mptoi(y->n), z->n);
+		break;
+	case OPLSR:
+		mpright(x->n, mptoi(y->n), z->n);
+		mpright(x->x, mptoi(y->n), z->n);
+		break;
+	case OPASR:
+		mpxtend(x->n, x->sz, z->n);
+		mpright(z->n, mptoi(y->n), z->n);
+		mpxtend(x->x, x->sz, z->x);
+		mpright(z->x, mptoi(y->n), z->n);
+		break;
+	case OPAND:
+		mpor(x->n, x->x, z->n);
+		mpor(y->n, y->x, z->x);
+		mpand(z->n, z->x, z->n);
+		mpor(x->x, y->x, z->x);
+		mpand(z->x, z->n, z->x);
+		mpbic(z->n, z->x, z->n);
+		break;
+	case OPOR:
+		mpbic(x->n, x->x, z->n);
+		mpbic(y->n, y->x, z->x);
+		mpor(z->n, z->x, z->n);
+		mpor(x->x, y->x, z->x);
+		mpbic(z->x, z->n, z->x);
+		mpbic(z->n, z->x, z->n);
+		break;
+	case OPXOR:
+		mpxor(x->n, y->n, z->n);
+		mpor(x->x, y->x, z->x);
+		mpbic(z->n, z->x, z->n);
+		break;
+	case OPEQ: itomp(mpcmp(x->n, y->n) == 0, z->n); break;
+	case OPEQS: itomp(mpcmp(x->n, y->n) == 0 && mpcmp(x->x, y->x) == 0, z->n); break;
+	case OPNE: itomp(mpcmp(x->n, y->n) != 0, z->n); break;
+	case OPNES: itomp(mpcmp(x->n, y->n) != 0 || mpcmp(x->x, y->x) != 0, z->n); break;
+	case OPLT: itomp(mpcmp(x->n, y->n) < 0, z->n); break;
+	case OPLE: itomp(mpcmp(x->n, y->n) <= 0, z->n); break;
+	case OPGT: itomp(mpcmp(x->n, y->n) > 0, z->n); break;
+	case OPGE: itomp(mpcmp(x->n, y->n) >= 0, z->n); break;
+	case OPLAND: itomp(!is0(x->n) && !is0(y->n), z->n); break;
+	case OPLOR: itomp(!is0(x->n) || !is0(y->n), z->n); break;
+	case OPUPLUS: mpassign(x->n, z->n); break;
+	case OPUMINUS: mpsub(mpzero, x->n, z->n); break;
+	case OPNOT:
+		mpnot(x->n, z->n);
+		mpbic(z->n, x->x, z->n);
+		mpassign(x->x, z->x);
+		break;
+	case OPLNOT: itomp(is0(x->n), z->n); break;
+	case OPUOR: itomp(!is0(x->n), z->n); break;
+	case OPUAND:
+		if(x->sz != 0)
+			mpxtend(x->n, x->sz, z->n);
+		mpadd(z->n, mpone, z->n);
+		itomp(is0(z->n), z->n);
+		break;
+	case OPCAT:
+		t = mpnew(0);
+		mpleft(x->n, y->sz, z->n);
+		mptrunc(y->n, y->sz, t);
+		mpor(z->n, t, z->n);
+		mpleft(x->x, y->sz, z->x);
+		mptrunc(y->x, y->sz, t);
+		mpor(z->x, t, z->x);
+		mpfree(t);
+		break;
+	case OPREPL:
+		i = mptoi(x->n);
+		mprepl(y->n, i, y->sz, z->n);
+		mprepl(y->x, i, y->sz, z->x);
+		break;
+	case OPMAX:
+		if(mpcmp(x->n, y->n) > 0)
+			mpassign(x->n, z->n);
+		else
+			mpassign(y->n, z->n);
+		break;
+	case OPCLOG2:
+		if(mpcmp(x->n, mpzero) == 0)
+			mpassign(mpzero, z->n);
+		else{
+			mpassign(x->n, z->n);
+			z->n->sign = 1;
+			mpsub(z->n, mpone, z->n);
+			itomp(mpsignif(z->n), z->n);
+		}
+		break;
+	case OPREV:
+		if(x->sz == 0)
+			return 0;
+		mprev(x->n, x->sz, z->n);
+		mprev(x->x, x->sz, z->x);
+		break;
+	default:
+		warn(nil, "constop: unknown %s", d->name);
+		return 0;
+	}
+	consttrunc(z);
+	return 1;
+}
+
 static Nodes *
 cfold(ASTNode *n)
 {
 	OpData *d;
-	int a, b, c, ov;
-	vlong v;
+	int c;
+	Const *x, *y, z;
+	static Const xc, yc;
 
 	switch(n->t){
 	case ASTSYMB:
@@ -204,87 +550,49 @@ cfold(ASTNode *n)
 	case ASTOP:
 		d = getopdata(n->op);
 		if(d == nil) break;
-		if(n->n1 == nil || n->n1->t != ASTCINT) break;
-		a = n->n1->i;
-		if((d->flags & OPDUNARY) == 0)
-			if(n->n2 != nil && n->n2->t == ASTCINT) b = n->n2->i;
-			else break;
-		else
-			b = 0;
-		c = 0;
-		ov = 0;
-		switch(n->op){
-		case OPADD:
-			c = a + b;
-			ov = (~(a ^ b) & (a ^ c)) < 0;
-			break;
-		case OPSUB:
-			c = a - b;
-			ov = ((a ^ b) & (a ^ c)) < 0;
-			break;
-		case OPMUL:
-			v = (vlong)a * b;
-			c = v;
-			ov = v >= 0x7fffffffLL || v < -0x80000000LL;
-			break;
-		case OPDIV: c = a / b; break;
-		case OPEXP: ov = 1; break;
-		case OPMOD: c = a % b; break;
-		case OPAND: c = a & b; break;
-		case OPOR: c = a | b; break;
-		case OPXOR: c = a ^ b; break;
-		case OPLSL:
-			if(b >= 32 || b < 0)
-				c = 0;
-			else{
-				c = a << b;
-				ov = (a >> 32 - b) != 0 || (c ^ a) < 0;
-			}
-			break;
-		case OPASR:
-			if(n->type->sign)
-				if(b >= 32 || b < 0)
-					c = a >> 31;
-				else
-					c = a >> b;
-			else
-		case OPLSR:
-				if(b >= 32 || b < 0)
-					c = 0;
-				else
-					c = (unsigned)a >> b;
-			break;
-		case OPEQS:
-		case OPEQ:
-			c = a == b;
-			break;
-		case OPNES:
-		case OPNE:
-			c = a != b;
-			break;
-		case OPLT: c = a < b; break;
-		case OPGT: c = a > b; break;
-		case OPLE: c = a <= b; break;
-		case OPGE: c = a >= b; break;
-		case OPLAND: c = a && b; break;
-		case OPLOR: c = a || b; break;
-		case OPUPLUS: c = a; break;
-		case OPUMINUS: c = -a; break;
-		case OPNOT: c = ~a; break;
-		case OPLNOT: c = !a; break;
-		case OPUAND: c = a == -1; break;
-		case OPUOR: c = a != 0; break;
-		case OPUXOR: ov = 1; break;
-		case OPMAX: c = a >= b ? a : b; break;
-		case OPCLOG2: c = clog2(a); break;
-		default:
-			warn(n, "cfold: unknown %s", d->name);
-			ov = 1;
+		if(n->n1->t != ASTCINT && n->n1->t != ASTCONST) break;
+		if((d->flags & OPDUNARY) == 0 && n->n2 != nil && n->n2->t != ASTCINT &&
+			n->n2->t != ASTCONST) break;
+		if(n->n1->t == ASTCINT){
+			if((d->flags & OPDUNARY) != 0){
+				if(cintop(n->op, n->n1->i, 0, &c))
+					return nl(node(ASTCINT, c));
+			}else if(n->n2->t == ASTCINT)
+				if(cintop(n->op, n->n1->i, n->n2->i, &c))
+					return nl(node(ASTCINT, c));
 		}
-		if(ov)
-			break;
+		if(n->n1->t == ASTCINT)
+			x = mkconstint(&xc, n->n1->i);
 		else
-			return nl(node(ASTCINT, c));
+			x = &n->n1->cons;
+		if((d->flags & OPDUNARY) != 0)
+			y = nil;
+		else if(n->n2->t == ASTCINT)
+			y = mkconstint(&yc, n->n2->i);
+		else
+			y = &n->n2->cons;
+		if(!constop(n->op, x, y, &z)) return nl(n);
+		return nl(node(ASTCONST, z));
+	case ASTCAST:
+		if(n->n1 == nil || n->type == nil || n->type->t != TYPBITV) return nl(n);
+		if(n->n1->t == ASTCINT){
+			z.n = z.x = nil;
+			mkconstint(&z, n->n1->i);
+		}else if(n->n1->t == ASTCONST){
+			z = n->n1->cons;
+			z.n = mpcopy(z.n);
+			z.x = mpcopy(z.x);
+		}else
+			return nl(n);
+		if(n->type->sz == nil)
+			z.sz = 0;
+		else if(n->type->sz->t == ASTCINT)
+			z.sz = n->type->sz->i;
+		else
+			return nl(n);
+		z.sign = n->type->sign;
+		consttrunc(&z);
+		return nl(node(ASTCONST, z));
 	}
 	return nl(n);
 }
@@ -518,7 +826,7 @@ mkcint(Const *a)
 	static mpint *max;
 	
 	if(max == nil) max = itomp(((uint)-1) >> 1, nil);
-	if(mpmagcmp(a->n, max) <= 0 && mpcmp(a->x, mpzero) == 0 && a->sz == 0)
+	if(mpmagcmp(a->n, max) <= 0 && mpcmp(a->x, mpzero) == 0 && a->sz == 0 && (a->base == 0 || a->base == 10))
 		return node(ASTCINT, mptoi(a->n));
 	return node(ASTCONST, *a);
 }
