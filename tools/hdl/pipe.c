@@ -293,35 +293,56 @@ lvalfix(ASTNode *n, int ctxt, int *ours)
 	}
 }
 
-static Nodes *pipebl;
+static void
+procvars(Nodes **pipeblp, Nodes **declsp)
+{
+	int i;
+	PipeStage *p;
+	Nodes *pipebl, *decls;
+
+	pipebl = nil;
+	decls = nil;
+	for(p = stlist.next; p != &stlist; p = p->next)
+		for(i = 0; i < p->nvars; i++){
+			if(p->invars[i] != nil)
+				decls = nlcat(decls, nl(node(ASTDECL, p->invars[i], nil)));
+			if(p->outvars[i] != nil && p->outvars[i] != p->invars[i])
+				decls = nlcat(decls, nl(node(ASTDECL, p->outvars[i], nil)));
+			if(bstest(p->live, i))
+				if(p->prev == &stlist)
+					warn(p->vars[i], "%s used but not set", p->vars[i]->name);
+				else
+					pipebl = nlcat(pipebl, nl(node(ASTASS, OPNOP, node(ASTPRIME, node(ASTSYMB, p->invars[i])), node(ASTSYMB, p->prev->outvars[i]))));
+		}
+	*pipeblp = pipebl;
+	*declsp = decls;
+}
+
 static Nodes *
 process(ASTNode *n)
 {
-	int i;
-	Nodes *r, *s;
+	Nodes *r, *s, *t;
 	int ours;
 	BitSet *ks;
 
 	if(n == nil) return nil;
 	switch(n->t){
-	case ASTSTATE:
-		if(stcur == nil) stcur = stlist.next;
-		else stcur = stcur->next;
-		assert(stcur != nil && stcur->sym == n->sym);
-		r = nil;
-		for(i = 0; i < stcur->nvars; i++){
-			if(stcur->invars[i] != nil)
-				r = nlcat(r, nl(node(ASTDECL, stcur->invars[i], nil)));
-			if(stcur->outvars[i] != nil && stcur->outvars[i] != stcur->invars[i])
-				r = nlcat(r, nl(node(ASTDECL, stcur->outvars[i], nil)));
-			if(bstest(stcur->live, i))
-				if(stcur->prev == &stlist)
-					warn(stcur->vars[i], "%s used but not set", stcur->vars[i]->name);
-				else
-					pipebl = nlcat(pipebl, nl(node(ASTASS, OPNOP, node(ASTPRIME, node(ASTSYMB, stcur->invars[i])), node(ASTSYMB, stcur->prev->outvars[i]))));
-		}
-		bsreset(killed);
-		return r;
+	case ASTPIPEL:
+		t = nil;
+		s = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			if(r->n->t == ASTSTATE){
+				if(stcur == nil) stcur = stlist.next;
+				else stcur = stcur->next;
+				assert(stcur != nil && stcur->sym == r->n->sym);
+				bsreset(killed);
+				if(s != nil) t = nlcat(t, nl(node(ASTBLOCK, s)));
+				s = nil;
+			}else
+				s = nlcat(s, process(r->n));
+		if(s != nil) t = nlcat(t, nl(node(ASTBLOCK, s)));
+		return t;
+
 	case ASTSYMB:
 		if(stcur != nil && n->sym->pipeidx >= 0)
 			if(bstest(killed, n->sym->pipeidx))
@@ -340,11 +361,6 @@ process(ASTNode *n)
 		return nl(n);
 	case ASTDECL:
 		return nil;
-	case ASTPIPEL:
-		s = nil;
-		for(r = n->nl; r != nil; r = r->next)
-			s = nlcat(s, process(r->n));
-		return nlcat(s, nl(node(ASTBLOCK, pipebl)));
 	case ASTBLOCK:
 		n = nodedup(n);
 		s = nil;
@@ -382,6 +398,8 @@ process(ASTNode *n)
 Nodes *
 findpipe(ASTNode *n)
 {
+	Nodes *pipebl, *decls;
+
 	if(n == nil || n->t != ASTPIPEL) return nl(n);
 	curpipec = n;
 	stlist.next = stlist.prev = &stlist;
@@ -389,9 +407,9 @@ findpipe(ASTNode *n)
 	propsets();
 	mksym(n->st->up);
 	stcur = nil;
-	pipebl = nil;
+	procvars(&pipebl, &decls);
 	killed = bsnew(stlist.prev->nvars);
-	return process(n);
+	return nlcat(nlcat(decls, process(n)), nl(node(ASTBLOCK, pipebl)));
 }
 
 ASTNode *
