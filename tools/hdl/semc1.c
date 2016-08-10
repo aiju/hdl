@@ -358,7 +358,7 @@ trackcans(void)
 		ch = 0;
 		for(j = 0; j < nvars; j++){
 			v = vars[j];
-			if(v->deps == nil) continue;
+			if(v->deps == nil || v->deps->n == 0) continue;
 			n = SVCANNX;
 			for(i = 0; i < v->deps->n; i++)
 				n &= v->deps->p[i]->flags;
