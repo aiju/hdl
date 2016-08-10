@@ -34,7 +34,6 @@ struct PipeStage {
 	Symbol **vars;
 	Symbol **invars;
 	Symbol **outvars;
-	Symbol **cvars;
 	BitSet *gen, *kill, *killp, *live;
 	PipeStage *next, *prev;
 };
@@ -42,11 +41,85 @@ enum { VARBLOCK = 64 }; /* must be power of two */
 static ASTNode *curpipec;
 static PipeStage *stcur, stlist;
 
+static void findstages(ASTNode *, int);
 enum {
 	LVAL = 1,
 	PRIME = 2,
 };
-void
+
+static void
+addeq(BitSet *t, ASTNode **n, int p)
+{
+	int i;
+	Nodes *r;
+	ASTNode *m;
+	
+	i = bsiter(t, -1);
+	if(i < 0) return;
+	if(*n != nil)
+		r = nl(*n);
+	else
+		r = nil;
+	for(; i >= 0; i = bsiter(t, i)){
+		m = node(ASTSYMB, stcur->vars[i]);
+		r = nlcat(r, nl(node(ASTASS, OPNOP, p != 0 ? node(ASTPRIME, m) : m, m)));
+	}
+	*n = node(ASTBLOCK, r);
+}
+
+static void
+doif(ASTNode *n, int ctxt)
+{
+	BitSet *g, *k, *kp;
+	BitSet *g1, *k1, *k1p;
+	BitSet *g2, *k2, *k2p, *t;
+	PipeStage *p;
+
+	p = stcur;
+	t = bsnew(p->nvars);
+	findstages(n->n1, ctxt);
+	g = p->gen;
+	k = p->kill;
+	kp = p->killp;
+	p->gen = g1 = bsdup(g);
+	p->kill = k1 = bsdup(k);
+	p->killp = k1p = bsdup(kp);
+	findstages(n->n2, ctxt);
+	p->gen = g2 = bsdup(g);
+	p->kill = k2 = bsdup(k);
+	p->killp = k2p = bsdup(kp);
+	findstages(n->n3, ctxt);
+	bsunion(g, g1, g);
+	bsunion(g, g2, g);
+	bsunion(k, k1, k);
+	bsunion(k, k2, k);
+	bsunion(kp, k1p, kp);
+	bsunion(kp, k2p, kp);
+	bsminus(t, k1, k2);
+	addeq(t, &n->n3, 0);
+	bsunion(g, t, g);
+	bsminus(t, k2, k1);
+	addeq(t, &n->n2, 0);
+	bsunion(g, t, g);
+	bsminus(t, k1p, k2p);
+	addeq(t, &n->n3, 1);
+	bsunion(g, t, g);
+	bsminus(t, k2p, k1p);
+	addeq(t, &n->n2, 1);
+	bsunion(g, t, g);
+	p->gen = g;
+	p->kill = k;
+	p->killp = kp;
+	bsfree(g1);
+	bsfree(g2);
+	bsfree(k1);
+	bsfree(k2);
+	bsfree(k1p);
+	bsfree(k2p);
+	bsfree(t);
+}
+
+static void
 findstages(ASTNode *n, int ctxt)
 {
 	PipeStage *p;
@@ -135,6 +208,9 @@ findstages(ASTNode *n, int ctxt)
 		findstages(n->n3, ctxt);
 		findstages(n->n4, ctxt);
 		break;
+	case ASTIF:
+		doif(n, ctxt);
+		break;
 	default: error(n, "findstages: unknown %A", n->t);	
 	}
 }
@@ -179,7 +255,6 @@ mksym(SymTab *st)
 	for(s = stlist.next; s != &stlist; s = s->next){
 		s->invars = emalloc(-(-s->nvars & -VARBLOCK) * sizeof(Symbol *));
 		s->outvars = emalloc(-(-s->nvars & -VARBLOCK) * sizeof(Symbol *));
-		s->cvars = emalloc(-(-s->nvars & -VARBLOCK) * sizeof(Symbol *));
 		for(i = 0; i < s->nvars; i++){
 			t = s->vars[i];
 			if(bstest(s->kill, i) || bstest(s->live, i))
@@ -188,11 +263,11 @@ mksym(SymTab *st)
 				s->outvars[i] = psym(st, t, s->sym->name, "_out");
 			else
 				s->outvars[i] = s->invars[i];
-			s->cvars[i] = s->invars[i];
 		}
 	}
 }
 
+static BitSet *killed;
 static ASTNode *
 lvalfix(ASTNode *n, int ctxt, int *ours)
 {
@@ -203,7 +278,7 @@ lvalfix(ASTNode *n, int ctxt, int *ours)
 			n = nodedup(n);
 			n->sym = stcur->outvars[n->sym->pipeidx];
 			if((ctxt & PRIME) == 0)
-				stcur->cvars[n->sym->pipeidx] = n->sym;
+				bsadd(killed, n->sym->pipeidx);
 			(*ours)++;
 		}
 		return n;
@@ -223,8 +298,9 @@ static Nodes *
 process(ASTNode *n)
 {
 	int i;
-	Nodes *r;
+	Nodes *r, *s;
 	int ours;
+	BitSet *ks;
 
 	if(n == nil) return nil;
 	switch(n->t){
@@ -244,22 +320,61 @@ process(ASTNode *n)
 				else
 					pipebl = nlcat(pipebl, nl(node(ASTASS, OPNOP, node(ASTPRIME, node(ASTSYMB, stcur->invars[i])), node(ASTSYMB, stcur->prev->outvars[i]))));
 		}
+		bsreset(killed);
 		return r;
 	case ASTSYMB:
-		if(stcur != nil && n->sym->pipeidx >= 0 && stcur->cvars[n->sym->pipeidx] != nil)
-			n->sym = stcur->cvars[n->sym->pipeidx];
+		if(stcur != nil && n->sym->pipeidx >= 0)
+			if(bstest(killed, n->sym->pipeidx))
+				n->sym = stcur->outvars[n->sym->pipeidx];
+			else
+				n->sym = stcur->invars[n->sym->pipeidx];
 		return nl(n);
 	case ASTPRIME:
 		ours = 0;
 		return nl(lvalfix(n, 0, &ours));
 	case ASTASS:
+		n = nodedup(n);
+		n->n2 = onlyone(process(n->n2));
 		ours = 0;
 		n->n1 = lvalfix(n->n1, LVAL, &ours);
 		return nl(n);
 	case ASTDECL:
 		return nil;
 	case ASTPIPEL:
-		return nlcat(n->nl, nl(node(ASTBLOCK, pipebl)));
+		s = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			s = nlcat(s, process(r->n));
+		return nlcat(s, nl(node(ASTBLOCK, pipebl)));
+	case ASTBLOCK:
+		n = nodedup(n);
+		s = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			s = nlcat(s, process(r->n));
+		n->nl = s;
+		return nl(n);
+	case ASTCINT:
+	case ASTCONST:
+		return nl(n);
+	case ASTOP:
+	case ASTTERN:
+		n = nodedup(n);
+		n->n1 = onlyone(process(n->n1));
+		n->n2 = onlyone(process(n->n2));
+		n->n3 = onlyone(process(n->n3));
+		n->n4 = onlyone(process(n->n4));
+		return nl(n);
+	case ASTIF:
+		n = nodedup(n);
+		n->n1 = onlyone(process(n->n1));
+		ks = killed;
+		killed = bsdup(ks);
+		n->n2 = onlyone(process(n->n2));
+		bsfree(killed);
+		killed = ks;
+		n->n3 = onlyone(process(n->n3));
+		return nl(n);
+	default:
+		warn(n, "process: unknown %A", n->t);
 	}
 	return nl(n);
 }
@@ -275,7 +390,8 @@ findpipe(ASTNode *n)
 	mksym(n->st->up);
 	stcur = nil;
 	pipebl = nil;
-	return descend(n, nil, process);
+	killed = bsnew(stlist.prev->nvars);
+	return process(n);
 }
 
 ASTNode *
