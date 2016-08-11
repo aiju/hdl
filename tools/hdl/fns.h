@@ -84,7 +84,7 @@ void verilog(ASTNode *);
 Symbol *findclock(Symbol *);
 ASTNode *dangle(ASTNode *, ASTNode *);
 ASTNode *mkcast(Type *, int, ASTNode *);
-void pipestart(ASTNode *);
+void pipestart(ASTNode *, Symbol *, Symbol *);
 void pipeend(void);
 ASTNode *pipecompile(ASTNode *);
 Symbol *getfreesym(SymTab *, char *);

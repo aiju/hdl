@@ -8,7 +8,6 @@
 
 Symbol *lastlab;
 ASTNode *curfsm;
-extern ASTNode *curpipe;
 
 Symbol *
 contnum(void)

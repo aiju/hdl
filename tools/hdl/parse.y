@@ -162,7 +162,15 @@ stat:
 	| '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats { scopeup(); } '}' { $<n>2->nl = $3; $$ = nl($<n>2); }
 	| LSYMB '{' { $<n>$ = newscope(scope, ASTBLOCK, $1); } stats { scopeup(); } '}' { $<n>3->nl = $4; $$ = nl($<n>3); }
 	| LFSM symb '{' { $<n>$ = newscope(scope, ASTFSM, $2); fsmstart($<n>$); } stats '}' { scopeup(); fsmend(); $<n>4->nl = $5; $$ = nl($<n>4); }
-	| LPIPELINE symb '{' { $<n>$ = newscope(scope, ASTPIPEL, $2); pipestart($<n>$); } stats '}' { scopeup(); pipeend(); $<n>4->nl = $5; $$ = nl($<n>4); }
+	| LPIPELINE symb '{' { $<n>$ = newscope(scope, ASTPIPEL, $2); pipestart($<n>$, nil, nil); } stats '}' { scopeup(); pipeend(); $<n>4->nl = $5; $$ = nl($<n>4); }
+	| LPIPELINE symb '<' LSYMB '>' '{'
+		{ $<n>$ = newscope(scope, ASTPIPEL, $2); pipestart($<n>$, $4, nil); }
+		stats '}'
+		{ scopeup(); pipeend(); $<n>7->nl = $8; $$ = nl($<n>7); }
+	| LPIPELINE symb '<' LSYMB ',' symb '>' '{'
+		{ $<n>$ = newscope(scope, ASTPIPEL, $2); pipestart($<n>$, $4, $6); }
+		stats '}'
+		{ scopeup(); pipeend(); $<n>9->nl = $10; $$ = nl($<n>9); }
 	| LINITIAL '(' triggers ecomma ')' stat { $$ = nl(node(ASTINITIAL, $3, mkblock($6))); }
 	| LSWITCH '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { scopeup(); $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, 0, $3, $<n>6)); }
 	| LSWITCHZ '(' cexpr ')' '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats '}' { scopeup(); $<n>6->nl = $7; $$ = nl(node(ASTSWITCH, 1, $3, $<n>6)); }

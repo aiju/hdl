@@ -272,8 +272,13 @@ vardecl(SymTab *st, ASTNode *ns, int opt, ASTNode *n, Type *ty, ASTNode *clock)
 		*curstruct->last = s;
 		curstruct->last = &s->typenext;
 	}else if((opt & OPTCLOCK) == 0){
-		if(clock == nil) clock = node(ASTSYMB, findclock(s));
-		s->clock = clock;
+		if(curpipe != nil){
+			if(clock != nil) error(nil, "clock declaration illegal in pipeline block");
+			s->clock = curpipe->sym->clock;
+		}else{
+			if(clock == nil) clock = node(ASTSYMB, findclock(s));
+			s->clock = clock;
+		}
 	}
 	return node(ASTDECL, s, n);
 }

@@ -247,6 +247,7 @@ struct BitSet {
 extern Line nilline, *curline;
 extern SymTab *scope;
 extern int nerror;
+extern ASTNode *curpipe;
 
 #pragma varargck type "A" int
 #pragma varargck type "I" int
