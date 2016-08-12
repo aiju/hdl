@@ -429,7 +429,7 @@ Initial blocks are run before all other blocks and in case of synchronous signal
 Finite state machines (FSM)
 .TS
 r1W12 l.
-\fIfsm\fR ←	\fBfsm \fIsymbol \fR[\fB< \fIexpr \fR[\fB, \fIexpr\fR] \fB>\fR] \fB{ \fR{\fBstat\fR} \fB}\fR
+\fIfsm\fR ←	\fBfsm \fIsymbol \fR[\fB< \fIexpr \fR[\fB, \fIexpr\fR] \fB>\fR] \fB{ \fR{\fIstat\fR} \fB}\fR
 \fIstat\fR ←	\fBgoto \fR[\fIstate\fR]\fB;\fR
 ∨	\fR[\fIstate\fR]\fB:\fR
 ∨	\fBdefault:\fR
@@ -448,6 +448,22 @@ If no label is given, the current one is assumed.
 .LP
 It is legal to reference the \fIsymbol\fR variable.
 Assigning to \fIsymbol\fR or \fIsymbol\fB'\fR is illegal.
+.NH 2
+Pipelines
+.TS
+r1W12 l.
+\fIpipe\fR ←	\fBpipeline \fIsymbol \fR[ \fB< \fIsymbol \fR[ \fB, \fIsymbol \fR] \fB> \fR] \fB{ \fR{\fIstat\fR} \fB} \fR
+\fIstat\fR ←	\fR[\fIstage\fR]\fB:\fR
+.TE
+.LP
+Pipelines are defined with similar syntax to finite state machines, although the semantics are quite different.
+Variables defined inside the pipeline block are duplicated in all stages and variables that are not explicitly assigned to in one stage take on the value they had in the previous stage, with a one cycle delay.
+.LP
+Assignments to primed versions of pipeline variables defines their value in the next stage without affecting their value in the current one.
+.LP
+The first symbol in angled brackets specifies a clock for the pipeline block.
+The second symbol defines a "go" variable which is a signal of type \fBbit\fR[\fIn\fR] where \fIn\fR is the number of pipeline stages.
+If the "go" variable is defined, pipeline stage \fIi\fR will only move ahead if \fIgo\fR[\fIi\fR] is set in a given cycle.
 .bp
 .NH
 Lexical conventions

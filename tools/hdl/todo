@@ -2,7 +2,7 @@ spec (&maybe implementation)
 - maybe harmonize clock definitions with the other type words
 - define precisely ==, !=, === and !==
 - functions (also in fsms)
-- pipeline blocks
+- branching pipelines
 - support [] with the lhs not an l-value
 
 future ideas (not necessarily good)
@@ -29,6 +29,7 @@ implementation
 - nested modules
 - compensate for verilog expression width behaviour
 - non-synchronous initializations need to have reset values propagated to other signals
+- pipeline implementation is still pretty rough. it would be nice if it could share could with semc since it's doing many similar things.
 
 questions
 - how meaningful is it to speak of the signedness of an infinite bitvector?
