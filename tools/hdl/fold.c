@@ -227,7 +227,10 @@ cintop(int op, int a, int b, int *cp)
 	case OPLSL:
 		if(b >= 32 || b < 0)
 			return 0;
-		else{
+		else if(b == 0){
+			*cp = a;
+			return 0;
+		}else{
 			*cp = c = a << b;
 			return (a >> 32 - b) == 0 && (c ^ a) >= 0;
 		}
@@ -432,17 +435,17 @@ constop(int op, Const *x, Const *y, Const *z)
 	case OPEXP: mpexp(x->n, y->n, nil, z->n); break;
 	case OPLSL:
 		mpleft(x->n, mptoi(y->n), z->n);
-		mpleft(x->x, mptoi(y->n), z->n);
+		mpleft(x->x, mptoi(y->n), z->x);
 		break;
 	case OPLSR:
 		mpright(x->n, mptoi(y->n), z->n);
-		mpright(x->x, mptoi(y->n), z->n);
+		mpright(x->x, mptoi(y->n), z->x);
 		break;
 	case OPASR:
 		mpxtend(x->n, x->sz, z->n);
 		mpright(z->n, mptoi(y->n), z->n);
 		mpxtend(x->x, x->sz, z->x);
-		mpright(z->x, mptoi(y->n), z->n);
+		mpright(z->x, mptoi(y->n), z->x);
 		break;
 	case OPAND:
 		mpor(x->n, x->x, z->n);
