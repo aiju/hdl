@@ -867,14 +867,23 @@ iastprint(Fmt *f, ASTNode *n, int indent)
 	}
 	switch(n->t){
 	case ASTMODULE:
-		rc += fmtprint(f, "%Imodule %s(\n", indent, n->sym->name);
-		for(mp = n->ports; mp != nil; mp = mp->next){
-			assert(mp->n->t == ASTDECL);
-			rc += fmtprint(f, "%I", indent + 1);
-			rc += iastdecl(f, mp->n, indent);
-			rc += fmtprint(f, ",\n");
-		}
-		rc += fmtprint(f, "%I) {\n", indent);
+	
+		rc += fmtprint(f, "%Imodule %s", indent, n->sym->name);
+		if(n->params != nil){
+			rc += fmtstrcpy(f, "(\n");
+			for(mp = n->params; mp != nil; mp = mp->next){
+				assert(mp->n->t == ASTDECL);
+				rc += fmtprint(f, "%I", indent + 1);
+				rc += iastdecl(f, mp->n, indent);
+				rc += fmtprint(f, ",\n");
+			}
+			rc += fmtprint(f, "%I) {\n", indent);
+		}else	
+			rc += fmtstrcpy(f, " {\n");
+		for(mp = n->ports; mp != nil; mp = mp->next)
+			rc += iastprint(f, mp->n, indent + 1);
+		if(n->ports != nil && n->nl != nil)
+			rc += fmtstrcpy(f, "\n");	
 		for(mp = n->nl; mp != nil; mp = mp->next)
 			rc += iastprint(f, mp->n, indent + 1);
 		rc += fmtprint(f, "%I}\n", indent);
@@ -1230,7 +1239,7 @@ litcheck(ASTNode *n, Type *ctxt)
 void
 typecheck(ASTNode *n, Type *ctxt)
 {
-	Nodes *mp;
+	Nodes *mp, **mpp, **mppn, **pp;
 	OpData *d;
 	int t1, t2;
 	int sgn;
@@ -1244,13 +1253,26 @@ typecheck(ASTNode *n, Type *ctxt)
 	case ASTBLOCK:
 	case ASTFSM:
 	case ASTPIPEL:
-		for(mp = n->ports; mp != nil; mp = mp->next){
+		for(mp = n->params; mp != nil; mp = mp->next){
 			typecheck(mp->n, nil);
-			if(mp->n->t == ASTDECL && (mp->n->sym->opt & (OPTIN|OPTOUT)) == 0)
-				error(mp->n, "'%s' port must be input or output", mp->n->sym->name);
+			if(mp->n->t == ASTDECL && (mp->n->sym->opt & (OPTIN|OPTOUT)) != 0)
+				error(mp->n, "'%s' parameters may not be input or output", mp->n->sym->name);
 		}
-		for(mp = n->nl; mp != nil; mp = mp->next)
+		pp = &n->ports;
+		for(mpp = &n->nl; mp = *mpp, mp != nil; mpp = mppn){
+			mppn = &mp->next;
 			typecheck(mp->n, nil);
+			if(mp->n->t == ASTDECL && (mp->n->sym->opt & (OPTIN|OPTOUT)) != 0)
+				if(n->t != ASTMODULE)
+					error(mp->n, "'%s' port declaration not permitted here", mp->n->sym->name);
+				else{
+					mppn = mpp;
+					*mpp = mp->next;
+					mp->next = nil;
+					*pp = mp;
+					pp = &mp->next;
+				}
+		}
 		break;
 	case ASTIF:
 		typecheck(n->n1, nil);

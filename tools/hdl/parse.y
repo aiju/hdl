@@ -66,17 +66,17 @@ program:
 globdef: module { $$ = nl($1); }
 	| type ';' { $$ = nil; }
 
-module: LMODULE symb '(' { $<n>$ = newscope(scope, ASTMODULE, $2); } args ')' '{' stats '}' { scopeup(); $$ = $<n>4; $$->ports = $5; $$->nl = $stats; }
+module:
+	LMODULE symb '(' { $<n>$ = newscope(scope, ASTMODULE, $2); } args ')' '{' stats '}' { scopeup(); $$ = $<n>4; $$->params = $5; $$->nl = $stats; }
+	| LMODULE symb '{' { $<n>$ = newscope(scope, ASTMODULE, $2); } stats '}' { scopeup(); $$ = $<n>4; $$->nl = $stats; }
 
 optargs: { $$ = nil; } | '(' args ')' { $$ = $2; };
 args: { $$ = nil; } | args1 | args1 ','
 args1: arg { $$ = nl($1); } | args1 ',' arg { $$ = nlcat($1, nl($3)); }
 
 arg:
-	type { curtype = $1.t; curopt = $1.i; curclock = nil; } argspec { $$ = vardecl(scope, $3, curopt, nil, curtype, curclock != nil ? curclock->n : nil); }
-	| type { curtype = $1.t; curopt = $1.i; } clock argspec { $$ = vardecl(scope, $4, curopt, nil, curtype, curclock != nil ? curclock->n : nil); curclock = curclock->next; }
-	| argspec { $$ = vardecl(scope, $1, curopt, nil, curtype, curclock != nil ? curclock->n : nil); }
-	| clock argspec { $$ = vardecl(scope, $2, curopt, nil, curtype, curclock != nil ? curclock->n : nil); curclock = curclock->next; }
+	type { curtype = $1.t; curopt = $1.i; } argspec { $$ = vardecl(scope, $3, curopt, nil, curtype, nil); }
+	| argspec { $$ = vardecl(scope, $1, curopt, nil, curtype, nil); }
 
 
 argspec:

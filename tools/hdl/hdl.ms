@@ -395,14 +395,16 @@ Execution jumps out of the \fBswitch\fR statement at the next \fBcase\fR stateme
 Modules
 .TS
 r1W12 l.
-\fImodule-def\fR ←	\fBmodule \fImodule \fB( \fR{\fIport\fB,\fR} [\fIport\fR] \fB) { \fR{ \fIdef \fR} \fB}
-\fIport\fR ←	[\fItype\fR] [\fIclock\fR] \fIsymbol\fR {\fB[\fIcomma-expr\fB]\fR}
+\fImodule-def\fR ←	\fBmodule \fImodule \fR[ \fB( \fR{\fIparam\fB,\fR} [\fIparam\fR] \fB) \fR] { \fR{ \fIdef \fR} \fB}
+\fIparam\fR ←	[\fItype\fR] \fIsymbol\fR {\fB[\fIcomma-expr\fB]\fR}
 \fIdef\fR ←	\fIstat\fR ⋁ \fImodule-def\fR ∨ ...
 .TE
 .LP
 Modules serve to group logic.
 A module presents an interface defined by a set of ports.
-Ports function very much like variables except they also have a clear direction (\fBinput\fR or \fBoutput\fR) that must be defined for them.
+Ports are defined (and function like) top level variables in the module with a direction (\fBinput\fR or \fBoutput\fR) defined for them.
+.LP
+Parameters are compile-time values that can be used to adapt a module for different contexts it might be used in.
 .LP
 During one cycle of execution of a module all the definitions are executed repeatedly until the results converge.
 Finally, all assignments to primed variables are copied over to become the main variables.

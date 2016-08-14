@@ -81,7 +81,7 @@ struct ASTNode {
 			ASTNode *n1, *n2, *n3, *n4;
 			Symbol *sym;
 			SymTab *st;
-			Nodes *nl, *ports;
+			Nodes *nl, *ports, *params;
 			Type *totype;
 		};
 		Const cons;
