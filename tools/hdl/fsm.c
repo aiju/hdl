@@ -161,7 +161,7 @@ newstate(Symbol *s, int append)
 	return f;
 }
 
-static void
+static Nodes *
 fsmfixpre(ASTNode *n)
 {
 	switch(n->t){
@@ -170,6 +170,7 @@ fsmfixpre(ASTNode *n)
 	case ASTFOR:
 		loopdown(n->t == ASTFOR ? n->n4 : n->n2, nil, nil);
 	}
+	return proceed;
 }
 
 static Nodes *

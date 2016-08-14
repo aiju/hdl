@@ -622,7 +622,7 @@ unmkblock(ASTNode *n)
 }
 
 Nodes *
-descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
+descend(ASTNode *n, Nodes *(*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 {
 	ASTNode *m;
 	Nodes *r;
@@ -630,7 +630,11 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	if(n == nil)
 		return nil;
 	m = nodedup(n);
-	if(pre != nil) pre(m);
+	if(pre != nil){
+		r = pre(m);
+		if(r != proceed)
+			goto out;
+	}
 	switch(n->t){
 	case ASTABORT:
 	case ASTBREAK:
@@ -692,6 +696,7 @@ descend(ASTNode *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 		return nl(n);
 	}
 	r = mod(m);
+out:
 	if(r != nil && r->next == nil && nodeeq(r->n, n, ptreq)){
 		nodeput(r->n);
 		r->n = n;
@@ -782,7 +787,7 @@ onlyone(Nodes *m)
 }
 
 Nodes *
-descendnl(Nodes *n, void (*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
+descendnl(Nodes *n, Nodes *(*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 {
 	Nodes *m;
 	

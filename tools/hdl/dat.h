@@ -248,6 +248,7 @@ extern Line nilline, *curline;
 extern SymTab *scope;
 extern int nerror;
 extern ASTNode *curpipe;
+#define proceed ((Nodes *)descend)
 
 #pragma varargck type "A" int
 #pragma varargck type "I" int
