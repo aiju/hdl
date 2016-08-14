@@ -20,7 +20,7 @@
 	struct { Type *t; int i; } ti;
 }
 
-%token LMODULE LINPUT LOUTPUT LBIT LIF LELSE LCLOCK LWHILE LDO LFOR LBREAK LINTEGER
+%token LMODULE LINPUT LOUTPUT LBIT LIF LELSE LCLOCK LWHILE LDO LFOR LBREAK LINT
 %token LCONTINUE LGOTO LFSM LDEFAULT LREAL LSTRING LENUM LSTRUCT LWIRE LREG LTYPEDEF
 %token LINITIAL LSIGNED LSWITCH LCASE LCONST LSWITCHZ LPIPELINE
 
@@ -104,7 +104,7 @@ type1: type0
 typew:
 	LBIT { $$.t = nil; $$.i = OPTBIT; }
 	| LCLOCK { $$.t = nil; $$.i = OPTCLOCK; }
-	| LINTEGER { $$.t = type(TYPINT); $$.i = 0; }
+	| LINT { $$.t = type(TYPINT); $$.i = 0; }
 	| LREAL { $$.t = type(TYPREAL); $$.i = 0; }
 	| LSTRING { $$.t = type(TYPSTRING); $$.i = 0; }
 	| LWIRE { $$.t = nil; $$.i = OPTWIRE; }

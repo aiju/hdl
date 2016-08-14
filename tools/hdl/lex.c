@@ -37,7 +37,7 @@ static Keyword kwtable[] = {
 	"if", LIF,
 	"initial", LINITIAL,
 	"input", LINPUT,
-	"integer", LINTEGER,
+	"int", LINT,
 	"module", LMODULE,
 	"output", LOUTPUT,
 	"pipeline", LPIPELINE,

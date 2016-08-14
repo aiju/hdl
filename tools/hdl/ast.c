@@ -556,7 +556,7 @@ typefmt(Fmt *f)
 	switch(t->t){
 	case TYPBIT: return fmtprint(f, "bit%s", t->sign ? " signed" : "");
 	case TYPBITV: return fmtprint(f, "bit%s [%n]", t->sign ? " signed" : "", t->sz);
-	case TYPINT: return fmtprint(f, "integer");
+	case TYPINT: return fmtprint(f, "int");
 	case TYPREAL: return fmtprint(f, "real");
 	case TYPSTRING: return fmtprint(f, "string");
 	case TYPVECTOR: return fmtprint(f, "%T [%n]", t->elem, t->sz);

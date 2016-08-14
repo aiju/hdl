@@ -5,7 +5,7 @@ Simple types
 .TS
 r1W12 l.
 \fItype\fR ←	\fItype-word\fR {\fItype-word\fR} {\fB[ \fIcomma-expr \fB]\fR}
-\fItype-word\fR ←	\fBbit\fR ∨ \fBsigned\fR ∨ \fBclock\fR ∨ \fBinteger\fR ∨ \fBreal\fR ∨ \fBstring\fR ∨ \fBinput\fR ∨ \fBoutput\fR ∨ \fBconst\fR ∨ \fBtypedef\fR
+\fItype-word\fR ←	\fBbit\fR ∨ \fBsigned\fR ∨ \fBclock\fR ∨ \fBint\fR ∨ \fBreal\fR ∨ \fBstring\fR ∨ \fBinput\fR ∨ \fBoutput\fR ∨ \fBconst\fR ∨ \fBtypedef\fR
 ∨	\fBwire\fR ∨ \fBreg\fR
 ∨	\fIdefined-type\fR
 .TE
@@ -15,7 +15,7 @@ Type words can appear in any order but not all combinations are a legal type.
 .IP \(bu
 \fBbit\fR, \fBclock\fR and \fBsigned\fR are invalid except as part of a \fBbit\fR type.
 .IP \(bu
-Only one of the words that declare a type (\fBinteger\fR, \fBstring\fR, \fBreal\fR, a defined type) may be used.
+Only one of the words that declare a type (\fBint\fR, \fBstring\fR, \fBreal\fR, a defined type) may be used.
 .IP \(bu
 Only one of \fBwire\fR, \fBreg\fR, \fBinput\fR, \fBtypedef\fR and \fBconst\fR may be used.
 .IP \(bu
@@ -27,14 +27,14 @@ They are 4-valued in simulation, with each bit having the possible values of \f(
 Note that \fBbit\fR is implicit and can always be elided from a list of typewords if the result is syntactically valid.
 \fBbit\fR types can also be specified to be clocks, using the \fBclock\fR word.
 .br
-The \fBinteger\fR type defines signed arbitrary size integers.
+The \fBint\fR type defines signed arbitrary size integers.
 It is not permitted for an implementation to restrict the range.
 .br
 The \fBreal\fR type defines IEEE 754 "double precision" floating point numbers.
 .br
 The \fBstring\fR type defines (conventionally UTF-8 encoded) strings of arbitrary length.
 .br
-\fBinteger\fR, \fBreal\fR or \fBstring\fR are for simulation and compile-time use only.
+\fBint\fR, \fBreal\fR or \fBstring\fR are for simulation and compile-time use only.
 .br
 A vector type can be made from any other type (including other vector types) by following the type with \fB[\ \fIsize\ \fB]\fR.
 Similarly, a memory type can be defined by placing the \fB[\fR\ ...\ \fB]\fR specifier after the variable name.
@@ -182,9 +182,9 @@ The result of an arithmetic operation is
 .IP \(bu
 \fBreal\fR, if either operand is \fBreal\fR; else
 .IP \(bu
-\fBinteger\fR, if both operands are \fBinteger\fR; else
+\fBint\fR, if both operands are \fBint\fR; else
 .IP \(bu
-\fBsigned bit[∞]\fR, if either operand is signed (or \fBinteger\fR); else
+\fBsigned bit[∞]\fR, if either operand is signed (or \fBint\fR); else
 .IP \(bu
 \fBbit[∞]\fR.
 .bp
@@ -201,14 +201,14 @@ _
 #	Delay	R	\fIa\fR	\fIb\fR must be a constant non-negative integer.
 @	Prior value	R	\fIa\fR	\fIb\fR must be \fBbit\fR.
 _
-**	Exponentiation	R	\fBreal\fR, \fBinteger\fR or \fBbit[∞]\fR
+**	Exponentiation	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
 _
-*	Multiplication	R	\fBreal\fR, \fBinteger\fR or \fBbit[∞]\fR
-/	Division	R	\fBreal\fR, \fBinteger\fR or \fBbit[∞]\fR
-%	Modulo	R	\fBreal\fR, \fBinteger\fR or \fBbit[∞]\fR
+*	Multiplication	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
+/	Division	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
+%	Modulo	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
 _
-+	Addition	R	\fBreal\fR, \fBinteger\fR or \fBbit[∞]\fR
--	Subtraction	R	\fBreal\fR, \fBinteger\fR or \fBbit[∞]\fR
++	Addition	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
+-	Subtraction	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
 _
 <<	Left shift		\fBbit[∞]\fR
 >>	Logical right shift		\fBbit[∞]\fR
@@ -243,8 +243,8 @@ _
 lFB s s s s
 lFCW l l l l.
 Unary operators
-+	Unary plus	R	\fBreal\fR, \fBinteger\fR or \fBbit[∞]\fR
--	Unary minus	R	\fBreal\fR, \fBinteger\fR or \fBbit[∞]\fR
++	Unary plus	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
+-	Unary minus	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
 ~	Bitwise not		\fIa\fR
 &	Reduction and		\fBbit\fR
 |	Reduction or		\fBbit\fR
@@ -260,10 +260,10 @@ Strings support only the operations marked \fBS\fR.
 .br
 The operations marked \fBb\fR support only the type \fBbit\fR (but not as a vector!).
 .br
-The operations marked \fBi\fR do not support the type \fBinteger\fR or any other unsized type.
+The operations marked \fBi\fR do not support the type \fBint\fR or any other unsized type.
 .bp
 .LP
-The result of a bitwise operation is the largest type that can fit either operand. More specifically it is \fBinteger\fR only if both arguments are \fBinteger\fR. Otherwise it's a bitvector of size max(\fIa\fR, \fIb\fR).
+The result of a bitwise operation is the largest type that can fit either operand. More specifically it is \fBint\fR only if both arguments are \fBint\fR. Otherwise it's a bitvector of size max(\fIa\fR, \fIb\fR).
 The result is signed if either operand is signed.
 .LP
 The \fB#\fR and \fB@\fR operators are unusual because they depend not only on the current values, but also on the history.
@@ -306,9 +306,9 @@ Casts
 If the type of an expression does not match the type that is expected by context (e.g. assigning to a variable of a different type), an implicit cast is attempted.
 Implicit casts follow the following rules
 .IP \(bu
-Bitvectors, \fBbit\fR, \fBinteger\fR and \fBreal\fR types can be freely interconverted.
+Bitvectors, \fBbit\fR, \fBint\fR and \fBreal\fR types can be freely interconverted.
 .IP \(bu
-\fBenum\fR can be converted to and from bitvectors, \fBbit\fR and \fBinteger\fR and to \fBreal\fR.
+\fBenum\fR can be converted to and from bitvectors, \fBbit\fR and \fBint\fR and to \fBreal\fR.
 Different \fBenum\fR types may not be implicitly casted.
 .IP \(bu
 No other casts are allowed.
@@ -487,7 +487,7 @@ The following words are keywords and must not be used as symbols.
 lFB lFB lFB lFB lFB lFB .
 bit	break	case	clock	const	continue
 default	do	else	enum	for	fsm
-goto	if	initial	input	integer	module
+goto	if	initial	input	int	module
 output	real	reg	signed	string	struct
 switch	switchz	typedef	while	wire
 .TE
