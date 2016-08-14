@@ -695,7 +695,10 @@ descend(ASTNode *n, Nodes *(*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 		error(n, "descend: unknown %A", n->t);
 		return nl(n);
 	}
-	r = mod(m);
+	if(mod != nil)
+		r = mod(m);
+	else
+		r = nl(m);
 out:
 	if(r != nil && r->next == nil && nodeeq(r->n, n, ptreq)){
 		nodeput(r->n);
