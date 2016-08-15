@@ -45,6 +45,8 @@ static char *astname[] = {
 	[ASTASYNC] "ASTASYNC",
 	[ASTCAST] "ASTCAST",
 	[ASTPIPEL] "ASTPIPEL",
+	[ASTCOMPILE] "ASTCOMPILE",
+	[ASTVERBAT] "ASTVERBAT",
 };
 
 static char *symtname[] = {
@@ -191,6 +193,8 @@ node(int t, ...)
 		n->sym = va_arg(va, Symbol *);
 		break;
 	case ASTPRIME:
+	case ASTCOMPILE:
+	case ASTVERBAT:
 		n->n1 = va_arg(va, ASTNode *);
 		break;
 	case ASTDOWHILE:
@@ -275,6 +279,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTALWAYS:
 	case ASTASS:
 	case ASTBREAK:
+	case ASTCOMPILE:
 	case ASTCONTINUE:
 	case ASTDASS:
 	case ASTDECL:
@@ -295,6 +300,7 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 	case ASTSWITCH:
 	case ASTSYMB:
 	case ASTTERN:
+	case ASTVERBAT:
 	case ASTWHILE:
 		return a->op == b->op && eq(a->n1, b->n1, eq) && eq(a->n2, b->n2, eq) && eq(a->n3, b->n3, eq) && eq(a->n4, b->n4, eq) && a->sym == b->sym && a->st == b->st;
 	case ASTMODULE:

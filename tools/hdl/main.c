@@ -101,6 +101,8 @@ compile(Nodes *np)
 	for(; np != nil; np = np->next){
 		n = np->n;
 		n = miscfix(n);
+		n = metacompile(n);
+		if(nerror != 0) return;
 		typecheck(n, nil);
 		if(nerror != 0) return;
 		n = constfold(n);

@@ -656,6 +656,7 @@ descend(ASTNode *n, Nodes *(*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTALWAYS:
 	case ASTASS:
 	case ASTCAST:
+	case ASTCOMPILE:
 	case ASTDECL:
 	case ASTDOWHILE:
 	case ASTFOR:
@@ -668,6 +669,7 @@ descend(ASTNode *n, Nodes *(*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 	case ASTPRIME:
 	case ASTSWITCH:
 	case ASTTERN:
+	case ASTVERBAT:
 	case ASTWHILE:
 		m->n1 = mkblock(descend(m->n1, pre, mod));
 		m->n2 = mkblock(descend(m->n2, pre, mod));

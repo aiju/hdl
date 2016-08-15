@@ -177,6 +177,8 @@ stat:
 	| LCASE elist ':' { $$ = nl(node(ASTCASE, $2)); }
 	| stat1 ';' { $$ = nl($1); }
 	| globdef
+	| '\\' stat { $$ = nl(node(ASTCOMPILE, mkblock($2))); }
+	| '`' stat { $$ = nl(node(ASTVERBAT, mkblock($2))); }
 
 stat1: { $$ = nil; }
 	| lval '=' cexpr { $$ = node(ASTASS, OPNOP, $1, $3); }
@@ -261,6 +263,8 @@ expr:
 	| '%' expr %prec unaryprec { $$ = node(ASTOP, OPREV, $2, nil); }
 	| '{' litexprs '}' { $$ = node(ASTLITERAL, $2); }
 	| '(' type ')' expr %prec cast { $$ = mkcast($2.t, $2.i, $4); }
+	| '\\' expr '\\' { $$ = node(ASTCOMPILE, $2); }
+
 
 cexpr:
 	expr
