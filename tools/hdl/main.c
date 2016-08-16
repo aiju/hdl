@@ -102,6 +102,7 @@ compile(Nodes *np)
 		n = np->n;
 		n = miscfix(n);
 		n = metacompile(n);
+		astprint(n, 0);
 		if(nerror != 0) return;
 		typecheck(n, nil);
 		if(nerror != 0) return;

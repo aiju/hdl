@@ -577,25 +577,39 @@ cfold(ASTNode *n)
 		if(!constop(n->op, x, y, &z)) return nl(n);
 		return nl(node(ASTCONST, z));
 	case ASTCAST:
-		if(n->n1 == nil || n->type == nil || n->type->t != TYPBITV) return nl(n);
-		if(n->n1->t == ASTCINT){
-			z.n = z.x = nil;
-			mkconstint(&z, n->n1->i);
-		}else if(n->n1->t == ASTCONST){
-			z = n->n1->cons;
-			z.n = mpcopy(z.n);
-			z.x = mpcopy(z.x);
-		}else
+		if(n->n1 == nil || n->totype == nil) return nl(n);
+		if(n->totype->t == TYPINT){
+			if(n->n1->t == ASTCINT)
+				return nl(n->n1);
+			if(n->n1->t == ASTCONST){
+				z = n->n1->cons;
+				z.n = mpcopy(z.n);
+				z.x = mpnew(0);
+				z.sz = 0;
+				return nl(node(ASTCONST, z));
+			}
 			return nl(n);
-		if(n->type->sz == nil)
-			z.sz = 0;
-		else if(n->type->sz->t == ASTCINT)
-			z.sz = n->type->sz->i;
-		else
-			return nl(n);
-		z.sign = n->type->sign;
-		consttrunc(&z);
-		return nl(node(ASTCONST, z));
+		}
+		if(n->totype->t == TYPBITV){
+			if(n->n1->t == ASTCINT){
+				z.n = z.x = nil;
+				mkconstint(&z, n->n1->i);
+			}else if(n->n1->t == ASTCONST){
+				z = n->n1->cons;
+				z.n = mpcopy(z.n);
+				z.x = mpcopy(z.x);
+			}else
+				return nl(n);
+			if(n->totype->sz == nil)
+				z.sz = 0;
+			else if(n->totype->sz->t == ASTCINT)
+				z.sz = n->totype->sz->i;
+			else
+				return nl(n);
+			z.sign = n->totype->sign;
+			consttrunc(&z);
+			return nl(node(ASTCONST, z));
+		}
 	}
 	return nl(n);
 }

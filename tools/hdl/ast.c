@@ -1242,6 +1242,8 @@ litcheck(ASTNode *n, Type *ctxt)
 	}
 }
 
+void metatypecheck(ASTNode *n);
+
 void
 typecheck(ASTNode *n, Type *ctxt)
 {
@@ -1498,6 +1500,9 @@ typecheck(ASTNode *n, Type *ctxt)
 		typecheck(n->n1, nil);
 		n->type = n->totype;
 		n->n1 = cast(n->n1, n->totype, 1);
+		break;
+	case ASTVERBAT:
+		metatypecheck(n->n1);
 		break;
 	default:
 		error(n, "typecheck: unknown %A", n->t);

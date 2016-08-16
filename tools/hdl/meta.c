@@ -60,8 +60,10 @@ metarun(ASTNode *n)
 			error(n, "metarun: unsupported lval %n", n->n1);
 		else if((n->n1->sym->opt & OPTMETA) == 0)
 			error(n, "compile-time assignment to a run-time variable");
-		else
-			n->n1->sym->val = onlyone(metarun(n->n2));
+		else{
+			m  = onlyone(metarun(n->n2));
+			n->n1->sym->val = constfold(node(ASTCAST, n->n1->sym->type, m));
+		}
 		return nil;
 	case ASTVERBAT:
 		r = descend(n->n1, metacopy, nil);
@@ -98,8 +100,42 @@ metacopy(ASTNode *n)
 		return proceed;
 }
 
+void
+metatypecheck(ASTNode *n)
+{
+	Nodes *r;
+
+	if(n == nil) return;
+	switch(n->t){
+	case ASTDECL:
+	case ASTSYMB:
+	case ASTCINT:
+	case ASTCONST:
+		break;
+	case ASTASS:
+	case ASTOP:
+	case ASTIDX:
+		metatypecheck(n->n1);
+		metatypecheck(n->n2);
+		metatypecheck(n->n3);
+		metatypecheck(n->n4);
+		break;
+	case ASTMODULE:
+	case ASTBLOCK:
+		for(r = n->nl; r != nil; r = r->next)
+			metatypecheck(r->n);
+		break;
+	case ASTCOMPILE:
+		typecheck(n->n1, nil);
+		break;
+	default:
+		error(n, "metatypecheck: unknown %A", n->t);
+	}
+}
+
 ASTNode *
 metacompile(ASTNode *n)
 {
+	metatypecheck(n);
 	return onlyone(descend(n, metacopy, nil));
 }
