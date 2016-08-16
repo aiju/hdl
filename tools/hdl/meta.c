@@ -113,6 +113,7 @@ metatypecheck(ASTNode *n)
 	case ASTCONST:
 		break;
 	case ASTASS:
+	case ASTPRIME:
 	case ASTOP:
 	case ASTIDX:
 		metatypecheck(n->n1);
