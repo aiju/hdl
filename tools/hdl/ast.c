@@ -108,7 +108,6 @@ static OpData opdata[] = {
 	[OPUOR] {"|", OPDUNARY|OPDBITOUT, 15},
 	[OPUXOR] {"^", OPDUNARY|OPDBITOUT, 15},
 	[OPMAX] {"max", OPDWMAX, 3},
-	[OPCLOG2] {"clog2", OPDUNARY|OPDWINF, 15},
 	[OPREV] {"%", OPDUNARY|OPDSPECIAL, 15},
 };
 
@@ -483,7 +482,7 @@ nodeclog2(ASTNode *a)
 	if(a == nil) return node(ASTCINT, 1);
 	if(a->t == ASTCINT)
 		return node(ASTCINT, clog2(a->i));
-	return node(ASTOP, OPCLOG2, a, nil);
+	return node(ASTFCALL, node(ASTSYMB, getsym(scope, 1, "$clog2")), nl(a));
 }
 
 void

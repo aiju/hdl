@@ -269,7 +269,6 @@ cintop(int op, int a, int b, int *cp)
 	case OPUOR: *cp = a != 0; return 1;
 	case OPUXOR: return 0;
 	case OPMAX: *cp = a >= b ? a : b; return 1;
-	case OPCLOG2: *cp = clog2(a); return 1;
 	default:
 		warn(nil, "cintop: unknown %s", getopdata(op)->name);
 		return 0;
@@ -513,16 +512,6 @@ constop(int op, Const *x, Const *y, Const *z)
 			mpassign(x->n, z->n);
 		else
 			mpassign(y->n, z->n);
-		break;
-	case OPCLOG2:
-		if(mpcmp(x->n, mpzero) == 0)
-			mpassign(mpzero, z->n);
-		else{
-			mpassign(x->n, z->n);
-			z->n->sign = 1;
-			mpsub(z->n, mpone, z->n);
-			itomp(mpsignif(z->n), z->n);
-		}
 		break;
 	case OPREV:
 		if(x->sz == 0)

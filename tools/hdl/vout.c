@@ -41,7 +41,6 @@ static OpData vopdata[] = {
 	[OPUOR] {"|", OPDUNARY, 13},
 	[OPUXOR] {"^", OPDUNARY, 13},
 	[OPMAX] {nil, 0, 0},
-	[OPCLOG2] {nil, 0, 0},
 };
 
 static OpData *
