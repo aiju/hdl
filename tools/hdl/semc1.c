@@ -358,7 +358,13 @@ trackcans(void)
 		ch = 0;
 		for(j = 0; j < nvars; j++){
 			v = vars[j];
-			if(v->deps == nil || v->deps->n == 0) continue;
+			if(v->deps == nil || v->deps->n == 0){
+				if(v->def > 0){
+					ch += (v->flags & SVCANNX) == 0;
+					v->flags |= SVCANNX;
+				}
+				continue;
+			}
 			n = SVCANNX;
 			for(i = 0; i < v->deps->n; i++)
 				n &= v->deps->p[i]->flags;
