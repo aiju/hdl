@@ -130,7 +130,7 @@ void
 main(int argc, char **argv)
 {
 	typedef void init(void);
-	extern init lexinit, astinit, foldinit, semvinit, voutinit;
+	extern init lexinit, astinit, foldinit, semvinit, voutinit, sysinit;
 
 	fmtinstall('B', mpfmt);
 	lexinit();
@@ -138,6 +138,7 @@ main(int argc, char **argv)
 	foldinit();
 	semvinit();
 	voutinit();
+	sysinit();
 
 	ARGBEGIN {
 	default:

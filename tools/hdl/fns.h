@@ -90,3 +90,4 @@ ASTNode *pipecompile(ASTNode *);
 Symbol *getfreesym(SymTab *, char *);
 void symcpy(Symbol *, Symbol *);
 ASTNode *metacompile(ASTNode *);
+ASTNode *sysfold(ASTNode *);

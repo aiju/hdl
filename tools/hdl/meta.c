@@ -13,14 +13,14 @@ metacond(ASTNode *c)
 {
 	c = onlyone(metarun(c));
 	if(c == nil){
-		error(c, "metacond: nil");
+		error(nil, "metacond: nil");
 		return -1;
 	}
 	if(c->t == ASTCINT)
 		return c->i != 0;
 	if(c->t == ASTCONST)
 		return mpcmp(c->cons.n, mpzero) != 0;
-	error(c, "metarun: if: unknown %A condition", c->t);
+	error(c, "if: unresolved %n", c);
 	return -1;
 }
 
@@ -36,11 +36,24 @@ metarun(ASTNode *n)
 	case ASTCONST:
 		return nl(n);
 	case ASTSYMB:
-		if((n->sym->opt & OPTMETA) == 0){
-			error(n, "'%s' run-time variable in compile-time expression", n->sym->name);
+		if(n->sym == nil){
+			error(n, "metarun: nil symbol");
 			return nl(n);
 		}
-		return nl(n->sym->val);
+		switch(n->sym->t){
+		case SYMVAR:
+			if((n->sym->opt & OPTMETA) == 0){
+				error(n, "'%s' run-time variable in compile-time expression", n->sym->name);
+				return nl(n);
+			}
+		case SYMCONST:
+			return nl(n->sym->val);
+		case SYMFUNC:
+			return nl(n);
+		default:
+			error(n, "'%s' %σ invalid in compile-time expression", n->sym->name, n->sym->t);
+		}
+		return nl(n);
 	case ASTOP:
 		m = nodedup(n);
 		m->n1 = onlyone(metarun(n->n1));
@@ -83,6 +96,13 @@ metarun(ASTNode *n)
 			r = nlcat(r, metarun(n->n3));
 		}
 		return r;
+	case ASTFCALL:
+		m = nodedup(n);
+		m->n1 = onlyone(metarun(n->n1));
+		m->nl = nil;
+		for(s = n->nl; s != nil; s = s->next)
+			m->nl = nlcat(m->nl, metarun(s->n));
+		return nl(constfold(m));
 	default:
 		error(n, "metarun: unknown %A", n->t);
 		return nil;

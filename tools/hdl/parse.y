@@ -33,7 +33,7 @@
 
 %type <n> stat1 lval expr cexpr optcexpr module var trigger
 %type <n> primary varspec litexpr packdef optpackdef arg argspec
-%type <ns> stats stat globdef vars triggers elist litexprs litexprs1 args args1 optargs
+%type <ns> stats stat globdef vars triggers elist litexprs litexprs1 args args1 optargs fnargs fnargs1
 %type <ti> type type0 type1 typew opttypews typevector
 %type <sym> symb
 
@@ -252,7 +252,7 @@ expr:
 	| expr '#' expr { $$ = node(ASTOP, OPDELAY, $1, $3); }
 	| expr '@' expr { $$ = node(ASTOP, OPAT, $1, $3); }
 	| expr '?' expr ':' expr { $$ = node(ASTTERN, $1, $3, $5); }
-	| expr '(' cexpr ')' { $$ = node(ASTOP, OPREPL, $1, $3); }
+	| primary '(' fnargs ')' { $$ = node(ASTFCALL, $1, $3); }
 	| '+' expr %prec unaryprec { $$ = node(ASTOP, OPUPLUS, $2, nil); }
 	| '-' expr %prec unaryprec { $$ = node(ASTOP, OPUMINUS, $2, nil); }
 	| '~' expr %prec unaryprec { $$ = node(ASTOP, OPNOT, $2, nil); }
@@ -265,6 +265,10 @@ expr:
 	| '(' type ')' expr %prec cast { $$ = mkcast($2.t, $2.i, $4); }
 	| '\\' expr '\\' { $$ = node(ASTCOMPILE, $2); }
 
+fnargs: { $$ = nil; } | fnargs1  | fnargs1 ','
+fnargs1:
+	expr { $$ = nl($1); }
+	| fnargs1 ',' expr { $$ = nlcat($1, nl($3)); }
 
 cexpr:
 	expr

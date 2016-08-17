@@ -47,6 +47,7 @@ static char *astname[] = {
 	[ASTPIPEL] "ASTPIPEL",
 	[ASTCOMPILE] "ASTCOMPILE",
 	[ASTVERBAT] "ASTVERBAT",
+	[ASTFCALL] "ASTFCALL",
 };
 
 static char *symtname[] = {
@@ -97,7 +98,7 @@ static OpData opdata[] = {
 	[OPLAND] {"&&", OPDBITONLY|OPDBITOUT, 5},
 	[OPAT] {"@", OPDSPECIAL, 15},
 	[OPDELAY] {"#", OPDSPECIAL, 15},
-	[OPREPL] {"repl", OPDSPECIAL|OPDSTRING, 2},
+	[OPREPL] {"repl", OPDSPECIAL|OPDSTRING, 16},
 	[OPCAT] {",", OPDSTRING|OPDWADD, 1},
 	[OPUPLUS] {"+", OPDUNARY|OPDWINF, 15},
 	[OPUMINUS] {"-", OPDUNARY|OPDWINF, 15},
@@ -242,6 +243,10 @@ node(int t, ...)
 		n->totype = va_arg(va, Type *);
 		n->n1 = va_arg(va, ASTNode *);
 		break;
+	case ASTFCALL:
+		n->n1 = va_arg(va, ASTNode *);
+		n->nl = va_arg(va, Nodes *);
+		break;
 	default: sysfatal("node: unknown %A", t);
 	}
 	va_end(va);
@@ -317,6 +322,13 @@ nodeeq(ASTNode *a, ASTNode *b, void *eqp)
 				return 0;
 		if(mp != np) return 0;
 		for(mp = a->ports, np = b->ports; mp != np && mp != nil && np != nil; mp = mp->next, np = np->next)
+			if(!eq(mp->n, np->n, eq))
+				return 0;
+		return mp == np;
+	case ASTFCALL:
+		if(!eq(a->n1, b->n1, eq))
+			return 0;
+		for(mp = a->nl, np = b->nl; mp != np && mp != nil && np != nil; mp = mp->next, np = np->next)
 			if(!eq(mp->n, np->n, eq))
 				return 0;
 		return mp == np;
@@ -809,6 +821,16 @@ eastprint(Fmt *f, ASTNode *n, int env)
 		}
 		rc += fmtprint(f, ")");
 		return rc;
+	case ASTFCALL:
+		rc = eastprint(f, n->n1, 16);
+		rc += fmtprint(f, "(");
+		for(mp = n->nl; mp != nil; mp = mp->next){
+			eastprint(f, mp->n, 2);
+			if(mp->next != nil)
+				rc += fmtstrcpy(f, ", ");
+		}
+		rc += fmtprint(f, ")");
+		return rc;		
 	default:
 		error(n, "eastprint: unknown %A", n->t);
 	}
@@ -853,6 +875,7 @@ iastdecl(Fmt *f, ASTNode *n, int indent)
 	if((n->sym->opt & OPTOUT) != 0) rc += fmtprint(f, "output ");
 	if((n->sym->opt & OPTWIRE) != 0) rc += fmtprint(f, "wire ");
 	if((n->sym->opt & OPTREG) != 0) rc += fmtprint(f, "reg ");
+	if(n->sym->t == SYMCONST) rc += fmtprint(f, "const ");
 	if((n->sym->opt & OPTSIGNED) != 0) rc += fmtprint(f, "signed ");
 	rc += fmtprint(f, "%#.*T %s", indent, n->sym->type, n->sym->name);
 	if(n->n1 != nil)
@@ -1242,6 +1265,15 @@ litcheck(ASTNode *n, Type *ctxt)
 	}
 }
 
+static void
+fcallcheck(ASTNode *n)
+{
+	Nodes *m;
+	
+	for(m = n->nl; m != nil; m = m->next)
+		typecheck(m->n, nil);
+}
+
 void metatypecheck(ASTNode *n);
 
 void
@@ -1252,6 +1284,7 @@ typecheck(ASTNode *n, Type *ctxt)
 	int t1, t2;
 	int sgn;
 	Symbol *s;
+	ASTNode *m;
 
 	if(n == nil)
 		return;
@@ -1503,6 +1536,24 @@ typecheck(ASTNode *n, Type *ctxt)
 		break;
 	case ASTVERBAT:
 		metatypecheck(n->n1);
+		break;
+	case ASTFCALL:
+		if(n->n1->t == ASTSYMB && n->n1->sym->t == SYMFUNC){
+			fcallcheck(n);
+		}else{
+			if(n->nl->n == nil){
+				error(n, "typecheck: empty replication");
+				return;
+			}
+			m = n->nl->n;
+			for(mp = n->nl->next; mp != nil; mp = mp->next)
+				m = node(ASTOP, OPCAT, m, mp->n);
+			n->t = ASTOP;
+			n->op = OPREPL;
+			n->n2 = m;
+			n->nl = nil;
+			typecheck(n, ctxt);
+		}
 		break;
 	default:
 		error(n, "typecheck: unknown %A", n->t);

@@ -15,6 +15,7 @@ OFILES=\
 	semc.$O \
 	set.$O \
 	vout.$O \
+	sysf.$O \
 
 BIN=/$objtype/bin
 

@@ -195,6 +195,8 @@ lFB s s s s
 lFCW l l l l.
 Symbol	Operation		Result type	Notes
 Binary operators (in decreasing order of precedence)
+\fIn\fR(\fIm\fR)	Replication	Si	\fBbit[\fIn\fR·\fIb\fR]\fR or \fBstring\fR
+_
 ()	Cast
 	Unary operators
 _
@@ -235,8 +237,6 @@ _
 ||	Logical or	b	\fBbit\fR
 _
 ?:	Ternary operator	R	max(\fIb\fR, \fIc\fR)	\fIa\fR must be \fBbit\fR.
-_
-\fIn\fR(\fIm\fR)	Replication	Si	\fBbit[\fIn\fR·\fIb\fR]\fR or \fBstring\fR
 _
 ,	Concatenation	Si	\fBbit[\fIa\fR+\fIb\fR]\fR or \fBstring\fR
 .T&

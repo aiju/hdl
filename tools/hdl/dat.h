@@ -55,6 +55,8 @@ struct Symbol {
 	ASTNode *pack;
 	ASTNode *clock;
 	
+	void *sysf;
+	
 	void *typc;
 	
 	int pipeidx;
@@ -124,6 +126,7 @@ enum {
 	ASTDEFAULT,
 	ASTDISABLE,
 	ASTDOWHILE,
+	ASTFCALL,
 	ASTFOR,
 	ASTFSM,
 	ASTGOTO,
@@ -210,6 +213,7 @@ enum {
 	SYMFSM,
 	SYMTYPE,
 	SYMPIPEL,
+	SYMFUNC,
 };
 
 enum {
@@ -226,6 +230,7 @@ enum {
 	OPTVWIRE = 1024,
 	OPTVREG = 2048,
 	OPTMETA = 4096,
+	OPTSYS = 8192,
 };
 
 enum {

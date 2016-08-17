@@ -271,7 +271,7 @@ vardecl(SymTab *st, ASTNode *ns, int opt, ASTNode *n, Type *ty, ASTNode *clock)
 	if(curstruct != nil){
 		*curstruct->last = s;
 		curstruct->last = &s->typenext;
-	}else if((opt & OPTCLOCK) == 0){
+	}else if((opt & OPTCLOCK) == 0 && s->t == SYMVAR){
 		if(curpipe != nil){
 			if(clock != nil) error(nil, "clock declaration illegal in pipeline block");
 			s->clock = curpipe->sym->clock;

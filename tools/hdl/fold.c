@@ -554,8 +554,8 @@ cfold(ASTNode *n)
 		d = getopdata(n->op);
 		if(d == nil) break;
 		if(n->n1->t != ASTCINT && n->n1->t != ASTCONST) break;
-		if((d->flags & OPDUNARY) == 0 && n->n2 != nil && n->n2->t != ASTCINT &&
-			n->n2->t != ASTCONST) break;
+		if((d->flags & OPDUNARY) == 0 && (n->n2 == nil || n->n2->t != ASTCINT &&
+			n->n2->t != ASTCONST)) break;
 		if(n->n1->t == ASTCINT){
 			if((d->flags & OPDUNARY) != 0){
 				if(cintop(n->op, n->n1->i, 0, &c))
@@ -610,6 +610,11 @@ cfold(ASTNode *n)
 			consttrunc(&z);
 			return nl(node(ASTCONST, z));
 		}
+		break;
+	case ASTFCALL:
+		if(n->n1 == nil || n->n1->sym == nil) break;
+		if(n->n1->sym->t == SYMFUNC && n->n1->sym->opt == OPTSYS)
+			return nl(sysfold(n));
 	}
 	return nl(n);
 }
@@ -704,6 +709,12 @@ descend(ASTNode *n, Nodes *(*pre)(ASTNode *), Nodes *(*mod)(ASTNode *))
 		for(r = n->nl; r != nil; r = r->next)
 			m->nl = nlcat(m->nl, descend(r->n, pre, mod));
 		break;
+	case ASTFCALL:
+		m->n1 = mkblock(descend(m->n1, pre, mod));
+		m->nl = nil;
+		for(r = n->nl; r != nil; r = r->next)
+			m->nl = nlcat(m->nl, descend(r->n, pre, mod));
+		break;
 	case ASTINITIAL:
 		m->nl = nil;
 		for(r = n->nl; r != nil; r = r->next)
@@ -786,6 +797,11 @@ descendsum(ASTNode *n, int (*eval)(ASTNode *))
 		for(r = n->nl; r != nil; r = r->next)
 			rc += descendsum(r->n, eval);
 		rc += descendsum(n->n1, eval);
+		break;
+	case ASTFCALL:
+		rc += descendsum(n->n1, eval);
+		for(r = n->nl; r != nil; r = r->next)
+			rc += descendsum(r->n, eval);
 		break;
 	default:
 		error(n, "descendsum: unknown %A", n->t);
