@@ -208,6 +208,8 @@ findstages(ASTNode *n, int ctxt)
 		break;
 	case ASTOP:
 	case ASTTERN:
+	case ASTIDX:
+	case ASTMEMB:
 		findstages(n->n1, ctxt);
 		findstages(n->n2, ctxt);
 		findstages(n->n3, ctxt);
