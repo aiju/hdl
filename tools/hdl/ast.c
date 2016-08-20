@@ -594,10 +594,46 @@ typefmt(Fmt *f)
 }
 
 Type *
+typedup(Type *t)
+{
+	Type *s;
+	
+	s = emalloc(sizeof(Type));
+	memcpy(s, t, sizeof(Type));
+	return s;
+}
+
+static Type *
+structfold(Type *t)
+{
+	Symbol *s, *u, **p;
+	Type *r;
+	
+	for(s = t->vals; s != nil && typefold(s->type) == s->type; s = s->typenext)
+		;
+	if(s == nil)
+		return t;
+	r = typedup(t);
+	r->vals = nil;
+	r->st = emalloc(sizeof(SymTab));
+	p = &r->vals;
+	for(s = t->vals; s != nil; s = s->typenext){
+		u = getsym(r->st, 0, s->name);
+		symcpy(u, s);
+		u->type = typefold(u->type);
+		*p = u;
+		p = &u->typenext;
+	}
+	return r;
+}
+
+Type *
 typefold(Type *t)
 {
+	Type *tt;
 	ASTNode *s;
 
+	if(t == nil) return nil;
 	switch(t->t){
 	case TYPBIT:
 	case TYPINT:
@@ -606,15 +642,16 @@ typefold(Type *t)
 	case TYPENUM:
 		return t;
 	case TYPBITV:
-		s = constfold(t->sz);
-		if(s == t->sz) return t;
-		return type(TYPBITV, s, t->sign);
 	case TYPVECTOR:
 		s = constfold(t->sz);
-		if(s == t->sz) return t;
-		return type(TYPVECTOR, t->elem, s);
-	case TYPSTRUCT:
+		tt = typefold(t->elem);
+		if(nodeeq(s, t->sz, nodeeq) && tt == t->elem) return t;
+		t = typedup(t);
+		t->sz = s;
+		t->elem = tt;
 		return t;
+	case TYPSTRUCT:
+		return structfold(t);
 	default:
 		warn(nil, "typefold: unknown %T", t);
 		return t;

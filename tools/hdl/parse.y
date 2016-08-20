@@ -67,6 +67,8 @@ globdef: module { $$ = nl($1); }
 	| type ';' { $$ = nil; }
 	| type { curtype = $1.t; curopt = $1.i; } vars ';' { $$ = $3; }
 	| type { curtype = $1.t; curopt = $1.i; } clock vars ';' { curclock = curclock->next; $$ = $4; }
+	| opttypews LSTRUCT symb optargs '{' { structstart(); } memberdefs '}' ';' { $$ = structend($1.t, $1.i, nil, nil, $3); }
+
 
 module:
 	LMODULE symb '(' { $<n>$ = newscope(scope, ASTMODULE, $2); } args ')' '{' stats '}' { scopeup(); $$ = $<n>4; $$->params = $5; $$->nl = $stats; }
@@ -88,7 +90,6 @@ argspec:
 type: typevector
 	| opttypews LENUM '{' { enumstart($1.t); } enumvals '}' { $$.t = enumend(); $$.i = $1.i; }
 	| opttypews LSTRUCT '{' { structstart(); } memberdefs '}' { structend($1.t, $1.i, &$$.t, &$$.i, nil); }
-	| opttypews LSTRUCT symb optargs '{' { structstart(); } memberdefs '}' { structend($1.t, $1.i, nil, nil, $3); }
 
 typevector:
 	type1 { typefinal($1.t, $1.i, &$$.t, &$$.i); }

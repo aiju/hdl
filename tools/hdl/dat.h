@@ -25,7 +25,7 @@ struct Line {
 
 struct Type {
 	int t;
-	Symbol *vals;
+	Symbol *vals; /* struct fields */
 	Type *elem;
 	ASTNode *sz;
 	int sign, mem;

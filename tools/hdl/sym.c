@@ -194,7 +194,7 @@ structstart(void)
 	curstruct  = s;
 }
 
-void
+Nodes *
 structend(Type *t0, int i0, Type **tp, int *ip, Symbol *sym)
 {
 	Struct *s;
@@ -209,10 +209,13 @@ structend(Type *t0, int i0, Type **tp, int *ip, Symbol *sym)
 	if(ip != nil)
 		*ip = i0;
 	if(sym != nil)
-		s->t->name = decl(scope, sym, SYMTYPE, 0, nil, s->t);
+		sym = s->t->name = decl(scope, sym, SYMTYPE, 0, nil, s->t);
 	
 	curstruct = s->up;
 	free(s);
+	if(sym != nil)
+		return nl(node(ASTDECL, sym, nil));
+	return nil;
 }
 
 Symbol *
@@ -331,4 +334,5 @@ symcpy(Symbol *d, Symbol *s)
 	d->type = s->type;
 	d->clock = s->clock;
 	d->Line = s->Line;
+	d->pack = s->pack;
 }
