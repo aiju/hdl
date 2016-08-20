@@ -152,6 +152,9 @@ trackdep(ASTNode *n, SemVars *cdep, int fl)
 	case ASTCONST:
 	case ASTDEFAULT:
 		return cdep;
+	case ASTSYMB:
+		error(n, "trackdep: found symbol %s", n->sym->name);
+		return cdep;
 	case ASTBLOCK:
 		for(r = n->nl; r != nil; r = r->next)
 			putdeps(trackdep(r->n, depinc(cdep), fl));
