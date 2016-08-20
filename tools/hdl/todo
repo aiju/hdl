@@ -15,6 +15,7 @@ future ideas (not necessarily good)
 - switch fallthru statement
 - UTF-8 in symbols (need to translate to Verilog somehow...)
 - allow attaching @valid to a signal definition so that reference to the signal always invoke @valid
+- some easier way to registerize outputs without replacing x by x' everywhere (maybe allow # on signal definitions?)
 - allow definition before use
 
 implementation
