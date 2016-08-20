@@ -31,6 +31,7 @@ implementation
 - compensate for verilog expression width behaviour
 - non-synchronous initializations need to have reset values propagated to other signals
 - pipeline implementation is still pretty rough. it would be nice if it could share could with semc since it's doing many similar things.
+- handle out of bound case in typc
 
 questions
 - how meaningful is it to speak of the signedness of an infinite bitvector?
