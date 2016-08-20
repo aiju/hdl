@@ -131,11 +131,13 @@ metatypecheck(ASTNode *n)
 	case ASTSYMB:
 	case ASTCINT:
 	case ASTCONST:
+	case ASTSTATE:
 		break;
 	case ASTASS:
 	case ASTPRIME:
 	case ASTOP:
 	case ASTIDX:
+	case ASTMEMB:
 		metatypecheck(n->n1);
 		metatypecheck(n->n2);
 		metatypecheck(n->n3);
@@ -143,6 +145,7 @@ metatypecheck(ASTNode *n)
 		break;
 	case ASTMODULE:
 	case ASTBLOCK:
+	case ASTPIPEL:
 		for(r = n->nl; r != nil; r = r->next)
 			metatypecheck(r->n);
 		break;
