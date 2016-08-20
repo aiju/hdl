@@ -473,6 +473,8 @@ nodemul(ASTNode *a, ASTNode *b)
 		return node(ASTCINT, a->i * b->i);
 	if(a->t == ASTCINT && a->i == 1) return b;
 	if(b->t == ASTCINT && b->i == 1) return a;
+	if(a->t == ASTCINT && a->i == 0) return node(ASTCINT, 0);
+	if(b->t == ASTCINT && b->i == 0) return node(ASTCINT, 0);
 	return node(ASTOP, OPMUL, a, b);
 }
 
