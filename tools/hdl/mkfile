@@ -1,6 +1,6 @@
 </$objtype/mkfile
 
-TARG=vlt
+TARG=hdl
 OFILES=\
 	main.$O \
 	lex.$O \
