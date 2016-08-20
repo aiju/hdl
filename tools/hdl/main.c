@@ -108,15 +108,17 @@ compile(Nodes *np)
 		if(nerror != 0) return;
 		n = constfold(n);
 		if(nerror != 0) return;
-		n = fsmcompile(n);
-		if(nerror != 0) return;
-		n = pipecompile(n);
-		if(nerror != 0) return;
-		n = typconc(n);
-		if(nerror != 0) return;
-		n = semcomp(n);
-		if(nerror != 0) return;
-		verilog(n);
+		if(n->t == ASTMODULE){
+			n = fsmcompile(n);
+			if(nerror != 0) return;
+			n = pipecompile(n);
+			if(nerror != 0) return;
+			n = typconc(n);
+			if(nerror != 0) return;
+			n = semcomp(n);
+			if(nerror != 0) return;
+			verilog(n);
+		}
 	}
 }
 

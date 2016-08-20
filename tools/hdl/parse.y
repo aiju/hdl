@@ -65,6 +65,8 @@ program:
 
 globdef: module { $$ = nl($1); }
 	| type ';' { $$ = nil; }
+	| type { curtype = $1.t; curopt = $1.i; } vars ';' { $$ = $3; }
+	| type { curtype = $1.t; curopt = $1.i; } clock vars ';' { curclock = curclock->next; $$ = $4; }
 
 module:
 	LMODULE symb '(' { $<n>$ = newscope(scope, ASTMODULE, $2); } args ')' '{' stats '}' { scopeup(); $$ = $<n>4; $$->params = $5; $$->nl = $stats; }
@@ -156,8 +158,6 @@ stat:
 	| ':' { $$ = nl(fsmstate(nil)); }
 	| symb ':' { $$ = nl(fsmstate($1)); }
 	| LDEFAULT ':' { $$ = nl(node(ASTDEFAULT, nil)); }
-	| type { curtype = $1.t; curopt = $1.i; } vars ';' { $$ = $3; }
-	| type { curtype = $1.t; curopt = $1.i; } clock vars ';' { curclock = curclock->next; $$ = $4; }
 	| clock '{' stats '}' = { curclock = curclock->next; $$ = $3; }
 	| '{' { $<n>$ = newscope(scope, ASTBLOCK, nil); } stats { scopeup(); } '}' { $<n>2->nl = $3; $$ = nl($<n>2); }
 	| LSYMB '{' { $<n>$ = newscope(scope, ASTBLOCK, $1); } stats { scopeup(); } '}' { $<n>3->nl = $4; $$ = nl($<n>3); }
