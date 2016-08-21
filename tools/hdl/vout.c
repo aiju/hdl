@@ -8,7 +8,7 @@
 static OpData vopdata[] = {
 	[OPNOP] {"", 0, 0},
 	[OPADD] {"+", 0, 9},
-	[OPSUB] {"-", 0, 10},
+	[OPSUB] {"-", 0, 9},
 	[OPMUL] {"*", 0, 11},
 	[OPDIV] {"/", 0, 11},
 	[OPMOD] {"%", 0, 11},
