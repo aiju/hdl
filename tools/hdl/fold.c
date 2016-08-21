@@ -527,11 +527,35 @@ constop(int op, Const *x, Const *y, Const *z)
 	return 1;
 }
 
+static ASTNode *
+mkbit(int i)
+{
+	Const c;
+	
+	memset(&c, 0, sizeof(Const));
+	mkconstint(&c, i);
+	c.sz = 1;
+	c.base = 2;
+	return node(ASTCONST, c);
+}
+
+static int
+astcond(ASTNode *n)
+{
+	switch(n->t){
+	case ASTCINT:
+		return n->i != 0;
+	case ASTCONST:
+		return mpcmp(n->cons.x, mpzero) == 0 && mpcmp(n->cons.n, mpzero) != 0;
+	}
+	return -1;
+}
+
 static Nodes *
 cfold(ASTNode *n)
 {
 	OpData *d;
-	int c;
+	int c, i, j;
 	Const *x, *y, z;
 	static Const xc, yc;
 
@@ -540,6 +564,14 @@ cfold(ASTNode *n)
 		if(n->sym == nil || n->sym->t != SYMCONST) break;
 		return nl(n->sym->val);
 	case ASTOP:
+		if(n->op == OPLAND || n->op == OPLOR){
+			j = n->op == OPLOR;
+			if(i = astcond(n->n1) ^ j, i >= 0)
+				return nl(i == 0 ? mkbit(j) : n->n2);
+			if(i = astcond(n->n2) ^ j, i >= 0)
+				return nl(i == 0 ? mkbit(j) : n->n1);
+			break;
+		}
 		d = getopdata(n->op);
 		if(d == nil) break;
 		if(n->n1->t != ASTCINT && n->n1->t != ASTCONST) break;
@@ -599,6 +631,10 @@ cfold(ASTNode *n)
 			consttrunc(&z);
 			return nl(node(ASTCONST, z));
 		}
+		break;
+	case ASTTERN:
+		if(i = astcond(n->n1), i >= 0)
+			return nl(i ? n->n2 : n->n3);
 		break;
 	case ASTFCALL:
 		if(n->n1 == nil || n->n1->sym == nil) break;
