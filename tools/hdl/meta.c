@@ -138,6 +138,8 @@ metatypecheck(ASTNode *n)
 	case ASTOP:
 	case ASTIDX:
 	case ASTMEMB:
+	case ASTIF:
+	case ASTTERN:
 		metatypecheck(n->n1);
 		metatypecheck(n->n2);
 		metatypecheck(n->n3);
