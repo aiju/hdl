@@ -351,6 +351,27 @@ mprepl(mpint *a, int n, int s, mpint *b)
 }
 
 static int
+mpparity(mpint *a)
+{
+	int i, j, r, c;
+	mpdigit v;
+	
+	c = 1;
+	r = 0;
+	for(i = 0; i < a->top; i++){
+		v = a->p[i];
+		if(a->sign < 0){
+			v = ~v + c;
+			c = v == 0;
+		}
+		for(j = sizeof(mpdigit)*4; j != 0; j >>= 1)
+			v ^= v >> j;
+		r ^= v & 1;
+	}
+	return r;
+}
+
+static int
 constop(int op, Const *x, Const *y, Const *z)
 {
 	OpData *d;
@@ -513,6 +534,13 @@ constop(int op, Const *x, Const *y, Const *z)
 		i = is0(z->n);
 		itomp(i && is0(z->x), z->n);
 		itomp(i && !is0(z->x), z->x);
+		break;
+	case OPUXOR:
+		if(x->sz != 0){
+			mptrunc(x->n, x->sz, z->n);
+			itomp(mpparity(z->n), z->n);
+		}else
+			itomp(mpparity(x->n), z->n);
 		break;
 	case OPCAT:
 		t = mpnew(0);
