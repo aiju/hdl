@@ -409,6 +409,8 @@ constop(int op, Const *x, Const *y, Const *z)
 	case OPXOR:
 	case OPCAT:
 	case OPREV:
+	case OPUAND:
+	case OPUOR:
 		break;
 	case OPLSL:
 	case OPLSR:
@@ -485,12 +487,32 @@ constop(int op, Const *x, Const *y, Const *z)
 		mpassign(x->x, z->x);
 		break;
 	case OPLNOT: itomp(is0(x->n), z->n); break;
-	case OPUOR: itomp(!is0(x->n), z->n); break;
-	case OPUAND:
-		if(x->sz != 0)
+	case OPUOR:
+		if(x->sz != 0){
 			mpxtend(x->n, x->sz, z->n);
+			mpxtend(x->x, x->sz, z->x);
+		}else{
+			mpassign(x->n, z->n);
+			mpassign(x->x, z->x);
+		}
+		mpbic(z->n, z->x, z->n);
+		i = !is0(z->n);
+		itomp(i, z->n);
+		itomp(!i && !is0(z->x), z->x);
+		break;		
+	case OPUAND:
+		if(x->sz != 0){
+			mpxtend(x->n, x->sz, z->n);
+			mpxtend(x->x, x->sz, z->x);
+		}else{
+			mpassign(x->n, z->n);
+			mpassign(x->x, z->x);
+		}
+		mpor(z->x, z->n, z->n);
 		mpadd(z->n, mpone, z->n);
-		itomp(is0(z->n), z->n);
+		i = is0(z->n);
+		itomp(i && is0(z->x), z->n);
+		itomp(i && !is0(z->x), z->x);
 		break;
 	case OPCAT:
 		t = mpnew(0);
