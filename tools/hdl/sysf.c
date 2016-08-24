@@ -26,7 +26,7 @@ sysclog2(ASTNode *n)
 	case ASTCONST:
 		memset(&z, 0, sizeof(Const));
 		z.x = mpnew(0);
-		if(mpcmp(m->cons.n, mpzero) == 0 || mpcmp(m->cons.x, mpzero) != 0){
+		if(mpcmp(m->cons.n, mpzero) <= 0 || mpcmp(m->cons.x, mpzero) != 0){
 			z.n = mpnew(0);
 		}else{
 			z.n = mpcopy(m->cons.n);
