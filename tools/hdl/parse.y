@@ -54,7 +54,6 @@
 %left unaryprec
 %right LOEXP
 %left '#' '@'
-%left cast
 
 %start program
 
@@ -263,7 +262,7 @@ expr:
 	| '!' expr %prec unaryprec { $$ = node(ASTOP, OPLNOT, $2, nil); }
 	| '%' expr %prec unaryprec { $$ = node(ASTOP, OPREV, $2, nil); }
 	| '{' litexprs '}' { $$ = node(ASTLITERAL, $2); }
-	| '(' type ')' expr %prec cast { $$ = mkcast($2.t, $2.i, $4); }
+	| type '(' expr ')' { $$ = mkcast($1.t, $1.i, $3); }
 	| '\\' expr '\\' { $$ = node(ASTCOMPILE, $2); }
 
 fnargs: { $$ = nil; } | fnargs1  | fnargs1 ','

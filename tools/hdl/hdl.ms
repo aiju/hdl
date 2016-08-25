@@ -316,7 +316,7 @@ No other casts are allowed.
 .LP
 .TS
 r1W12 l.
-\fIexpr\fR ←	\fB(\fItype\fB) \fIexpr\fR
+\fIexpr\fR ←	\fItype \fB( \fIexpr\fR \fB)
 .TE
 .LP
 An explicit cast can be performed with the above notation.
