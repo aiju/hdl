@@ -51,10 +51,10 @@
 %left LOLSL LOLSR LOASR
 %left '+' '-'
 %left '*' '/' '%'
+%left unaryprec
 %right LOEXP
 %left '#' '@'
 %left cast
-%left unaryprec
 
 %start program
 

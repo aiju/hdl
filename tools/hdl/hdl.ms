@@ -198,12 +198,13 @@ Binary operators (in decreasing order of precedence)
 \fIn\fR(\fIm\fR)	Replication	Si	\fBbit[\fIn\fR·\fIb\fR]\fR or \fBstring\fR
 _
 ()	Cast
-	Unary operators
 _
 #	Delay	R	\fIa\fR	\fIb\fR must be a constant non-negative integer.
 @	Prior value	R	\fIa\fR	\fIb\fR must be \fBbit\fR.
 _
 **	Exponentiation	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
+_
+	Unary operators
 _
 *	Multiplication	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
 /	Division	R	\fBreal\fR, \fBint\fR or \fBbit[∞]\fR
