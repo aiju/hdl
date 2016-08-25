@@ -127,19 +127,31 @@ metatypecheck(ASTNode *n)
 
 	if(n == nil) return;
 	switch(n->t){
-	case ASTDECL:
-	case ASTSYMB:
+	case ASTBREAK:
 	case ASTCINT:
+	case ASTDECL:
 	case ASTCONST:
+	case ASTCONTINUE:
+	case ASTDISABLE:
+	case ASTGOTO:
+	case ASTSYMB:
 	case ASTSTATE:
+	case ASTDEFAULT:
 		break;
 	case ASTASS:
-	case ASTPRIME:
-	case ASTOP:
+	case ASTCAST:
+	case ASTDOWHILE:
+	case ASTFOR:
 	case ASTIDX:
-	case ASTMEMB:
 	case ASTIF:
+	case ASTISUB:
+	case ASTLITELEM:
+	case ASTMEMB:
+	case ASTOP:
+	case ASTPRIME:
+	case ASTSWITCH:
 	case ASTTERN:
+	case ASTWHILE:
 		metatypecheck(n->n1);
 		metatypecheck(n->n2);
 		metatypecheck(n->n3);
@@ -148,9 +160,18 @@ metatypecheck(ASTNode *n)
 	case ASTMODULE:
 	case ASTBLOCK:
 	case ASTPIPEL:
+	case ASTFSM:
+	case ASTCASE:
+	case ASTLITERAL:
 		for(r = n->nl; r != nil; r = r->next)
 			metatypecheck(r->n);
 		break;
+	case ASTINITIAL:
+	case ASTFCALL:
+		metatypecheck(n->n1);
+		for(r = n->nl; r != nil; r = r->next)
+			metatypecheck(r->n);
+		break;	
 	case ASTCOMPILE:
 		typecheck(n->n1, nil);
 		break;
