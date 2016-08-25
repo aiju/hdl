@@ -1,0 +1,12 @@
+#!/bin/rc
+fn fun {
+	grep -n '^'$1^'\(' *.c | sed -n 's/^([^:]*:[^:]*).*$/\1/gp'
+}
+
+fn fullcase {
+	comm -23 <{sed -n 's/^	('^$1^'[A-Z0-9]+),.*/\1/p' dat.h | sort} <{sed -n '/^'^$2^'\(/,/^}/ {s/case .*:/\n&\n/g;p;}' *.c | sed -n 's/case ([A-Z0-9]+):/\1/p' | sort} | sed 's/.*/'^`{fun $2}^' '^$2^': missing &/g'
+}
+
+fullcase AST descend
+fullcase AST descendsum
+fullcase AST metatypecheck
