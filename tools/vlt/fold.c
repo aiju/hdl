@@ -132,6 +132,8 @@ constfold(ASTNode *n)
 			return repl(n, node(ASTCINT, c));
 		}
 		return n;
+	case ASTUN:
+		return n;
 	case ASTCALL:
 		return n;
 	case ASTTERN:
