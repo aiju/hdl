@@ -1161,7 +1161,7 @@ typecheck(ASTNode *n, Type *ctxt)
 					p = looksym(st, 0, m->pcon.name);
 					if(p == nil || p->t != SYMPORT)
 						lerror(m, "no such port '%s' in module '%s'", m->pcon.name, n->minst.name);
-					else if((p->dir & 3) == PORTOUT || (p->dir & 3) == PORTIO)
+					else if(((p->dir & 3) == PORTOUT || (p->dir & 3) == PORTIO) && m->pcon.n != nil)
 						lvalcheck(m->pcon.n, 1);
 				}
 			}
