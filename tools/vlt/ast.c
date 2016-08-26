@@ -666,6 +666,8 @@ typeok(Line *l, Type *t)
 int
 asteq(ASTNode *a, ASTNode *b)
 {
+	ASTNode *c, *d;
+
 	if(a == b)
 		return 1;
 	if(a == nil || b == nil)
@@ -677,8 +679,16 @@ asteq(ASTNode *a, ASTNode *b)
 		return a->i == b->i;
 	case ASTBIN: case ASTUN:
 		return a->op == b->op && asteq(a->n1, b->n1) && asteq(a->n2, b->n2);
+	case ASTTERN:
+		return asteq(a->n1, b->n1) && asteq(a->n2, b->n2) && asteq(a->n3, b->n3);
 	case ASTSYM:
 		return a->sym == b->sym;
+	case ASTCALL:
+		if(!asteq(a->n1, b->n1)) return 0;
+		for(c = a->n2, d = b->n2; c != nil && d != nil; c = c->next, d = d->next)
+			if(!asteq(c, d))
+				return 0;
+		return c == d;
 	default:
 		fprint(2, "asteq: unknown %A\n", a->t);
 		return 0;
