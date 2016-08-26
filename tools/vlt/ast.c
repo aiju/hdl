@@ -677,6 +677,8 @@ asteq(ASTNode *a, ASTNode *b)
 	switch(a->t){
 	case ASTCINT:
 		return a->i == b->i;
+	case ASTCONST:
+		return mpcmp(a->cons.n, b->cons.n) == 0 && mpcmp(a->cons.x, b->cons.x) == 0 && a->cons.sz == b->cons.sz && a->cons.sign == b->cons.sign;
 	case ASTBIN: case ASTUN:
 		return a->op == b->op && asteq(a->n1, b->n1) && asteq(a->n2, b->n2);
 	case ASTTERN:
