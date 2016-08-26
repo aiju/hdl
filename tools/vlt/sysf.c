@@ -5,6 +5,8 @@
 #include "dat.h"
 #include "fns.h"
 
+Symbol *fnsigned, *fnunsigned;
+
 static Symbol *
 mksysfn(char *fn, Type *retv)
 {
@@ -40,7 +42,13 @@ sysfinit(void)
 {
 	Symbol *s;
 	
-	s = mksysfn("$clog2", type(TYPUNSZ));
-	addarg(s, "x", type(TYPUNSZ));
+	s = mksysfn("$clog2", type(TYPUNSZ, 1));
+	addarg(s, "x", type(TYPUNSZ, 1));
+	s->n->isconst = 1;
+	fnsigned = s = mksysfn("$signed", type(TYPUNSZ, 0));
+	addarg(s, "x", type(TYPUNSZ, 1));
+	s->n->isconst = 1;
+	fnunsigned = s = mksysfn("$unsigned", type(TYPUNSZ, 0));
+	addarg(s, "x", type(TYPUNSZ, 0));
 	s->n->isconst = 1;
 }

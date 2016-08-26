@@ -813,6 +813,7 @@ typecheck(ASTNode *n, Type *ctxt)
 	int t1, t2, s;
 	Symbol *p;
 	SymTab *st;
+	extern Symbol *fnsigned, *fnunsigned;
 
 	if(n == nil)
 		return;
@@ -1083,6 +1084,12 @@ typecheck(ASTNode *n, Type *ctxt)
 				lerror(n, "too many arguments calling '%s'", n->n1->sym->name);
 			if(p != nil)
 				lerror(n, "too few arguments calling '%s'", n->n1->sym->name);
+			if((n->n1->sym == fnsigned || n->n1->sym == fnunsigned) && p->type != nil)
+				if(p->type->t == TYPBITS)
+					m->type = type(TYPBITS, n->n1->sym == fnsigned, p->type->sz);
+				else if(p->type->t == TYPBITV)
+					m->type = type(TYPBITV, n->n1->sym == fnsigned, p->type->hi, p->type->lo);
+				
 		}
 		break;
 	case ASTCALL:
