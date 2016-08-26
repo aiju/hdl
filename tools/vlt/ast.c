@@ -933,7 +933,7 @@ typecheck(ASTNode *n, Type *ctxt)
 			n->type = n->n1->type;
 		break;
 	case ASTCAT:
-		r = nil;
+		r = node(ASTCINT, 0);
 		for(m = n->n1; m != nil; m = m->next){
 			typecheck(m, nil);
 			if(m->type == nil || m->type->t != TYPBITS && m->type->t != TYPBITV)
