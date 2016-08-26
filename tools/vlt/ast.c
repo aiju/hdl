@@ -1195,6 +1195,7 @@ typecheck(ASTNode *n, Type *ctxt)
 			n->type = type(TYPBITS, s, maxi(maxi(n->n2->type->sz, n->n3->type->sz), ctxt->sz));
 		else
 			n->type = type(TYPBITS, s, maxi(n->n2->type->sz, n->n3->type->sz));
+		n->isconst = n->n1->isconst && n->n2->isconst && n->n3->isconst;
 		break;
 	case ASTGENFOR:
 		insist(n->n1->t == ASTASS && n->n3->t == ASTASS);
