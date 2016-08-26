@@ -714,7 +714,7 @@ checksym(ASTNode *n)
 #define insist(t) if(t){} else {lerror(n, "phase error: t"); return;}
 
 static void
-lvalcheck(ASTNode *n, int cont)
+lvalcheck0(ASTNode *n, int cont)
 {
 	ASTNode *m;
 
@@ -722,15 +722,11 @@ lvalcheck(ASTNode *n, int cont)
 	case ASTSYM:
 		switch(n->sym->t){
 		case SYMREG:
-			if(n->sym->type->t == TYPMEM)
-				lerror(n, "assignment to memory");
 		reg:
 			if(cont)
 				lerror(n, "continuous assignment to reg '%s'", n->sym->name);
 			return;
 		case SYMNET:
-			if(n->sym->type->t == TYPMEM)
-				lerror(n, "assignment to memory");
 		wire:
 			if(!cont)
 				lerror(n, "procedural assignment to wire '%s'", n->sym->name);
@@ -750,19 +746,26 @@ lvalcheck(ASTNode *n, int cont)
 		}
 	case ASTIDX:
 		insist(n->n1 != nil);
-		if(n->n1->t != ASTSYM || n->n1->sym->t != SYMREG || n->n1->sym->type->t != TYPMEM)
-			lvalcheck(n->n1, cont);
+		lvalcheck0(n->n1, cont);
 		break;
 	case ASTCAT:
 		if(n->n2 != nil)
 			lerror(n, "replication as lval");
 		else
 			for(m = n->n1; m != nil; m = m->next)
-				lvalcheck(m, cont);
+				lvalcheck0(m, cont);
 		break;
 	default:
 		lerror(n, "invalid lval (%A)", n->t);
 	}
+}
+
+static void
+lvalcheck(ASTNode *n, int cont)
+{
+	lvalcheck0(n, cont);
+	if(n->type != nil && n->type->t == TYPMEM)
+		lerror(n, "assignment to memory");
 }
 
 void
