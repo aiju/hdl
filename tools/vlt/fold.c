@@ -131,6 +131,8 @@ constfold(ASTNode *n)
 			return repl(n, node(ASTCINT, c));
 		}
 		return n;
+	case ASTCALL:
+		return n;
 	default:
 		fprint(2, "constfold: unknown %A\n", n->t);
 		return n;

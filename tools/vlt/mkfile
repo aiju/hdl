@@ -9,6 +9,7 @@ OFILES=\
 	fold.$O \
 	cfg.$O \
 	aijubrd.$O \
+	sysf.$O \
 
 BIN=/$objtype/bin
 

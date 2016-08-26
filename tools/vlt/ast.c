@@ -1083,9 +1083,11 @@ typecheck(ASTNode *n, Type *ctxt)
 		else{
 			f = n->n1->sym->n;
 			n->type = n->n1->sym->type;
+			n->isconst = f->isconst;
 			insist(f != nil);
 			for(m = n->n2, p = f->sc.st->ports; m != nil && p != nil; m = m->next, p = p->portnext){
 				typecheck(m, p->type);
+				n->isconst &= m->isconst;
 				intcheck(m, 1, "%T as argument");
 			}
 			if(m != nil)

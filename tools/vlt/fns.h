@@ -38,3 +38,4 @@ int lex(void);
 int peek(void);
 ASTNode *add(ASTNode *, ASTNode *);
 int checksym(ASTNode *);
+void sysfinit(void);
