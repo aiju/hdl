@@ -151,7 +151,6 @@ moditem:
 	| portdecle ecomma ';' { $$ = nil; }
 	| attrs paramdecl extraassigns ';' { $$ = nil; }
 	| LGENERATE modgens LENDGENERATE { $$ = $2; }
-	| error { $$ = nil; }
 	;
 
 modgen:
@@ -171,6 +170,7 @@ modgen:
 	| LIF '(' const ')' genblocknull LELSE genblocknull { $$ = node(ASTGENIF, $3, $5, $7, nil); }
 	| LCASE '(' const ')' gencaseitems LENDCASE { $$ = node(ASTGENCASE, 0, $3, $5, nil); }
 	| LFOR '(' varass ';' const ';' varass ')' genblocknull { $$ = node(ASTGENFOR, $3, $5, $7, $9, nil); }
+	| error { $$ = nil; }
 	;
 
 genblock:
