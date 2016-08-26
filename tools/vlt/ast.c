@@ -547,8 +547,9 @@ add(ASTNode *a, ASTNode *b)
 static ASTNode *
 maxi(ASTNode *a, ASTNode *b)
 {
-	if(a == b)
-		return a;
+	if(a == b) return a;
+	if(a == nil) return b;
+	if(b == nil) return a;
 	if(a->t == ASTCINT && b->t == ASTCINT)
 		return node(ASTCINT, a->i >= b->i ? a->i : b->i);
 	return cfold(node(ASTBIN, OPMAX, a, b, nil), unsztype);
