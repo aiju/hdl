@@ -51,4 +51,5 @@ sysfinit(void)
 	fnunsigned = s = mksysfn("$unsigned", type(TYPUNSZ, 0));
 	addarg(s, "x", type(TYPUNSZ, 0));
 	s->n->isconst = 1;
+	mksysfn("$random", type(TYPBITS, 0, node(ASTCINT, 32)));
 }
