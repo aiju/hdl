@@ -125,6 +125,7 @@ lparamports:
 paramports:
 	paramdecl
 	| paramports ',' paramdecl
+	| paramports ',' paramassign
 	;
 
 lports:
