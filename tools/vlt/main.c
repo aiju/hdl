@@ -136,6 +136,7 @@ main(int argc, char **argv)
 	astinit();
 	cfginit();
 	foldinit();
+	sysfinit();
 	fmtinstall('B', mpfmt);
 	
 	cfgmode = 0;

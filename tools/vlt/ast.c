@@ -547,8 +547,9 @@ add(ASTNode *a, ASTNode *b)
 static ASTNode *
 maxi(ASTNode *a, ASTNode *b)
 {
-	if(a == b)
-		return a;
+	if(a == b) return a;
+	if(a == nil) return b;
+	if(b == nil) return a;
 	if(a->t == ASTCINT && b->t == ASTCINT)
 		return node(ASTCINT, a->i >= b->i ? a->i : b->i);
 	return cfold(node(ASTBIN, OPMAX, a, b, nil), unsztype);
@@ -666,6 +667,8 @@ typeok(Line *l, Type *t)
 int
 asteq(ASTNode *a, ASTNode *b)
 {
+	ASTNode *c, *d;
+
 	if(a == b)
 		return 1;
 	if(a == nil || b == nil)
@@ -675,10 +678,20 @@ asteq(ASTNode *a, ASTNode *b)
 	switch(a->t){
 	case ASTCINT:
 		return a->i == b->i;
+	case ASTCONST:
+		return mpcmp(a->cons.n, b->cons.n) == 0 && mpcmp(a->cons.x, b->cons.x) == 0 && a->cons.sz == b->cons.sz && a->cons.sign == b->cons.sign;
 	case ASTBIN: case ASTUN:
 		return a->op == b->op && asteq(a->n1, b->n1) && asteq(a->n2, b->n2);
+	case ASTTERN:
+		return asteq(a->n1, b->n1) && asteq(a->n2, b->n2) && asteq(a->n3, b->n3);
 	case ASTSYM:
 		return a->sym == b->sym;
+	case ASTCALL:
+		if(!asteq(a->n1, b->n1)) return 0;
+		for(c = a->n2, d = b->n2; c != nil && d != nil; c = c->next, d = d->next)
+			if(!asteq(c, d))
+				return 0;
+		return c == d;
 	default:
 		fprint(2, "asteq: unknown %A\n", a->t);
 		return 0;
@@ -714,7 +727,7 @@ checksym(ASTNode *n)
 #define insist(t) if(t){} else {lerror(n, "phase error: t"); return;}
 
 static void
-lvalcheck(ASTNode *n, int cont)
+lvalcheck0(ASTNode *n, int cont)
 {
 	ASTNode *m;
 
@@ -722,15 +735,11 @@ lvalcheck(ASTNode *n, int cont)
 	case ASTSYM:
 		switch(n->sym->t){
 		case SYMREG:
-			if(n->sym->type->t == TYPMEM)
-				lerror(n, "assignment to memory");
 		reg:
 			if(cont)
 				lerror(n, "continuous assignment to reg '%s'", n->sym->name);
 			return;
 		case SYMNET:
-			if(n->sym->type->t == TYPMEM)
-				lerror(n, "assignment to memory");
 		wire:
 			if(!cont)
 				lerror(n, "procedural assignment to wire '%s'", n->sym->name);
@@ -750,19 +759,26 @@ lvalcheck(ASTNode *n, int cont)
 		}
 	case ASTIDX:
 		insist(n->n1 != nil);
-		if(n->n1->t != ASTSYM || n->n1->sym->t != SYMREG || n->n1->sym->type->t != TYPMEM)
-			lvalcheck(n->n1, cont);
+		lvalcheck0(n->n1, cont);
 		break;
 	case ASTCAT:
 		if(n->n2 != nil)
 			lerror(n, "replication as lval");
 		else
 			for(m = n->n1; m != nil; m = m->next)
-				lvalcheck(m, cont);
+				lvalcheck0(m, cont);
 		break;
 	default:
 		lerror(n, "invalid lval (%A)", n->t);
 	}
+}
+
+static void
+lvalcheck(ASTNode *n, int cont)
+{
+	lvalcheck0(n, cont);
+	if(n->type != nil && n->type->t == TYPMEM)
+		lerror(n, "assignment to memory");
 }
 
 void
@@ -800,6 +816,7 @@ typecheck(ASTNode *n, Type *ctxt)
 	int t1, t2, s;
 	Symbol *p;
 	SymTab *st;
+	extern Symbol *fnsigned, *fnunsigned;
 
 	if(n == nil)
 		return;
@@ -919,7 +936,7 @@ typecheck(ASTNode *n, Type *ctxt)
 			n->type = n->n1->type;
 		break;
 	case ASTCAT:
-		r = nil;
+		r = node(ASTCINT, 0);
 		for(m = n->n1; m != nil; m = m->next){
 			typecheck(m, nil);
 			if(m->type == nil || m->type->t != TYPBITS && m->type->t != TYPBITV)
@@ -1070,6 +1087,12 @@ typecheck(ASTNode *n, Type *ctxt)
 				lerror(n, "too many arguments calling '%s'", n->n1->sym->name);
 			if(p != nil)
 				lerror(n, "too few arguments calling '%s'", n->n1->sym->name);
+			if((n->n1->sym == fnsigned || n->n1->sym == fnunsigned) && p->type != nil)
+				if(p->type->t == TYPBITS)
+					m->type = type(TYPBITS, n->n1->sym == fnsigned, p->type->sz);
+				else if(p->type->t == TYPBITV)
+					m->type = type(TYPBITV, n->n1->sym == fnsigned, p->type->hi, p->type->lo);
+				
 		}
 		break;
 	case ASTCALL:
@@ -1080,9 +1103,11 @@ typecheck(ASTNode *n, Type *ctxt)
 		else{
 			f = n->n1->sym->n;
 			n->type = n->n1->sym->type;
+			n->isconst = f->isconst;
 			insist(f != nil);
 			for(m = n->n2, p = f->sc.st->ports; m != nil && p != nil; m = m->next, p = p->portnext){
 				typecheck(m, p->type);
+				n->isconst &= m->isconst;
 				intcheck(m, 1, "%T as argument");
 			}
 			if(m != nil)
@@ -1137,7 +1162,7 @@ typecheck(ASTNode *n, Type *ctxt)
 					p = looksym(st, 0, m->pcon.name);
 					if(p == nil || p->t != SYMPORT)
 						lerror(m, "no such port '%s' in module '%s'", m->pcon.name, n->minst.name);
-					else if((p->dir & 3) == PORTOUT || (p->dir & 3) == PORTIO)
+					else if(((p->dir & 3) == PORTOUT || (p->dir & 3) == PORTIO) && m->pcon.n != nil)
 						lvalcheck(m->pcon.n, 1);
 				}
 			}
@@ -1180,6 +1205,7 @@ typecheck(ASTNode *n, Type *ctxt)
 			n->type = type(TYPBITS, s, maxi(maxi(n->n2->type->sz, n->n3->type->sz), ctxt->sz));
 		else
 			n->type = type(TYPBITS, s, maxi(n->n2->type->sz, n->n3->type->sz));
+		n->isconst = n->n1->isconst && n->n2->isconst && n->n3->isconst;
 		break;
 	case ASTGENFOR:
 		insist(n->n1->t == ASTASS && n->n3->t == ASTASS);

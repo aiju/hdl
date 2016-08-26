@@ -31,6 +31,7 @@ constfold(ASTNode *n)
 	int a, b, c, ov;
 	vlong v;
 
+	if(n == nil) return nil;
 	switch(n->t){
 	case ASTCINT:
 	case ASTSTRING:
@@ -130,6 +131,17 @@ constfold(ASTNode *n)
 				return repl(n, node(ASTCONST, constop(n->op, makeconst(a), makeconst(b))));
 			return repl(n, node(ASTCINT, c));
 		}
+		return n;
+	case ASTUN:
+		return n;
+	case ASTCALL:
+		return n;
+	case ASTTERN:
+		n->n1 = constfold(n->n1);
+		n->n2 = constfold(n->n2);
+		n->n3 = constfold(n->n3);	
+		if(n->n1 != nil && n->n1->t == ASTCINT)
+			return n->n1->i ? n->n2 : n->n3;
 		return n;
 	default:
 		fprint(2, "constfold: unknown %A\n", n->t);

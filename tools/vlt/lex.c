@@ -827,7 +827,7 @@ lexinit(void)
 int
 basedigit(int c)
 {
-	return isalnum(c) || c == '_' || c == '?';
+	return isalnum(c) || c == '_' || base && c == '?';
 }
 
 ASTNode *
