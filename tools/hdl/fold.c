@@ -456,18 +456,18 @@ constop(int op, Const *x, Const *y, Const *z)
 		break;
 	case OPEXP: mpexp(x->n, y->n, nil, z->n); break;
 	case OPLSL:
-		mpleft(x->n, mptoi(y->n), z->n);
-		mpleft(x->x, mptoi(y->n), z->x);
+		mpasr(x->n, -mptoi(y->n), z->n);
+		mpasr(x->x, -mptoi(y->n), z->x);
 		break;
 	case OPLSR:
-		mpright(x->n, mptoi(y->n), z->n);
-		mpright(x->x, mptoi(y->n), z->x);
+		mpasr(x->n, mptoi(y->n), z->n);
+		mpasr(x->x, mptoi(y->n), z->x);
 		break;
 	case OPASR:
 		mpxtend(x->n, x->sz, z->n);
-		mpright(z->n, mptoi(y->n), z->n);
+		mpasr(z->n, mptoi(y->n), z->n);
 		mpxtend(x->x, x->sz, z->x);
-		mpright(z->x, mptoi(y->n), z->x);
+		mpasr(z->x, mptoi(y->n), z->x);
 		break;
 	case OPAND:
 		mpor(x->n, x->x, z->n);
