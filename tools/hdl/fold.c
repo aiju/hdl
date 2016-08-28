@@ -225,27 +225,26 @@ cintop(int op, int a, int b, int *cp)
 	case OPOR: *cp = a | b; return 1;
 	case OPXOR: *cp = a ^ b; return 1;
 	case OPLSL:
-		if(b >= 32 || b < 0)
+		if(b < 0) {b = -b; goto lsr;}
+	lsl:
+		if(b >= 32)
 			return 0;
 		else if(b == 0){
 			*cp = a;
-			return 0;
+			return 1;
 		}else{
 			*cp = c = a << b;
-			return (a >> 32 - b) == 0 && (c ^ a) >= 0;
+			return (unsigned)((a >> 32 - b) + 1) <= 1 && (c ^ a) >= 0;
 		}
 		break;
 	case OPASR:
-		if(b >= 32 || b < 0)
+	case OPLSR:
+		if(b < 0) {b = -b; goto lsl;}
+	lsr:
+		if(b >= 32)
 			*cp = a >> 31;
 		else
 			*cp = a >> b;
-		return 1;
-	case OPLSR:
-		if(b >= 32 || b < 0)
-			*cp = 0;
-		else
-			*cp = (unsigned)a >> b;
 		return 1;
 	case OPEQS:
 	case OPEQ:
