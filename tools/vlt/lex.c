@@ -732,7 +732,7 @@ directif(Macro *m)
 		return;
 	}
 	iflevel++;
-	if((getmac(buf) != nil) ^ (m->name[3] == 'n'))
+	if((getmac(buf) != nil) ^ (m->name[2] == 'n'))
 		return;
 loop:
 	while(c = lexgetc(), c >= 0)
