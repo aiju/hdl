@@ -991,6 +991,7 @@ typecheck(ASTNode *n, Type *ctxt)
 		}
 		if(intcheck(n->n1, 0, "%T in indexing"))
 			return;
+		n->isconst = n->n1->isconst && (n->n2 == nil || n->n2->isconst) && (n->n3 == nil || n->n3->isconst);
 		switch(n->op){
 		case 0:
 			n->type = bittype;
