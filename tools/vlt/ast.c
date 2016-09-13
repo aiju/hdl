@@ -810,6 +810,37 @@ intcheck(ASTNode *n, int realok, char *s)
 }
 
 void
+checksymtab(SymTab *st)
+{
+	int i;
+	Symbol *s;
+	
+	if(st == nil) return;
+	for(i = 0; i < SYMHASH; i++)
+		for(s = st->sym[i]; s != nil; s = s->next)
+			if(s->n != nil)
+				typecheck(s->n, s->type);
+	for(i = 0; i < SYMHASH; i++)
+		for(s = st->sym[i]; s != nil; s = s->next){
+			if(s->ref != 0) continue;
+			switch(s->t){
+			case SYMNET:
+			case SYMREG:
+			case SYMPARAM:
+			case SYMLPARAM:
+			case SYMFUNC:
+			case SYMTASK:
+			case SYMEVENT:
+			case SYMGENVAR:
+				break;
+			default:
+				continue;
+			}
+			lerror(s, "'%s' defined and not used", s->name);
+		}
+}
+
+void
 typecheck(ASTNode *n, Type *ctxt)
 {
 	ASTNode *m, *r, *f;
@@ -834,6 +865,7 @@ typecheck(ASTNode *n, Type *ctxt)
 	case ASTTASK:
 		for(m = n->sc.n; m != nil; m = m->next)
 			typecheck(m, nil);
+		checksymtab(n->sc.st);
 		break;
 	case ASTAT:
 		typecheck(n->n1, nil);
@@ -963,6 +995,7 @@ typecheck(ASTNode *n, Type *ctxt)
 		}else
 			n->type = n->sym->type;
 		n->isconst = n->sym->t == SYMPARAM || n->sym->t == SYMLPARAM || n->sym->t == SYMGENVAR;
+		n->sym->ref++;
 		break;
 	case ASTCONST:
 		/* BUG: doesn't work with localparam */
@@ -1076,6 +1109,7 @@ typecheck(ASTNode *n, Type *ctxt)
 			lerror(n, "%σ in task call", n->n1->sym->t);
 		else{
 			f = n->n1->sym->n;
+			n->n1->sym->ref++;
 			insist(f != nil);
 			for(m = n->n2, p = f->sc.st->ports; m != nil && p != nil; m = m->next, p = p->portnext){
 				typecheck(m, p->type);
@@ -1103,6 +1137,7 @@ typecheck(ASTNode *n, Type *ctxt)
 			lerror(n, "'%s' %σ in function call", n->n1->sym->name, n->n1->sym->t);
 		else{
 			f = n->n1->sym->n;
+			n->n1->sym->ref++;
 			n->type = n->n1->sym->type;
 			n->isconst = f->isconst;
 			insist(f != nil);

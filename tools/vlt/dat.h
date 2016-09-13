@@ -84,6 +84,7 @@ struct Symbol {
 	int dir;
 	ASTNode *attrs;
 	int whine;
+	int ref;
 };
 
 enum {
