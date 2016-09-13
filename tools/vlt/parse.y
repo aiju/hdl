@@ -271,7 +271,7 @@ modinst: LSYMB paramlist { modname = $1->name; modparams = $2; } instances { $$ 
 paramlist: { $$ = nil; }
 	| '#' '(' lexpr ')' { $$ = $3; }
 	| '#' '(' lnparass ecomma ')' { $$ = $3; };
-lnparass: nparass | lnparass ',' nparass;
+lnparass: nparass | lnparass ',' nparass { $$ = nodecat($1, $3); };
 nparass: '.' LSYMB '(' expr ')' { $$ = node(ASTPCON, $2->name, $4, nil); };
 instances: instance | instances ',' instance { $$ = nodecat($1, $3); };
 instance: LSYMB '(' lordports ')' { $$ = node(ASTMINSTO, modname, modparams, $3, curattrs); decl($1, SYMMINST, $$, nil, curattrs); }
