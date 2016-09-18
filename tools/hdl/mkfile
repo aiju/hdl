@@ -16,6 +16,7 @@ OFILES=\
 	set.$O \
 	vout.$O \
 	sysf.$O \
+	cout.$O \
 
 BIN=/$objtype/bin
 

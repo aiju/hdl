@@ -112,11 +112,15 @@ compile(Nodes *np)
 			if(nerror != 0) return;
 			n = pipecompile(n);
 			if(nerror != 0) return;
+			astprint(n, 0);
+			cout(n);
+			/*
 			n = typconc(n);
 			if(nerror != 0) return;
 			n = semcomp(n);
 			if(nerror != 0) return;
 			verilog(n);
+			*/
 		}
 	}
 }

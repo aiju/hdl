@@ -65,6 +65,8 @@ struct Symbol {
 	int semcidx[2];
 	int whine, multiwhine;
 	
+	Symbol *csym[2];
+	
 	Line;
 };
 

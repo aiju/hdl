@@ -92,3 +92,4 @@ void symcpy(Symbol *, Symbol *);
 ASTNode *metacompile(ASTNode *);
 ASTNode *sysfold(ASTNode *);
 Type *typefold(Type *);
+void cout(ASTNode *);
