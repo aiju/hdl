@@ -722,7 +722,7 @@ static void
 directif(Macro *m)
 {
 	char buf[512];
-	int c;
+	int c, l;
 
 	skipsp();
 	getident(buf, buf+sizeof(buf));
@@ -735,10 +735,13 @@ directif(Macro *m)
 	if((getmac(buf) != nil) ^ (m->name[2] == 'n'))
 		return;
 loop:
+	l = 0;
 	while(c = lexgetc(), c >= 0)
 		if(c == '`'){
 			getident(buf, buf+sizeof(buf));
-			if(strcmp(buf, "else") == 0 || strcmp(buf, "elsif") == 0 || strcmp(buf, "endif") == 0)
+			if(strcmp(buf, "ifdef") == 0 || strcmp(buf, "ifndef") == 0)
+				l++;
+			if(l == 0 && (strcmp(buf, "else") == 0 || strcmp(buf, "elsif") == 0) || strcmp(buf, "endif") == 0 && l-- == 0)
 				break;
 		}
 	if(c < 0) return;
@@ -773,17 +776,19 @@ static void
 directelse(Macro *m)
 {
 	char buf[512];
-	int c;
+	int c, l;
 
 	if(iflevel == 0){
 		lerror(nil, "stray `%s", m->name);
 		return;
 	}
 	skipline(nil);
+	l = 0;
 	while(c = lexgetc(), c >= 0)
 		if(c == '`'){
 			getident(buf, buf+sizeof(buf));
-			if(strcmp(buf, "endif") == 0){
+			if(strcmp(buf, "ifdef") == 0 || strcmp(buf, "ifndef") == 0) l++;
+			if(strcmp(buf, "endif") == 0 && l-- == 0){
 				iflevel--;
 				skipline(nil);
 				return;
