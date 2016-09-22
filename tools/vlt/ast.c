@@ -1302,6 +1302,6 @@ typecheck(ASTNode *n, Type *ctxt)
 	case ASTCASIT:
 	case ASTPCON:
 	default:
-		fprint(2, "typecheck: unknown %A\n", n->t);
+		lerror(n, "typecheck: unknown %A", n->t);
 	}
 }
