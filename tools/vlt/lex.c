@@ -1110,6 +1110,7 @@ filedown(char *fn)
 		strcpy(qq, fn);
 		bp = Bopen(s, OREAD);
 		free(s);
+		if(bp == nil) bp = Bopen(fn, OREAD);
 	}else
 		bp = Bopen(fn, OREAD);
 	if(bp == nil){
