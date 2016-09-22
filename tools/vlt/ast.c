@@ -866,8 +866,10 @@ typecheck(ASTNode *n, Type *ctxt)
 		return;
 	switch(n->t){
 	case ASTALWAYS:
-	case ASTINITIAL:
 		typecheck(n->n, nil);
+		alwayscheck(n);
+		break;
+	case ASTINITIAL:
 		break;
 	case ASTMODULE:
 	case ASTBLOCK:

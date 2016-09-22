@@ -10,6 +10,7 @@ OFILES=\
 	cfg.$O \
 	aijubrd.$O \
 	sysf.$O \
+	lint.$O \
 
 BIN=/$objtype/bin
 
