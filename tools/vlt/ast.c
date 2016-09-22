@@ -817,9 +817,20 @@ checksymtab(SymTab *st)
 	
 	if(st == nil) return;
 	for(i = 0; i < SYMHASH; i++)
-		for(s = st->sym[i]; s != nil; s = s->next)
+		for(s = st->sym[i]; s != nil; s = s->next){
+			switch(s->t){
+			case SYMNET:
+			case SYMREG:
+			case SYMPARAM:
+			case SYMLPARAM:
+			case SYMGENVAR:
+				break;
+			default:
+				continue;
+			}
 			if(s->n != nil)
 				typecheck(s->n, s->type);
+	}
 	for(i = 0; i < SYMHASH; i++)
 		for(s = st->sym[i]; s != nil; s = s->next){
 			if(s->ref != 0) continue;
