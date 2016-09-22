@@ -980,12 +980,14 @@ typecheck(ASTNode *n, Type *ctxt)
 		break;
 	case ASTCAT:
 		r = node(ASTCINT, 0);
+		n->isconst = 1;
 		for(m = n->n1; m != nil; m = m->next){
 			typecheck(m, nil);
 			if(m->type == nil || m->type->t != TYPBITS && m->type->t != TYPBITV)
 				lerror(m, "%T in concatenation", m->type);
 			else
 				r = add(r, m->type->sz);
+			n->isconst &= m->isconst;
 		}
 		if(n->n2 != nil){
 			typecheck(n->n2, nil);
@@ -994,6 +996,7 @@ typecheck(ASTNode *n, Type *ctxt)
 				lerror(n->n2, "replication factor not a constant");
 			else
 				r = cfold(node(ASTBIN, OPMUL, r, n->n2), unsztype);
+			n->isconst &= n->n2->isconst;
 		}
 		n->type = type(TYPBITS, 0, r);
 		return;
