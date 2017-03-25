@@ -1,0 +1,7 @@
+all:V: top.v top.xdc
+
+top.v:DV: abdef.vlt
+	vlt -lc $prereq >$target
+
+top.xdc:DV: abdef.vlt
+	vlt -lc -O xdc $prereq | grep -v 'IOSTANDARD.*comp_[pn]' >$target

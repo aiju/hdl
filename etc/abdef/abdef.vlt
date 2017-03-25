@@ -1,0 +1,27 @@
+board aijuboard;
+
+files {
+	*.v
+	/home/aiju/hdl/lib/*.v
+}
+
+design top {
+	gpioreg {
+		reg* = gpioreg* map(0);
+		gpio <gp>;
+	}
+	
+	i2c {
+		scl <scl>;
+	}
+	
+	i2creg {
+		sda <sda>;
+		reg* = i2creg* map(0x100);
+	}
+
+	ledreg {
+		reg* = ledreg* map(0x200);
+		leds <led>;
+	}
+}

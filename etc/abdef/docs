@@ -1,0 +1,49 @@
+gpio
+=================
+
+RAZ = read as zero
+WI = write ignored
+any undefined bits are RAZ/WI
+any undefined registers will error out
+
+addr	R/W	initial	name
+
+0	R	?	GPIO_IN
+	current value of all the GPIO pins (input and output)
+
+10	R/W	0	GPIO_OUT
+	output values
+
+14	RAZ/W	0	GPIO_OUT_SET
+18	RAZ/W	0	GPIO_OUT_CLR
+	writing a value V will set/clear any bits that are set in V in GPIO_OUT
+
+20	R/W	-1	GPIO_TRI
+	if a bit is 1, the corresponding pin is an input
+
+24	RAZ/W	0	GPIO_TRI_SET
+28	RAZ/W	0	GPIO_TRI_CLR
+	writing a value V will set/clear any bits that are set in V in GPIO_TRI
+
+i2c
+===================
+this module has two registers mapped to the same address
+
+100	W		I2C
+	writing to this register causes a byte to be transferred via I2C
+	writes are ignored if the i2c module is busy
+	bit 7-0: write data (ignored for read)
+	bit 8: set for read, cleared for write
+	bit 15-9: 7-bit I2C address
+	bit 16: set if the bus is to return to idle after this byte is transferred
+
+100	R		I2C
+	bit 7-0: read data if the last transfer completed and was a read, else garbage
+	bit 8: set if the transfer failed. only valid if the transfer completed.
+	bit 9: set if the module is still busy.
+
+led
+===================
+200	R/W	0	LED
+	bit 5-0 correspond to the six LEDs on the board
+
