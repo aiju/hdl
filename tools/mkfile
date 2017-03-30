@@ -2,6 +2,7 @@
 
 TARG=\
 	hjdebug\
+	jtagdebug\
 
 DIRS=\
 	vlt\
