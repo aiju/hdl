@@ -870,6 +870,7 @@ typecheck(ASTNode *n, Type *ctxt)
 		alwayscheck(n);
 		break;
 	case ASTINITIAL:
+		typecheck(n->n, nil);
 		break;
 	case ASTMODULE:
 	case ASTBLOCK:
