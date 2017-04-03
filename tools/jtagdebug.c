@@ -251,7 +251,7 @@ main(int argc, char **argv)
 	if(vflag){
 		for(v = vars, n = 0; v < varp; v++)
 			n += v->len;
-		Bprint(bout, "\tdebug #(.N(%d)) debug0(clk, trigger,\n\t\t{", n);
+		Bprint(bout, "\tjtagdebug #(.N(%d)) jtagdebug0(clk, trigger,\n\t\t{", n);
 		llen = 1;
 		for(v = vars; v < varp - 1; v++){
 			if(v->upper != 0)

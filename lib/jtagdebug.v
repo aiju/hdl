@@ -1,6 +1,6 @@
-`include "dat.vh"
+`default_nettype none
 
-module debug #(parameter N = 128, parameter MEM = 1024) (
+module jtagdebug #(parameter N = 128, parameter MEM = 1024) (
 	input wire clk,
 	input wire trigger,
 	input wire [N-1:0] indata

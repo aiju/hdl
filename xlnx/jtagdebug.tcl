@@ -51,15 +51,3 @@ proc debug {} {
 proc regset {w d} {
 	scan_dr_hw_jtag -tdi [format "%2x%2x" 0x$w 0x$d] 16
 }
-
-proc grab {} {
-	user2
-	set j 0
-	for {set j 0} {$j < 240} {incr j} {
-		reg ff04 [format {%x} [expr {$j * 2}]]
-		puts $j
-		arm
-		wait
-		readdata [expr {$j == 0 ? "w" : "a"}]
-	}
-}
