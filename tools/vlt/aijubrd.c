@@ -18,50 +18,59 @@ typedef struct BPort {
 	char *name;
 	int i;
 	char *pin;
+	char *iostd;
 } BPort;
 static BPort bports[] = {
-	"gp", 29, "P2",
-	"gp", 28, "P3",
-	"gp", 27, "N1",
-	"gp", 26, "N3",
-	"gp", 25, "M1",
-	"gp", 24, "M2",
-	"gp", 23, "M3",
-	"gp", 22, "M4",
-	"gp", 21, "L4",
-	"gp", 20, "L1",
-	"gp", 19, "L2",
-	"gp", 18, "K2",
-	"gp", 17, "K3",
-	"gp", 16, "J1",
-	"gp", 15, "J2",
-	"gp", 14, "H1",
-	"gp", 13, "H3",
-	"gp", 12, "G1",
-	"gp", 11, "G2",
-	"gp", 10, "F1",
-	"gp", 9, "F2",
-	"gp", 8, "E2",
-	"gp", 7, "D1",
-	"gp", 6, "D2",
-	"gp", 5, "C1",
-	"gp", 4, "D3",
-	"gp", 3, "A1",
-	"gp", 2, "E3",
-	"gp", 1, "E4",
-	"gp", 0, "C6",
-	"hotplug", 0, "R2",
-	"int", 0, "A7",
-	"led", 5, "A2",
-	"led", 4, "B3",
-	"led", 3, "B1",
-	"led", 2, "B2",
-	"led", 1, "C3",
-	"led", 0, "C5",
-	"lsound", 0, "A4",
-	"rsound", 0, "B4",
-	"scl", 0, "A6",
-	"sda", 0, "A5",
+	"gp", 29, "P2", "LVCMOS33",
+	"gp", 28, "P3", "LVCMOS33",
+	"gp", 27, "N1", "LVCMOS33",
+	"gp", 26, "N3", "LVCMOS33",
+	"gp", 25, "M1", "LVCMOS33",
+	"gp", 24, "M2", "LVCMOS33",
+	"gp", 23, "M3", "LVCMOS33",
+	"gp", 22, "M4", "LVCMOS33",
+	"gp", 21, "L4", "LVCMOS33",
+	"gp", 20, "L1", "LVCMOS33",
+	"gp", 19, "L2", "LVCMOS33",
+	"gp", 18, "K2", "LVCMOS33",
+	"gp", 17, "K3", "LVCMOS33",
+	"gp", 16, "J1", "LVCMOS33",
+	"gp", 15, "J2", "LVCMOS33",
+	"gp", 14, "H1", "LVCMOS33",
+	"gp", 13, "H3", "LVCMOS33",
+	"gp", 12, "G1", "LVCMOS33",
+	"gp", 11, "G2", "LVCMOS33",
+	"gp", 10, "F1", "LVCMOS33",
+	"gp", 9, "F2", "LVCMOS33",
+	"gp", 8, "E2", "LVCMOS33",
+	"gp", 7, "D1", "LVCMOS33",
+	"gp", 6, "D2", "LVCMOS33",
+	"gp", 5, "C1", "LVCMOS33",
+	"gp", 4, "D3", "LVCMOS33",
+	"gp", 3, "A1", "LVCMOS33",
+	"gp", 2, "E3", "LVCMOS33",
+	"gp", 1, "E4", "LVCMOS33",
+	"gp", 0, "C6", "LVCMOS33",
+	"hotplug", 0, "R2", "LVCMOS33",
+	"int", 0, "A7", "LVCMOS33",
+	"led", 5, "A2", "LVCMOS33",
+	"led", 4, "B3", "LVCMOS33",
+	"led", 3, "B1", "LVCMOS33",
+	"led", 2, "B2", "LVCMOS33",
+	"led", 1, "C3", "LVCMOS33",
+	"led", 0, "C5", "LVCMOS33",
+	"lsound", 0, "A4", "LVCMOS33",
+	"rsound", 0, "B4", "LVCMOS33",
+	"scl", 0, "A6", "LVCMOS33",
+	"sda", 0, "A5", "LVCMOS33",
+	"refclk", 1, "V5", nil,
+	"refclk", 0, "U5", nil,
+	"tx", 3, "Y2", nil,
+	"tx", 2, "W2", nil,
+	"tx", 1, "AB3", nil,
+	"tx", 0, "AA3", nil,
+	"auxp", 0, "AB18", "BLVDS_25",
+	"auxn", 0, "AB19", "BLVDS_25",
 };
 
 extern char str[];
@@ -584,9 +593,9 @@ xdcout(CDesign *d, Biobuf *bp)
 			for(; b->i > w->extlo; b++)
 				;
 			if(w->type->sz->i == 1){
-				Bprint(bp, "set_property IOSTANDARD LVCMOS33 [get_ports {%s}]\n"
-					"set_property PACKAGE_PIN %s [get_ports {%s}]\n",
-					w->name, b->pin, w->name);
+				if(b->iostd != nil)
+					Bprint(bp, "set_property IOSTANDARD %s [get_ports {%s}]\n", b->iostd, w->name);
+				Bprint(bp, "set_property PACKAGE_PIN %s [get_ports {%s}]\n", b->pin, w->name);
 				continue;
 			}
 			if(w->type->t == TYPBITS)
@@ -594,9 +603,9 @@ xdcout(CDesign *d, Biobuf *bp)
 			else
 				j = w->type->lo->i;
 			do{
-				Bprint(bp, "set_property IOSTANDARD LVCMOS33 [get_ports {%s[%d]}]\n"
-					"set_property PACKAGE_PIN %s [get_ports {%s[%d]}]\n",
-					w->name, j, b->pin, w->name, j);
+				if(b->iostd != nil)
+					Bprint(bp, "set_property IOSTANDARD %s [get_ports {%s[%d]}]\n", b->iostd, w->name, j);
+				Bprint(bp, "set_property PACKAGE_PIN %s [get_ports {%s[%d]}]\n", b->pin, w->name, j);
 				j++;
 			}while(b >= bports && (b--)->i != w->exthi);
 		}
