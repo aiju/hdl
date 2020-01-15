@@ -15,7 +15,7 @@ module axi3 #(
 	input wire [31:0] axiaraddr,
 	input wire [1:0] axiarburst, axiarlock,
 	input wire [2:0] axiarsize, axiarprot,
-	input wire [3:0] axiarlen, axiarcache, axiarqos,
+	input wire [3:0] axiarlen, axiarcache,
 	input wire [`ID-1:0] axiarid,
 	
 	output reg axirvalid,
@@ -30,7 +30,7 @@ module axi3 #(
 	input wire [31:0] axiawaddr,
 	input wire [1:0] axiawburst, axiawlock,
 	input wire [2:0] axiawsize, axiawprot,
-	input wire [3:0] axiawlen, axiawcache, axiawqos,
+	input wire [3:0] axiawlen, axiawcache,
 	input wire [`ID-1:0] axiawid,
 	
 	input wire axiwvalid,
