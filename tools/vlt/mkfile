@@ -11,6 +11,7 @@ OFILES=\
 	aijubrd.$O \
 	sysf.$O \
 	lint.$O \
+	de10.$O \
 
 BIN=/$objtype/bin
 

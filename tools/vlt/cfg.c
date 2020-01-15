@@ -20,9 +20,10 @@ struct TabName {
 	char *n;
 	CTab *t;
 };
-extern CTab aijutab;
+extern CTab aijutab, de10tab;
 TabName tabs[] = {
 	"aijuboard", &aijutab,
+	"de10", &de10tab,
 	nil, nil,
 };
 
